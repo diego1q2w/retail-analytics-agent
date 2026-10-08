@@ -116,6 +116,10 @@ retail-analytics-eval summary evaluation-results/run.json
 - Results (`schema_version` 1, `application/evaluation/results.py`) keep deterministic checks, judge scores and operational measurements in separate sections, state every denominator (null ratio when zero), record manifest digest and model/config/prompt/persona/metric/policy/dataset/retrieval/corpus versions, and store no raw text: strings appear as digests and the writer refuses output that looks like PII or a credential. Identical inputs give byte-identical files and the same `verdict_digest`; `recorded_at` appears only with `--timestamp`.
 - Result files are local artifacts (`evaluation-results/` is ignored).
 
+### Golden retrieval benchmark
+
+`python -m retail_analytics.bootstrap.retrieval_eval` measures precision@k, recall@k, MRR, nDCG, no-match behavior and access violations for keyword-only, semantic-only and fused retrieval on labeled questions with separate tuning and held-out splits. Labels, corpus, method, measured results and limits are in `evaluation/retrieval/README.md`. It uses the runner's manifest and result format.
+
 ### Local services (PostgreSQL and Temporal)
 
 `compose.yaml` runs one PostgreSQL 17 server and Temporal 1.32 (image digests pinned), both bound to loopback only. Requires Docker with Compose v2. Passwords are throwaway local defaults; override with `COMPOSE_APP_DB_PASSWORD`, `COMPOSE_TEMPORAL_DB_PASSWORD`, `COMPOSE_PG_ADMIN_PASSWORD`.

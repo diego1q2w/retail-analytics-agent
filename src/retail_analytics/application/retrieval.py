@@ -32,6 +32,8 @@ from retail_analytics.application.knowledge import (
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.knowledge import ApplicabilityContext, ExampleRef
 from retail_analytics.domain.retrieval import (
+    LEXICAL,
+    SEMANTIC,
     RetrievalConfig,
     bm25,
     cosine,
@@ -300,10 +302,18 @@ class GoldenRetriever:
             if s.score > 0 and s.coverage >= cfg.min_lexical_coverage
         }
         semantic_pass = {k: s for k, s in similarity.items() if s >= cfg.min_similarity}
-        lexical_rank = rank(lexical_pass, cfg.channel_candidates)
-        semantic_rank = rank(semantic_pass, cfg.channel_candidates)
+        lexical_rank = (
+            rank(lexical_pass, cfg.channel_candidates)
+            if LEXICAL in cfg.channels
+            else []
+        )
+        semantic_rank = (
+            rank(semantic_pass, cfg.channel_candidates)
+            if SEMANTIC in cfg.channels
+            else []
+        )
         fused = reciprocal_rank_fusion(
-            {"lexical": lexical_rank, "semantic": semantic_rank}, cfg.rrf_k
+            {LEXICAL: lexical_rank, SEMANTIC: semantic_rank}, cfg.rrf_k
         )
         hits: list[RetrievalHit] = []
         for key in rank(fused, len(fused)):

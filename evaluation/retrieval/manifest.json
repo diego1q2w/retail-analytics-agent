@@ -1,0 +1,6010 @@
+{
+ "schema_version": 1,
+ "manifest_id": "retrieval-golden-eval",
+ "manifest_version": "retrieval-labels-1",
+ "scenarios": [
+  {
+   "id": "rt-t01",
+   "title": "paraphrase: t-trend",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What has monthly revenue looked like over the past quarter?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t02",
+   "title": "paraphrase: t-trend",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Give me revenue by month for the last three full months."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t03",
+   "title": "paraphrase: t-trend",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Is revenue growing or shrinking from one month to the next?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t04",
+   "title": "paraphrase: t-mtd",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Are we ahead or behind last month's revenue so far this month?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t05",
+   "title": "paraphrase: t-mtd",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Month to date sales compared to the same point last month"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t06",
+   "title": "paraphrase: t-best",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which items are our best sellers by revenue lately?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t07",
+   "title": "paraphrase: t-best",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What are the top earning products this past quarter?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t08",
+   "title": "paraphrase: t-brand",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How do brands compare on sales and basket value?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t09",
+   "title": "paraphrase: t-brand",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Revenue and average order size per brand for the last quarter"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t10",
+   "title": "paraphrase: t-nosale",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which products had zero sales last quarter?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t11",
+   "title": "paraphrase: t-nosale",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Show products that nobody bought in the past three months"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t12",
+   "title": "paraphrase: t-empty",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Why does the revenue for a category come back empty?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t13",
+   "title": "paraphrase: t-empty",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What did the Footwear department bring in last quarter?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t14",
+   "title": "paraphrase: t-conc",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which customers account for the largest share of revenue?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t15",
+   "title": "paraphrase: t-conc",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Is our revenue dependent on a handful of buyers?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t16",
+   "title": "paraphrase: t-demo",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Where and in which age groups do shoppers spend most?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t17",
+   "title": "paraphrase: t-demo",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Spending per customer by state and age bracket"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t18",
+   "title": "paraphrase: t-drop",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What explains the decline in revenue last month?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t19",
+   "title": "paraphrase: t-drop",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Revenue is down; which products drove it?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t20",
+   "title": "paraphrase: t-status",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What portion of ordered value is excluded from revenue and for what reason?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t21",
+   "title": "paraphrase: t-status",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How much was cancelled or returned compared with completed sales?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t22",
+   "title": "paraphrase: t-return",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which categories get returned the most?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t23",
+   "title": "paraphrase: t-return",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What is the return rate by product category?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t24",
+   "title": "paraphrase: t-aov",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How has average order value changed over time?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t25",
+   "title": "paraphrase: t-repeat",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What share of customers buy more than once?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t26",
+   "title": "unauthorized: t-un1",
+   "level": 1,
+   "category": "unauthorized",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-women",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which men's products brought in the most revenue last quarter?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "unauthorized",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t27",
+   "title": "unauthorized: t-un2",
+   "level": 1,
+   "category": "unauthorized",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-women",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which states spend the most on menswear?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "unauthorized",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t28",
+   "title": "authorized_restricted: t-un3",
+   "level": 1,
+   "category": "authorized_restricted",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-men",
+    "product_scope": [
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which products earn the most revenue in the menswear range?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "authorized_restricted",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t29",
+   "title": "incompatible: t-inc1",
+   "level": 1,
+   "category": "incompatible",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How did revenue change month over month if shipped items are counted too?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "incompatible",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t30",
+   "title": "incompatible: t-inc2",
+   "level": 1,
+   "category": "incompatible",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which products earned the most last quarter in the new schema?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "incompatible",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t31",
+   "title": "retired: t-ret1",
+   "level": 1,
+   "category": "retired",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How did revenue this quarter compare with the previous quarter?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "retired",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-t32",
+   "title": "no_match: t-nm-0",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What is the weather forecast for our warehouse city?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-t33",
+   "title": "no_match: t-nm-1",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Draft an email to the supplier about late deliveries."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-t34",
+   "title": "no_match: t-nm-2",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which marketing channel brought the most website visitors?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-t35",
+   "title": "no_match: t-nm-3",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Translate the product descriptions into Spanish."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-t36",
+   "title": "no_match: t-nm-4",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How many employees work in our logistics team?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-t37",
+   "title": "no_match: t-nm-5",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Forecast next quarter revenue with a regression model."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-t38",
+   "title": "ambiguous: t-amb1",
+   "level": 1,
+   "category": "ambiguous",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How are we doing?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "ambiguous",
+    "expect-either"
+   ]
+  },
+  {
+   "id": "rt-t39",
+   "title": "ambiguous: t-amb2",
+   "level": 1,
+   "category": "ambiguous",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Tell me about our sales."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "tuning",
+    "ambiguous",
+    "expect-either"
+   ]
+  },
+  {
+   "id": "rt-h01",
+   "title": "direct: h-share",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which single product generated the highest sales last month, and what share of the total is that?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h02",
+   "title": "direct: h-five",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "List our five biggest earners with their portion of overall takings."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h03",
+   "title": "direct: h-seq",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Did sales rise or fall from June to July to August?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h04",
+   "title": "direct: h-summer",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Show me sales per calendar month this summer."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h05",
+   "title": "direct: h-half",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How does the first half of this month stack up against the same days of the previous month?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h06",
+   "title": "paraphrase: h-half",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Compare the days elapsed so far in this month with the matching days a month ago."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h07",
+   "title": "direct: h-stale",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Are there items in the catalog that have not been purchased in the last 90 days?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h08",
+   "title": "paraphrase: h-stale",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which stock lines have no completed orders at all recently?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h09",
+   "title": "direct: h-brandmix",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Does one brand dominate order value, or is it spread across brands?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h10",
+   "title": "paraphrase: h-brandmix",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which label has the biggest baskets and how many orders mention several labels?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h11",
+   "title": "direct: h-young",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Do younger customers spend more per head than older ones?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h12",
+   "title": "direct: h-region",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which regions have the highest spend per buyer?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h13",
+   "title": "direct: h-top10",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What fraction of sales comes from our ten biggest buyers?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h14",
+   "title": "paraphrase: h-top10",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How concentrated is spending among the very best customers?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h15",
+   "title": "direct: h-week",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Why was last week weaker than the week before?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h16",
+   "title": "direct: h-august",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Sales dipped in August; what changed underneath?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h17",
+   "title": "direct: h-processing",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How much value is sitting in processing or shipped orders that revenue does not yet count?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h18",
+   "title": "paraphrase: h-processing",
+   "level": 1,
+   "category": "paraphrase",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Why do the revenue figures differ from total order value?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "paraphrase",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h19",
+   "title": "direct: h-parka",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "We saw no sales for the Parkas category. Is that a real zero?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h20",
+   "title": "direct: h-sendback",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which product lines are customers sending back most often?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h21",
+   "title": "direct: h-basket",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Are customers placing bigger baskets than before?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h22",
+   "title": "direct: h-loyal",
+   "level": 1,
+   "category": "direct",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How loyal are customers: how many come back for a second order?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "direct",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h23",
+   "title": "unauthorized: h-un1",
+   "level": 1,
+   "category": "unauthorized",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-women",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which menswear lines earned the most in the previous quarter?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "unauthorized",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h24",
+   "title": "unauthorized: h-un2",
+   "level": 1,
+   "category": "unauthorized",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-women",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Break down spending on men's clothing by customer state."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "unauthorized",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h25",
+   "title": "authorized_restricted: h-ok1",
+   "level": 1,
+   "category": "authorized_restricted",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-women",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which womenswear categories are gaining or losing share of sales month to month?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "authorized_restricted",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h26",
+   "title": "unauthorized: h-un3",
+   "level": 1,
+   "category": "unauthorized",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-men",
+    "product_scope": [
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Are any womenswear categories gaining share of sales lately?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "unauthorized",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-h27",
+   "title": "incompatible: h-inc1",
+   "level": 1,
+   "category": "incompatible",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What was monthly revenue if we also count items still on their way?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "incompatible",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h28",
+   "title": "incompatible: h-inc2",
+   "level": 1,
+   "category": "incompatible",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Put our products in order of takings for the previous quarter."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "incompatible",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h29",
+   "title": "retired: h-ret1",
+   "level": 1,
+   "category": "retired",
+   "mode": "live",
+   "importance": "gate",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Is the latest quarter ahead of the one before in revenue terms?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "retired",
+    "expect-match"
+   ]
+  },
+  {
+   "id": "rt-h30",
+   "title": "no_match: h-nm-0",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which supplier has the best delivery times?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-h31",
+   "title": "no_match: h-nm-1",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Write a poem about our summer sale."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-h32",
+   "title": "no_match: h-nm-2",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How many support tickets did we receive?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-h33",
+   "title": "no_match: h-nm-3",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Estimate next year's revenue with a time series model."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-h34",
+   "title": "no_match: h-nm-4",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "What is the share price of our company?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-h35",
+   "title": "no_match: h-nm-5",
+   "level": 1,
+   "category": "no_match",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which customers should get a discount email? List their names and email addresses."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    },
+    {
+     "kind": "exact",
+     "name": "returned_count",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "no_match",
+    "expect-none"
+   ]
+  },
+  {
+   "id": "rt-h36",
+   "title": "ambiguous: h-amb1",
+   "level": 1,
+   "category": "ambiguous",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "How is business?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "ambiguous",
+    "expect-either"
+   ]
+  },
+  {
+   "id": "rt-h37",
+   "title": "ambiguous: h-amb2",
+   "level": 1,
+   "category": "ambiguous",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Tell me something interesting about customers."
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "ambiguous",
+    "expect-either"
+   ]
+  },
+  {
+   "id": "rt-h38",
+   "title": "ambiguous: h-amb3",
+   "level": 1,
+   "category": "ambiguous",
+   "mode": "live",
+   "importance": "threshold",
+   "implementation_status": "implemented",
+   "verification": [
+    "deterministic"
+   ],
+   "fixture_ref": null,
+   "scope": {
+    "executive_ref": "scope-all",
+    "product_scope": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "15990",
+     "15991",
+     "15992",
+     "15993",
+     "15994",
+     "15995",
+     "15996",
+     "15997",
+     "15998",
+     "15999",
+     "16000",
+     "16001",
+     "16002",
+     "16003",
+     "16004",
+     "16005",
+     "16006",
+     "16007",
+     "16008",
+     "16009"
+    ]
+   },
+   "dialogue": [
+    {
+     "text": "Which area is performing worst?"
+    }
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "access_violations",
+     "expected": 0
+    }
+   ],
+   "judge": null,
+   "requires": [
+    "database"
+   ],
+   "tags": [
+    "heldout",
+    "ambiguous",
+    "expect-either"
+   ]
+  }
+ ]
+}

@@ -12,6 +12,10 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+LEXICAL = "lexical"
+SEMANTIC = "semantic"
+CHANNELS = frozenset({LEXICAL, SEMANTIC})
+
 # Golden retrieval never supplies more than this many examples (design §41).
 MAX_RESULTS_CEILING = 3
 
@@ -38,6 +42,9 @@ class RetrievalConfig:
     # A candidate must clear at least one channel's absolute threshold.
     min_similarity: float = 0.55
     min_lexical_coverage: float = 0.5
+    # Both channels in production. A single channel exists so evaluation can
+    # compare keyword-only, semantic-only and fused ranking on one corpus.
+    channels: frozenset[str] = CHANNELS
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_results <= MAX_RESULTS_CEILING:
@@ -48,13 +55,18 @@ class RetrievalConfig:
             raise ValueError("min_similarity must be within [-1, 1]")
         if not 0.0 <= self.min_lexical_coverage <= 1.0:
             raise ValueError("min_lexical_coverage must be within [0, 1]")
+        if not self.channels or not self.channels <= CHANNELS:
+            raise ValueError("channels must be a non-empty subset of lexical, semantic")
 
     @property
     def version(self) -> str:
-        return (
+        base = (
             f"rrf{self.rrf_k}-n{self.channel_candidates}-k{self.max_results}"
             f"-sim{self.min_similarity}-lex{self.min_lexical_coverage}"
         )
+        if self.channels == CHANNELS:
+            return base
+        return f"{base}-only-{'+'.join(sorted(self.channels))}"
 
 
 def tokenize(text: str) -> tuple[str, ...]:

@@ -1,0 +1,1108 @@
+{
+ "labels_version": "retrieval-labels-1",
+ "labeling_notes": "Grades: 2 = the example's method applies as written; 1 = applies in part or with a definition caveat; 0/absent = does not apply. Written from the example questions and method summaries before any retrieval run; one labeler, no second annotator.",
+ "context": {
+  "schema_version": "logical-catalog/1"
+ },
+ "scopes": {
+  "all": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "5",
+   "6",
+   "7",
+   "8",
+   "9",
+   "10",
+   "11",
+   "12",
+   "13",
+   "14",
+   "15",
+   "16",
+   "17",
+   "18",
+   "19",
+   "20",
+   "15990",
+   "15991",
+   "15992",
+   "15993",
+   "15994",
+   "15995",
+   "15996",
+   "15997",
+   "15998",
+   "15999",
+   "16000",
+   "16001",
+   "16002",
+   "16003",
+   "16004",
+   "16005",
+   "16006",
+   "16007",
+   "16008",
+   "16009"
+  ],
+  "women": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "5",
+   "6",
+   "7",
+   "8",
+   "9",
+   "10",
+   "11",
+   "12",
+   "13",
+   "14",
+   "15",
+   "16",
+   "17",
+   "18",
+   "19",
+   "20"
+  ],
+  "men": [
+   "15990",
+   "15991",
+   "15992",
+   "15993",
+   "15994",
+   "15995",
+   "15996",
+   "15997",
+   "15998",
+   "15999",
+   "16000",
+   "16001",
+   "16002",
+   "16003",
+   "16004",
+   "16005",
+   "16006",
+   "16007",
+   "16008",
+   "16009"
+  ]
+ },
+ "questions": [
+  {
+   "id": "rt-t01",
+   "split": "tuning",
+   "group": "t-trend",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "What has monthly revenue looked like over the past quarter?",
+   "relevant": {
+    "monthly-revenue-trend": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t02",
+   "split": "tuning",
+   "group": "t-trend",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Give me revenue by month for the last three full months.",
+   "relevant": {
+    "monthly-revenue-trend": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t03",
+   "split": "tuning",
+   "group": "t-trend",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Is revenue growing or shrinking from one month to the next?",
+   "relevant": {
+    "monthly-revenue-trend": 2,
+    "partial-month-comparison": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t04",
+   "split": "tuning",
+   "group": "t-mtd",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Are we ahead or behind last month's revenue so far this month?",
+   "relevant": {
+    "partial-month-comparison": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t05",
+   "split": "tuning",
+   "group": "t-mtd",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Month to date sales compared to the same point last month",
+   "relevant": {
+    "partial-month-comparison": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t06",
+   "split": "tuning",
+   "group": "t-best",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which items are our best sellers by revenue lately?",
+   "relevant": {
+    "top-products-by-revenue": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t07",
+   "split": "tuning",
+   "group": "t-best",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "What are the top earning products this past quarter?",
+   "relevant": {
+    "top-products-by-revenue": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t08",
+   "split": "tuning",
+   "group": "t-brand",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "How do brands compare on sales and basket value?",
+   "relevant": {
+    "brand-comparison-orders": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t09",
+   "split": "tuning",
+   "group": "t-brand",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Revenue and average order size per brand for the last quarter",
+   "relevant": {
+    "brand-comparison-orders": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t10",
+   "split": "tuning",
+   "group": "t-nosale",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which products had zero sales last quarter?",
+   "relevant": {
+    "products-without-sales": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t11",
+   "split": "tuning",
+   "group": "t-nosale",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Show products that nobody bought in the past three months",
+   "relevant": {
+    "products-without-sales": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t12",
+   "split": "tuning",
+   "group": "t-empty",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Why does the revenue for a category come back empty?",
+   "relevant": {
+    "empty-result-diagnosis": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t13",
+   "split": "tuning",
+   "group": "t-empty",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "What did the Footwear department bring in last quarter?",
+   "relevant": {
+    "empty-result-diagnosis": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t14",
+   "split": "tuning",
+   "group": "t-conc",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which customers account for the largest share of revenue?",
+   "relevant": {
+    "customer-spending-concentration": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t15",
+   "split": "tuning",
+   "group": "t-conc",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Is our revenue dependent on a handful of buyers?",
+   "relevant": {
+    "customer-spending-concentration": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t16",
+   "split": "tuning",
+   "group": "t-demo",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Where and in which age groups do shoppers spend most?",
+   "relevant": {
+    "spend-by-state-and-age-band": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t17",
+   "split": "tuning",
+   "group": "t-demo",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Spending per customer by state and age bracket",
+   "relevant": {
+    "spend-by-state-and-age-band": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t18",
+   "split": "tuning",
+   "group": "t-drop",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "What explains the decline in revenue last month?",
+   "relevant": {
+    "revenue-drop-contributors": 2,
+    "order-status-mix": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t19",
+   "split": "tuning",
+   "group": "t-drop",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Revenue is down; which products drove it?",
+   "relevant": {
+    "revenue-drop-contributors": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t20",
+   "split": "tuning",
+   "group": "t-status",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "What portion of ordered value is excluded from revenue and for what reason?",
+   "relevant": {
+    "order-status-mix": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t21",
+   "split": "tuning",
+   "group": "t-status",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "How much was cancelled or returned compared with completed sales?",
+   "relevant": {
+    "order-status-mix": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t22",
+   "split": "tuning",
+   "group": "t-return",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which categories get returned the most?",
+   "relevant": {
+    "x-return-rate-by-category": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t23",
+   "split": "tuning",
+   "group": "t-return",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "What is the return rate by product category?",
+   "relevant": {
+    "x-return-rate-by-category": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t24",
+   "split": "tuning",
+   "group": "t-aov",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "How has average order value changed over time?",
+   "relevant": {
+    "x-average-order-value-trend": 2,
+    "brand-comparison-orders": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t25",
+   "split": "tuning",
+   "group": "t-repeat",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "What share of customers buy more than once?",
+   "relevant": {
+    "x-repeat-customers": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t26",
+   "split": "tuning",
+   "group": "t-un1",
+   "category": "unauthorized",
+   "scope": "women",
+   "expect": "match",
+   "text": "Which men's products brought in the most revenue last quarter?",
+   "relevant": {
+    "top-products-by-revenue": 1
+   },
+   "forbidden": [
+    "x-men-top-products"
+   ]
+  },
+  {
+   "id": "rt-t27",
+   "split": "tuning",
+   "group": "t-un2",
+   "category": "unauthorized",
+   "scope": "women",
+   "expect": "match",
+   "text": "Which states spend the most on menswear?",
+   "relevant": {
+    "spend-by-state-and-age-band": 1
+   },
+   "forbidden": [
+    "x-men-state-spend"
+   ]
+  },
+  {
+   "id": "rt-t28",
+   "split": "tuning",
+   "group": "t-un3",
+   "category": "authorized_restricted",
+   "scope": "men",
+   "expect": "match",
+   "text": "Which products earn the most revenue in the menswear range?",
+   "relevant": {
+    "x-men-top-products": 2,
+    "top-products-by-revenue": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t29",
+   "split": "tuning",
+   "group": "t-inc1",
+   "category": "incompatible",
+   "scope": "all",
+   "expect": "match",
+   "text": "How did revenue change month over month if shipped items are counted too?",
+   "relevant": {
+    "monthly-revenue-trend": 1
+   },
+   "forbidden": [
+    "x-revenue-v2-monthly"
+   ]
+  },
+  {
+   "id": "rt-t30",
+   "split": "tuning",
+   "group": "t-inc2",
+   "category": "incompatible",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which products earned the most last quarter in the new schema?",
+   "relevant": {
+    "top-products-by-revenue": 2
+   },
+   "forbidden": [
+    "x-schema2-top-products"
+   ]
+  },
+  {
+   "id": "rt-t31",
+   "split": "tuning",
+   "group": "t-ret1",
+   "category": "retired",
+   "scope": "all",
+   "expect": "match",
+   "text": "How did revenue this quarter compare with the previous quarter?",
+   "relevant": {
+    "monthly-revenue-trend": 1
+   },
+   "forbidden": [
+    "x-retired-quarterly-revenue"
+   ]
+  },
+  {
+   "id": "rt-t32",
+   "split": "tuning",
+   "group": "t-nm-0",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "What is the weather forecast for our warehouse city?",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-t33",
+   "split": "tuning",
+   "group": "t-nm-1",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Draft an email to the supplier about late deliveries.",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-t34",
+   "split": "tuning",
+   "group": "t-nm-2",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Which marketing channel brought the most website visitors?",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-t35",
+   "split": "tuning",
+   "group": "t-nm-3",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Translate the product descriptions into Spanish.",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-t36",
+   "split": "tuning",
+   "group": "t-nm-4",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "How many employees work in our logistics team?",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-t37",
+   "split": "tuning",
+   "group": "t-nm-5",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Forecast next quarter revenue with a regression model.",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-t38",
+   "split": "tuning",
+   "group": "t-amb1",
+   "category": "ambiguous",
+   "scope": "all",
+   "expect": "either",
+   "text": "How are we doing?",
+   "relevant": {
+    "monthly-revenue-trend": 1,
+    "partial-month-comparison": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-t39",
+   "split": "tuning",
+   "group": "t-amb2",
+   "category": "ambiguous",
+   "scope": "all",
+   "expect": "either",
+   "text": "Tell me about our sales.",
+   "relevant": {
+    "monthly-revenue-trend": 1,
+    "top-products-by-revenue": 1,
+    "order-status-mix": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h01",
+   "split": "heldout",
+   "group": "h-share",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which single product generated the highest sales last month, and what share of the total is that?",
+   "relevant": {
+    "top-products-by-revenue": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h02",
+   "split": "heldout",
+   "group": "h-five",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "List our five biggest earners with their portion of overall takings.",
+   "relevant": {
+    "top-products-by-revenue": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h03",
+   "split": "heldout",
+   "group": "h-seq",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Did sales rise or fall from June to July to August?",
+   "relevant": {
+    "monthly-revenue-trend": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h04",
+   "split": "heldout",
+   "group": "h-summer",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Show me sales per calendar month this summer.",
+   "relevant": {
+    "monthly-revenue-trend": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h05",
+   "split": "heldout",
+   "group": "h-half",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "How does the first half of this month stack up against the same days of the previous month?",
+   "relevant": {
+    "partial-month-comparison": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h06",
+   "split": "heldout",
+   "group": "h-half",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Compare the days elapsed so far in this month with the matching days a month ago.",
+   "relevant": {
+    "partial-month-comparison": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h07",
+   "split": "heldout",
+   "group": "h-stale",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Are there items in the catalog that have not been purchased in the last 90 days?",
+   "relevant": {
+    "products-without-sales": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h08",
+   "split": "heldout",
+   "group": "h-stale",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which stock lines have no completed orders at all recently?",
+   "relevant": {
+    "products-without-sales": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h09",
+   "split": "heldout",
+   "group": "h-brandmix",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Does one brand dominate order value, or is it spread across brands?",
+   "relevant": {
+    "brand-comparison-orders": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h10",
+   "split": "heldout",
+   "group": "h-brandmix",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which label has the biggest baskets and how many orders mention several labels?",
+   "relevant": {
+    "brand-comparison-orders": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h11",
+   "split": "heldout",
+   "group": "h-young",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Do younger customers spend more per head than older ones?",
+   "relevant": {
+    "spend-by-state-and-age-band": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h12",
+   "split": "heldout",
+   "group": "h-region",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which regions have the highest spend per buyer?",
+   "relevant": {
+    "spend-by-state-and-age-band": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h13",
+   "split": "heldout",
+   "group": "h-top10",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "What fraction of sales comes from our ten biggest buyers?",
+   "relevant": {
+    "customer-spending-concentration": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h14",
+   "split": "heldout",
+   "group": "h-top10",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "How concentrated is spending among the very best customers?",
+   "relevant": {
+    "customer-spending-concentration": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h15",
+   "split": "heldout",
+   "group": "h-week",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Why was last week weaker than the week before?",
+   "relevant": {
+    "revenue-drop-contributors": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h16",
+   "split": "heldout",
+   "group": "h-august",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Sales dipped in August; what changed underneath?",
+   "relevant": {
+    "revenue-drop-contributors": 2,
+    "order-status-mix": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h17",
+   "split": "heldout",
+   "group": "h-processing",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "How much value is sitting in processing or shipped orders that revenue does not yet count?",
+   "relevant": {
+    "order-status-mix": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h18",
+   "split": "heldout",
+   "group": "h-processing",
+   "category": "paraphrase",
+   "scope": "all",
+   "expect": "match",
+   "text": "Why do the revenue figures differ from total order value?",
+   "relevant": {
+    "order-status-mix": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h19",
+   "split": "heldout",
+   "group": "h-parka",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "We saw no sales for the Parkas category. Is that a real zero?",
+   "relevant": {
+    "empty-result-diagnosis": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h20",
+   "split": "heldout",
+   "group": "h-sendback",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Which product lines are customers sending back most often?",
+   "relevant": {
+    "x-return-rate-by-category": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h21",
+   "split": "heldout",
+   "group": "h-basket",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "Are customers placing bigger baskets than before?",
+   "relevant": {
+    "x-average-order-value-trend": 2,
+    "brand-comparison-orders": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h22",
+   "split": "heldout",
+   "group": "h-loyal",
+   "category": "direct",
+   "scope": "all",
+   "expect": "match",
+   "text": "How loyal are customers: how many come back for a second order?",
+   "relevant": {
+    "x-repeat-customers": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h23",
+   "split": "heldout",
+   "group": "h-un1",
+   "category": "unauthorized",
+   "scope": "women",
+   "expect": "match",
+   "text": "Which menswear lines earned the most in the previous quarter?",
+   "relevant": {
+    "top-products-by-revenue": 1
+   },
+   "forbidden": [
+    "x-men-top-products"
+   ]
+  },
+  {
+   "id": "rt-h24",
+   "split": "heldout",
+   "group": "h-un2",
+   "category": "unauthorized",
+   "scope": "women",
+   "expect": "match",
+   "text": "Break down spending on men's clothing by customer state.",
+   "relevant": {
+    "spend-by-state-and-age-band": 1
+   },
+   "forbidden": [
+    "x-men-state-spend"
+   ]
+  },
+  {
+   "id": "rt-h25",
+   "split": "heldout",
+   "group": "h-ok1",
+   "category": "authorized_restricted",
+   "scope": "women",
+   "expect": "match",
+   "text": "Which womenswear categories are gaining or losing share of sales month to month?",
+   "relevant": {
+    "x-women-category-mix": 2
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h26",
+   "split": "heldout",
+   "group": "h-un3",
+   "category": "unauthorized",
+   "scope": "men",
+   "expect": "none",
+   "text": "Are any womenswear categories gaining share of sales lately?",
+   "relevant": {},
+   "forbidden": [
+    "x-women-category-mix"
+   ]
+  },
+  {
+   "id": "rt-h27",
+   "split": "heldout",
+   "group": "h-inc1",
+   "category": "incompatible",
+   "scope": "all",
+   "expect": "match",
+   "text": "What was monthly revenue if we also count items still on their way?",
+   "relevant": {
+    "monthly-revenue-trend": 1
+   },
+   "forbidden": [
+    "x-revenue-v2-monthly"
+   ]
+  },
+  {
+   "id": "rt-h28",
+   "split": "heldout",
+   "group": "h-inc2",
+   "category": "incompatible",
+   "scope": "all",
+   "expect": "match",
+   "text": "Put our products in order of takings for the previous quarter.",
+   "relevant": {
+    "top-products-by-revenue": 2
+   },
+   "forbidden": [
+    "x-schema2-top-products"
+   ]
+  },
+  {
+   "id": "rt-h29",
+   "split": "heldout",
+   "group": "h-ret1",
+   "category": "retired",
+   "scope": "all",
+   "expect": "match",
+   "text": "Is the latest quarter ahead of the one before in revenue terms?",
+   "relevant": {
+    "monthly-revenue-trend": 1
+   },
+   "forbidden": [
+    "x-retired-quarterly-revenue"
+   ]
+  },
+  {
+   "id": "rt-h30",
+   "split": "heldout",
+   "group": "h-nm-0",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Which supplier has the best delivery times?",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-h31",
+   "split": "heldout",
+   "group": "h-nm-1",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Write a poem about our summer sale.",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-h32",
+   "split": "heldout",
+   "group": "h-nm-2",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "How many support tickets did we receive?",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-h33",
+   "split": "heldout",
+   "group": "h-nm-3",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Estimate next year's revenue with a time series model.",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-h34",
+   "split": "heldout",
+   "group": "h-nm-4",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "What is the share price of our company?",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-h35",
+   "split": "heldout",
+   "group": "h-nm-5",
+   "category": "no_match",
+   "scope": "all",
+   "expect": "none",
+   "text": "Which customers should get a discount email? List their names and email addresses.",
+   "relevant": {},
+   "forbidden": []
+  },
+  {
+   "id": "rt-h36",
+   "split": "heldout",
+   "group": "h-amb1",
+   "category": "ambiguous",
+   "scope": "all",
+   "expect": "either",
+   "text": "How is business?",
+   "relevant": {
+    "monthly-revenue-trend": 1,
+    "partial-month-comparison": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h37",
+   "split": "heldout",
+   "group": "h-amb2",
+   "category": "ambiguous",
+   "scope": "all",
+   "expect": "either",
+   "text": "Tell me something interesting about customers.",
+   "relevant": {
+    "customer-spending-concentration": 1,
+    "spend-by-state-and-age-band": 1,
+    "x-repeat-customers": 1
+   },
+   "forbidden": []
+  },
+  {
+   "id": "rt-h38",
+   "split": "heldout",
+   "group": "h-amb3",
+   "category": "ambiguous",
+   "scope": "all",
+   "expect": "either",
+   "text": "Which area is performing worst?",
+   "relevant": {
+    "spend-by-state-and-age-band": 1,
+    "top-products-by-revenue": 1,
+    "revenue-drop-contributors": 1
+   },
+   "forbidden": []
+  }
+ ]
+}

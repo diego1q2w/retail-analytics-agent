@@ -1,0 +1,173 @@
+{
+ "corpus_version": "retrieval-corpus-1",
+ "note": "Evaluation-only examples added to the ten project-authored seeds. Synthetic, never loaded into a real knowledge base. Roles describe why each exists.",
+ "revision": 1,
+ "examples": [
+  {
+   "key": "x-return-rate-by-category",
+   "role": "eligible distractor and positive",
+   "question": "Which product categories have the highest return rates?",
+   "method_summary": "Count items with status Returned against all items that left processing, per category, over a complete window. Show both counts next to the rate so a small category with a few returns is not mistaken for a problem. Status values are current and can change.",
+   "sql": "SELECT category, COUNT(*) AS items FROM sales_items GROUP BY category",
+   "report_markdown": "# Return rate by category\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "completed_items",
+     1
+    ]
+   ],
+   "restricted_products": [],
+   "final_status": "published"
+  },
+  {
+   "key": "x-average-order-value-trend",
+   "role": "eligible distractor and positive",
+   "question": "How has average order value changed month by month?",
+   "method_summary": "Divide completed item sales by distinct completed orders per complete month using average_order_sales v1, and compare consecutive months. Show order counts beside the average so a thin month is visible.",
+   "sql": "SELECT month, SUM(sale_amount) AS sales FROM sales_items GROUP BY month",
+   "report_markdown": "# Average order value trend\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "average_order_sales",
+     1
+    ]
+   ],
+   "restricted_products": [],
+   "final_status": "published"
+  },
+  {
+   "key": "x-repeat-customers",
+   "role": "eligible distractor and positive",
+   "question": "What share of purchasing customers placed more than one order?",
+   "method_summary": "Count purchasing customers with completed orders in the window and, within them, those with two or more distinct completed orders. Report the repeat share with both counts. Customers stay opaque references.",
+   "sql": "SELECT customers, COUNT(*) AS orders FROM orders GROUP BY customers",
+   "report_markdown": "# Repeat purchasing\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "purchasing_customers",
+     1
+    ]
+   ],
+   "restricted_products": [],
+   "final_status": "published"
+  },
+  {
+   "key": "x-men-top-products",
+   "role": "restricted men; wrong scope for women",
+   "question": "Which menswear products brought in the most revenue last quarter?",
+   "method_summary": "Join sales_items to products, restrict to the menswear products this example is limited to, rank by completed_item_sales v1 and keep unit counts beside revenue.",
+   "sql": "SELECT product, SUM(sale_amount) AS sales FROM sales_items GROUP BY product",
+   "report_markdown": "# Menswear top products\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "completed_item_sales",
+     1
+    ]
+   ],
+   "restricted_products": [
+    "15990",
+    "15991"
+   ],
+   "final_status": "published"
+  },
+  {
+   "key": "x-men-state-spend",
+   "role": "restricted men; wrong scope for women",
+   "question": "Which states spend the most on menswear per customer?",
+   "method_summary": "Group completed item sales on menswear products by customer state and divide by purchasing customers, showing the customer count behind each figure.",
+   "sql": "SELECT state, SUM(sale_amount) AS sales FROM sales_items GROUP BY state",
+   "report_markdown": "# Menswear spend by state\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "completed_item_sales",
+     1
+    ],
+    [
+     "purchasing_customers",
+     1
+    ]
+   ],
+   "restricted_products": [
+    "15990",
+    "15991"
+   ],
+   "final_status": "published"
+  },
+  {
+   "key": "x-women-category-mix",
+   "role": "restricted women; wrong scope for men",
+   "question": "How has the womenswear category mix changed over time?",
+   "method_summary": "Share of completed item sales per womenswear category by complete month, compared across months with the category counts shown.",
+   "sql": "SELECT month, category, SUM(sale_amount) AS sales FROM sales_items GROUP BY month, category",
+   "report_markdown": "# Womenswear category mix\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "completed_item_sales",
+     1
+    ]
+   ],
+   "restricted_products": [
+    "1",
+    "2"
+   ],
+   "final_status": "published"
+  },
+  {
+   "key": "x-revenue-v2-monthly",
+   "role": "incompatible metric version",
+   "question": "How did revenue change month by month when shipped items are counted too?",
+   "method_summary": "Sum item sales whose status is Complete or Shipped by order month and compare consecutive complete months. This is a different revenue definition (version 2) from the current catalog.",
+   "sql": "SELECT month, SUM(sale_amount) AS sales FROM sales_items GROUP BY month",
+   "report_markdown": "# Monthly revenue, version 2 definition\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "completed_item_sales",
+     2
+    ]
+   ],
+   "restricted_products": [],
+   "final_status": "published"
+  },
+  {
+   "key": "x-schema2-top-products",
+   "role": "incompatible schema",
+   "question": "Which products earned the most last quarter in the new schema?",
+   "method_summary": "Rank products by completed item sales using the version 2 logical schema relations, with unit counts beside the revenue ranking.",
+   "sql": "SELECT product, SUM(sale_amount) AS sales FROM sales_items GROUP BY product",
+   "report_markdown": "# Top products, schema 2\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/2",
+   "metrics": [
+    [
+     "completed_item_sales",
+     1
+    ]
+   ],
+   "restricted_products": [],
+   "final_status": "published"
+  },
+  {
+   "key": "x-retired-quarterly-revenue",
+   "role": "retired",
+   "question": "How did this quarter's revenue compare with the previous quarter?",
+   "method_summary": "Sum completed item sales per calendar quarter and compare the latest complete quarter with the one before it. Retired after review.",
+   "sql": "SELECT quarter, SUM(sale_amount) AS sales FROM sales_items GROUP BY quarter",
+   "report_markdown": "# Quarterly revenue comparison\n\n> Synthetic retrieval-evaluation example. Illustrative method only; no figures and no real data.\n",
+   "schema_version": "logical-catalog/1",
+   "metrics": [
+    [
+     "completed_item_sales",
+     1
+    ]
+   ],
+   "restricted_products": [],
+   "final_status": "retired"
+  }
+ ]
+}
