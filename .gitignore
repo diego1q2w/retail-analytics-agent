@@ -11,3 +11,7 @@ credentials*.json
 service-account*.json
 data/local/
 traces/local/
+.mypy_cache/
+*.egg-info/
+build/
+dist/

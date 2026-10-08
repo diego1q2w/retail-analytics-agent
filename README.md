@@ -4,8 +4,100 @@ A conversational analytics assistant for retail executives. It investigates busi
 
 ## Project status
 
-Implementation has not started. The intended application uses a CLI connected to an HTTP backend, Pydantic AI for the agent, Temporal for durable execution, and PostgreSQL for application state. BigQuery provides read-only retail analysis; model and database credentials stay on the backend.
+Early implementation. The application skeleton, configuration validation and repository checks exist; analytical behavior does not yet. The intended application uses a CLI connected to an HTTP backend, Pydantic AI for the agent, Temporal for durable execution, and PostgreSQL for application state. BigQuery provides read-only retail analysis; model and database credentials stay on the backend.
 
-Runnable setup instructions, public architecture documentation and evaluation results will be added as their implementations are verified.
+Setup for live services, public architecture documentation and evaluation results will be added as their implementations are verified.
 
 Do not commit credentials, raw query results or private conversation data.
+
+## Development
+
+Requires Python 3.12 (`requires-python = ">=3.12,<3.13"`, also in `.python-version`). [uv](https://docs.astral.sh/uv/) is recommended for creating the environment and regenerating the lock file; plain `pip` installs work too. Run commands from the repository root.
+
+```sh
+uv venv --python 3.12              # or: python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt   # package (editable) + pinned deps + dev tools
+./scripts/check.sh                 # every check; must pass before each commit
+```
+
+### Checks
+
+`./scripts/check.sh` runs, in order:
+
+| Check | Command |
+| --- | --- |
+| Lint | `ruff check .` |
+| Formatting | `ruff format --check .` (fix with `ruff format .`) |
+| Types (strict) | `mypy` |
+| Tests, including architecture | `python -m pytest` |
+
+Architecture checks alone: `python -m pytest tests/architecture`. Tests run offline in fixture mode, and `tests/conftest.py` hides any local `RETAIL_ANALYTICS_*`/`ANALYTICS_CLI_*` variables and `.env` from them. Tests that need real BigQuery or model credentials use the `live` marker and skip when credentials are absent; a skipped test is never reported as passing.
+
+### Entry points
+
+| Command | Module | Purpose |
+| --- | --- | --- |
+| `analytics` | `retail_analytics.bootstrap.cli` | CLI client; talks to the backend over HTTP only (`analytics status`) |
+| `retail-analytics-api` | `retail_analytics.bootstrap.api` | HTTP backend (`GET /healthz`) |
+| `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal worker (no workflows registered yet) |
+
+Backend entry points accept `--check-config`: validate settings, print them with secrets shown only as `<set>`/`<unset>`, and exit. Invalid configuration exits with status 2.
+
+### Configuration
+
+Copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; empty values count as unset. Backend settings use the `RETAIL_ANALYTICS_` prefix and the CLI uses `ANALYTICS_CLI_`. Unknown prefixed variables are rejected by name to catch typos.
+
+- `RETAIL_ANALYTICS_MODE=fixture` (default) runs offline with no credentials.
+- `RETAIL_ANALYTICS_MODE=live` requires the database URL, Temporal address, BigQuery project and Gemini API key; all missing settings are reported together.
+
+Errors name the variable and the problem, never the value. All settings are declared in `src/retail_analytics/bootstrap/config.py`; add new ones there and to `.env.example` (a test keeps them in sync). Only bootstrap reads configuration; inner layers receive typed values.
+
+### Package layout and dependency rules
+
+```text
+src/retail_analytics/
+  domain/        business records, value objects, pure policies (standard library only)
+  application/   use cases, permission/budget gates, the narrow ports they own
+  capabilities/  typed analytical/report/knowledge capability handlers
+  adapters/      PostgreSQL, BigQuery, SQLGlot, models, Pydantic AI/Temporal, artifacts, telemetry
+  interfaces/    HTTP/SSE (FastAPI) and CLI (Click) translation
+  bootstrap/     configuration and composition roots for API, worker and CLI
+```
+
+Dependencies point inward:
+
+| Layer | May import project layers | May import third-party packages |
+| --- | --- | --- |
+| domain | domain | none |
+| application | domain, application | pydantic |
+| capabilities | domain, application, capabilities | pydantic |
+| adapters | domain, application, capabilities, adapters | any |
+| interfaces | domain, application, capabilities, interfaces | pydantic, FastAPI/Starlette, Click, httpx |
+| bootstrap | all | any |
+
+Domain, application and capabilities also may not use `importlib`, `subprocess` or `socket`. The rules live in one place, `tests/architecture/boundaries.py`, and are enforced two ways:
+
+- a static check parses every module, including imports inside functions and `TYPE_CHECKING` blocks;
+- an import-time check imports each inner layer in a fresh interpreter and fails if a forbidden SDK is loaded (even transitively) or if importing opens files, reads environment variables, opens sockets or starts processes.
+
+A deliberately invalid package in `tests/architecture/fixtures/` proves both checks fail on reverse dependencies and forbidden SDK imports. A justified exception goes in `EXCEPTIONS` in `boundaries.py` with its reason; do not weaken the rules to make a dependency pass.
+
+### Dependencies
+
+Direct dependencies are pinned exactly in `pyproject.toml`, one per line, sorted by name (`dependencies` for runtime, the `dev` extra for tooling). `requirements.txt` is the fully pinned, cross-platform lock generated from them:
+
+```sh
+./scripts/lock.sh    # uv pip compile requirements.in --universal --python-version 3.12 --no-annotate
+```
+
+Rerun it after changing any pin and commit both files. On a merge conflict in `requirements.txt`, resolve `pyproject.toml` first and regenerate rather than hand-merging.
+
+### Technology choices
+
+- **FastAPI and Uvicorn** for the HTTP/SSE backend: Pydantic-native request and response models, consistent with the Pydantic AI stack, and streaming responses for server-sent events.
+- **Click** for the CLI: small, typed and widely maintained (Uvicorn already depends on it), with a built-in runner for command tests.
+- **httpx** for the CLI's HTTP client: synchronous and asynchronous APIs and an in-process mock transport for tests.
+- **Alembic with SQLAlchemy and psycopg 3** for PostgreSQL migrations: versioned, reviewable migrations with upgrade/downgrade and offline SQL generation. Domain records stay independent of SQLAlchemy.
+- **python-dotenv with Pydantic models** for configuration: an explicit loader whose validation errors never include secret values.
+- **Pydantic AI, the Temporal Python SDK, SQLGlot and google-cloud-bigquery** for the agent, durable execution, SQL compilation and BigQuery access.
+- **Ruff, mypy (strict) and pytest** for checks.
