@@ -29,7 +29,6 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Protocol
 
 from retail_analytics.application.artifacts import (
     ArtifactError,
@@ -39,8 +38,15 @@ from retail_analytics.application.artifacts import (
 from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
-    Principal,
 )
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.knowledge import (
+    ChangeResult,
+    NewCandidate,
+    ReviewEvent,
+    StatusChange,
+)
+from retail_analytics.application.ports.knowledge import KnowledgeRepository
 from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.artifacts import MARKDOWN
 from retail_analytics.domain.knowledge import (
@@ -53,7 +59,6 @@ from retail_analytics.domain.knowledge import (
     ExampleContent,
     ExampleRef,
     GoldenVersion,
-    IndexChangeKind,
     KnowledgeAccess,
     Origin,
     Provenance,
@@ -127,134 +132,6 @@ class ApprovalChecks:
     @property
     def complete(self) -> bool:
         return self.correct and self.sanitized and self.applicable
-
-
-@dataclass(frozen=True, slots=True)
-class ReviewEvent:
-    example_id: str
-    version: int
-    action: ReviewAction
-    actor_id: str
-    from_status: ReviewStatus | None
-    to_status: ReviewStatus
-    rationale: str
-    checks: Mapping[str, bool] | None
-    at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class IndexChange:
-    """One ordered invalidation fact for retrieval indexes. Holds no content."""
-
-    sequence: int
-    example_id: str
-    version: int
-    kind: IndexChangeKind
-    reason: ReviewAction
-    at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class IndexDocument:
-    """What a retrieval index builds from: question plus reviewed method.
-
-    ``access`` and ``applicability`` must be kept with the entry; embeddings do
-    not remove restrictions.
-    """
-
-    ref: ExampleRef
-    content_digest: str
-    question: str
-    method_summary: str
-    access: KnowledgeAccess
-    applicability: Applicability
-
-
-@dataclass(frozen=True, slots=True)
-class NewCandidate:
-    example_id: str
-    author_id: str
-    idempotency_key: str
-    origin: Origin
-    access: KnowledgeAccess
-    applicability: Applicability
-    provenance: Provenance
-    content: ExampleContent
-    content_digest: str
-    at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class StatusChange:
-    """One atomic change; the repository checks ``expected`` under a lock."""
-
-    ref: ExampleRef
-    expected: ReviewStatus
-    action: ReviewAction
-    to_status: ReviewStatus
-    index: IndexChangeKind | None
-    actor_id: str
-    rationale: str
-    checks: Mapping[str, bool] | None
-    at: datetime
-    # Retire the example's other published/suspended versions in the same
-    # transaction (publishing a newer version).
-    supersede_others: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class ChangeResult:
-    version: GoldenVersion
-    superseded: tuple[ExampleRef, ...] = ()
-
-
-class KnowledgeRepository(Protocol):
-    async def add_candidate(self, candidate: NewCandidate) -> GoldenVersion:
-        """Append the example's next version (serialized per example).
-
-        A repeated (author, idempotency key) returns the original version. A
-        different author for an existing example raises ``AccessDenied``.
-        """
-        ...
-
-    async def get(self, ref: ExampleRef) -> GoldenVersion | None: ...
-
-    async def apply(self, change: StatusChange) -> ChangeResult:
-        """Apply ``change`` with its audit event and index events, atomically.
-
-        Raises ``KnowledgeError`` (``NOT_FOUND``, ``CONFLICT``) when the
-        version is missing, no longer in the expected status, or publishing
-        would leave two published versions.
-        """
-        ...
-
-    async def by_source(
-        self, source_kind: SourceKind, source_id: str
-    ) -> Sequence[GoldenVersion]: ...
-
-    async def by_status(
-        self, status: ReviewStatus, limit: int
-    ) -> Sequence[GoldenVersion]: ...
-
-    async def events(self, ref: ExampleRef) -> Sequence[ReviewEvent]: ...
-
-    async def pending_purges(self, limit: int) -> Sequence[tuple[ExampleRef, str]]:
-        """Erased versions whose report artifact is not yet purged."""
-        ...
-
-    async def purge_done(self, ref: ExampleRef) -> None: ...
-
-
-class KnowledgeIndexSource(Protocol):
-    """Trusted read side for retrieval indexes (T24) and their invalidation."""
-
-    async def published_documents(
-        self, after: ExampleRef | None, limit: int
-    ) -> Sequence[IndexDocument]: ...
-
-    async def changes_after(
-        self, sequence: int, limit: int
-    ) -> Sequence[IndexChange]: ...
 
 
 @dataclass(frozen=True, slots=True)

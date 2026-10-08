@@ -53,16 +53,18 @@ from retail_analytics.adapters.sql_compiler.errors import (
     unsupported,
 )
 from retail_analytics.adapters.sql_compiler.grammar import check_grammar, is_reserved
-from retail_analytics.application.query_compiler import (
-    DEFAULT_MAXIMUM_BYTES_BILLED,
+from retail_analytics.application.contracts.query_compiler import (
     AnalysisQuery,
     CompiledQuery,
     FieldRef,
     OutputColumn,
     ParameterType,
     QueryParameter,
-    QueryRejected,
     ScalarValue,
+)
+from retail_analytics.application.query_compiler import (
+    DEFAULT_MAXIMUM_BYTES_BILLED,
+    QueryRejected,
 )
 from retail_analytics.domain.access import ProductScope, is_valid_product_id
 from retail_analytics.domain.catalog import CatalogView, FieldType

@@ -8,8 +8,8 @@ from datetime import datetime
 from retail_analytics.application.budgets import (
     RetrySettings,
     RunBudgets,
-    RunBudgetStore,
 )
+from retail_analytics.application.ports.budgets import RunBudgetStore
 from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.domain.budgets import RunLimits
 

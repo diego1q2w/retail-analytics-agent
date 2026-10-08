@@ -27,26 +27,33 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Any, Final, Literal, Protocol
+from typing import (
+    Annotated,
+    Any,
+    Final,
+    Literal,
+)
 
 from pydantic import Field, model_validator
 
 from retail_analytics.application.contracts import ContractModel, Identifier
+from retail_analytics.application.contracts.evaluation import (
+    Scalar,
+    ScopeSpec,
+    Turn,
+)
 from retail_analytics.application.evaluation.manifest import (
     ExactExpectation,
     Expectation,
     JudgeSpec,
     Manifest,
     NumericExpectation,
-    Scalar,
     Scenario,
-    ScopeSpec,
     TextExpectation,
-    Turn,
 )
+from retail_analytics.application.ports.evaluation import SqlEngine
 
 SPEC_SCHEMA_VERSION: Final = 1
 MANIFEST_ID: Final = "realdata-reference-conversations"
@@ -323,20 +330,6 @@ def compute_extract_digest(manifest: ExtractManifest) -> str:
 
 
 # ---------------------------------------------------------- execution
-
-
-@dataclass(frozen=True)
-class EngineResult:
-    row: Mapping[str, Any]
-    bytes_processed: int = 0
-    bytes_billed: int = 0
-    job_id: str = ""
-
-
-class SqlEngine(Protocol):
-    """Runs one read-only statement that returns exactly one row."""
-
-    def run_one(self, sql: str) -> EngineResult: ...
 
 
 class RouteDisagreement(Exception):

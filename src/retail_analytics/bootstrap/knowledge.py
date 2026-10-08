@@ -10,11 +10,13 @@ from retail_analytics.adapters.postgres.knowledge import PostgresKnowledgeReposi
 from retail_analytics.application.authorization import AccessResolver
 from retail_analytics.application.knowledge import (
     GoldenKnowledgeReader,
-    KnowledgeIndexSource,
-    KnowledgeRepository,
     KnowledgeService,
 )
-from retail_analytics.application.retrieval import EmbeddingStore
+from retail_analytics.application.ports.knowledge import (
+    KnowledgeIndexSource,
+    KnowledgeRepository,
+)
+from retail_analytics.application.ports.retrieval import EmbeddingStore
 from retail_analytics.bootstrap.artifacts import ArtifactServices
 from retail_analytics.bootstrap.persistence import Persistence
 

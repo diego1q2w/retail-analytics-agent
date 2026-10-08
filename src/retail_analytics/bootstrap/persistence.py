@@ -25,19 +25,19 @@ from retail_analytics.adapters.postgres.tool_executions import (
     PostgresQueryJobRepository,
     PostgresToolExecutionRepository,
 )
-from retail_analytics.application.authorization import (
+from retail_analytics.application.ports.authorization import (
     AccessAdministration,
     ExecutiveDirectory,
 )
-from retail_analytics.application.budgets import RunBudgetStore
-from retail_analytics.application.persistence import (
+from retail_analytics.application.ports.budgets import RunBudgetStore
+from retail_analytics.application.ports.persistence import (
     QueryJobRepository,
     RunEventStore,
     RunRepository,
     SessionRepository,
     ToolExecutionRepository,
 )
-from retail_analytics.application.preferences import PreferenceStore
+from retail_analytics.application.ports.preferences import PreferenceStore
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 
 

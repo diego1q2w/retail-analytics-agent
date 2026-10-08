@@ -25,15 +25,15 @@ from typing import Annotated
 from pydantic import Field, StringConstraints
 
 from retail_analytics.application.budgets import RunBudgets, budget_message
+from retail_analytics.application.contracts.query_compiler import AnalysisQuery
 from retail_analytics.application.evidence import (
     EvidenceRejected,
     EvidenceService,
     QueryBasis,
 )
-from retail_analytics.application.investigations import RunPrincipals
-from retail_analytics.application.persistence import ToolExecutionRepository
+from retail_analytics.application.ports.investigations import RunPrincipals
+from retail_analytics.application.ports.persistence import ToolExecutionRepository
 from retail_analytics.application.preferences import PreferenceService
-from retail_analytics.application.query_compiler import AnalysisQuery
 from retail_analytics.application.query_execution import (
     QUERY_CAPABILITY,
     QUERY_CAPABILITY_VERSION,

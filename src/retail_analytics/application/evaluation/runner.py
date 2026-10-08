@@ -7,19 +7,17 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
+from retail_analytics.application.contracts.evaluation import (
+    Mode,
+    ScenarioInput,
+    TargetObservation,
+    TargetUnavailable,
+)
 from retail_analytics.application.evaluation.checks import evaluate_expectation
 from retail_analytics.application.evaluation.manifest import (
     JudgeSpec,
     Manifest,
-    Mode,
     Scenario,
-)
-from retail_analytics.application.evaluation.ports import (
-    EvaluationTarget,
-    JudgeScorer,
-    ScenarioInput,
-    TargetObservation,
-    TargetUnavailable,
 )
 from retail_analytics.application.evaluation.results import (
     UNSPECIFIED_VERSION,
@@ -41,6 +39,10 @@ from retail_analytics.application.evaluation.results import (
     deterministic_view,
     ratio,
     sha256_hex,
+)
+from retail_analytics.application.ports.evaluation import (
+    EvaluationTarget,
+    JudgeScorer,
 )
 
 

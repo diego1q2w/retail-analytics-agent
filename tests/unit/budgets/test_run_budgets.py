@@ -8,19 +8,19 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from retail_analytics.application.budgets import (
-    ProviderBudget,
-    ProviderUsage,
     RetrySettings,
     RunBudgets,
 )
 from retail_analytics.application.contracts import Correlation
-from retail_analytics.application.query_execution import (
+from retail_analytics.application.contracts.budgets import ProviderUsage
+from retail_analytics.application.contracts.tools import ExecutionContext
+from retail_analytics.application.contracts.warehouse_jobs import JobStatistics
+from retail_analytics.application.ports.budgets import ProviderBudget
+from retail_analytics.application.ports.query_execution import (
     QueryAdmission,
-    QueryNotAdmitted,
     QueryUsageRecorder,
 )
-from retail_analytics.application.tools.context import ExecutionContext
-from retail_analytics.application.warehouse_jobs import JobStatistics
+from retail_analytics.application.query_execution import QueryNotAdmitted
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.budgets import (
     GIB,

@@ -35,9 +35,11 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import ClassVar
 
-from retail_analytics.application.authorization import AccessResolver, Principal
-from retail_analytics.application.context import MessageHistory, user_supplied_terms
+from retail_analytics.application.authorization import AccessResolver
+from retail_analytics.application.context import user_supplied_terms
+from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.application.ports.context import MessageHistory
 from retail_analytics.domain.context import EvidenceStanding
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.disclosure import (

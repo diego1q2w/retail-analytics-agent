@@ -15,7 +15,10 @@ from retail_analytics.adapters.sql_compiler import (
     ReferenceKeyring,
     ScopedSqlglotCompilers,
 )
-from retail_analytics.application.query_compiler import ParameterType, QueryParameter
+from retail_analytics.application.contracts.query_compiler import (
+    ParameterType,
+    QueryParameter,
+)
 from retail_analytics.bootstrap.config import ConfigError, load_backend_settings
 from retail_analytics.bootstrap.query import build_query_compilers
 from retail_analytics.domain.privacy import (

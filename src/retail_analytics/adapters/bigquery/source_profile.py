@@ -32,10 +32,16 @@ from retail_analytics.adapters.sql_compiler import (
     ScopedSqlglotCompilers,
 )
 from retail_analytics.application.access_check import PUBLIC_DATASET
-from retail_analytics.application.query_compiler import AnalysisQuery, CompiledQuery
+from retail_analytics.application.contracts.query_compiler import (
+    AnalysisQuery,
+    CompiledQuery,
+)
+from retail_analytics.application.contracts.warehouse_jobs import (
+    JobRef,
+    JobSubmission,
+)
 from retail_analytics.application.query_execution import query_fingerprint
 from retail_analytics.application.result_privacy import ResultPrivacyBoundary
-from retail_analytics.application.warehouse_jobs import JobRef, JobSubmission
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.catalog import build_view, evaluate_health
 from retail_analytics.domain.logical_catalog import default_logical_catalog

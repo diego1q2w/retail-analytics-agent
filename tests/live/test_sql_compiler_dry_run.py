@@ -17,7 +17,7 @@ import pytest
 from google.cloud import bigquery
 
 from retail_analytics.adapters.google_access import create_bigquery_client
-from retail_analytics.application.query_compiler import (
+from retail_analytics.application.contracts.query_compiler import (
     CompiledQuery,
     QueryParameter,
     ScalarValue,

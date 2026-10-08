@@ -7,9 +7,10 @@ from dataclasses import dataclass
 
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.topic_resets import PostgresTopicResets
-from retail_analytics.application.context import ContextBuilder, TopicResets
+from retail_analytics.application.context import ContextBuilder
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.output_privacy import OutputPrivacyGate
+from retail_analytics.application.ports.context import TopicResets
 from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.bootstrap.access import AccessServices
 from retail_analytics.bootstrap.persistence import Persistence

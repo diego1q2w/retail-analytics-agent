@@ -13,32 +13,23 @@ from typing import Annotated, Final, Literal
 from pydantic import Field, model_validator
 
 from retail_analytics.application.contracts import ContractModel, Identifier
+from retail_analytics.application.contracts.evaluation import (
+    Mode,
+    Scalar,
+    ScopeSpec,
+    Turn,
+)
 
 MANIFEST_SCHEMA_VERSION: Final = 1
 
 Level = Literal[1, 2, 3]
-Mode = Literal["fixture", "live"]
 Importance = Literal["gate", "threshold", "informational"]
 ImplementationStatus = Literal["implemented", "planned", "deferred"]
 VerificationMethod = Literal["deterministic", "judge", "operational"]
-Scalar = bool | int | float | str | None
 
 # Capabilities a scenario may need from the environment. A missing one blocks
 # the scenario; it is never silently treated as a pass.
 Requirement = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
-
-
-class ScopeSpec(ContractModel):
-    """Who is asking and what they may see (synthetic references only)."""
-
-    executive_ref: Identifier
-    product_scope: tuple[Identifier, ...] = ()
-
-
-class Turn(ContractModel):
-    """One user message. Agent turns are produced by the target, not authored."""
-
-    text: Annotated[str, Field(min_length=1, max_length=8000)]
 
 
 class NumericExpectation(ContractModel):

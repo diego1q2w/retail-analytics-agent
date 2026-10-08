@@ -13,7 +13,8 @@ import pytest
 from duckdb import DuckDBPyConnection as Connection
 
 from retail_analytics.application.budgets import RunBudgets
-from retail_analytics.application.query_compiler import AnalysisQuery
+from retail_analytics.application.contracts.query_compiler import AnalysisQuery
+from retail_analytics.application.contracts.result_privacy import QueryRows
 from retail_analytics.application.query_execution import (
     QUERY_DEADLINE,
     RETRIES_EXHAUSTED,
@@ -25,7 +26,6 @@ from retail_analytics.application.query_execution import (
 )
 from retail_analytics.application.recovery import RecoveryAction, classify
 from retail_analytics.application.result_privacy import (
-    QueryRows,
     ResultLimits,
     ResultPrivacyBoundary,
     TruncationReason,

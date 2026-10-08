@@ -32,7 +32,14 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from retail_analytics.application.query_compiler import CompiledQuery, FieldRef
+from retail_analytics.application.contracts.query_compiler import (
+    CompiledQuery,
+    FieldRef,
+)
+from retail_analytics.application.contracts.result_privacy import (
+    Cell,
+    QueryRows,
+)
 from retail_analytics.domain.catalog import (
     DIRECT_IDENTIFIER_COLUMNS,
     EXACT_AGE_COLUMNS,
@@ -51,7 +58,6 @@ MASK = "[withheld]"
 DEFAULT_MAX_ROWS = 500
 DEFAULT_MAX_BYTES = 256 * 1024
 
-type Cell = str | int | float | bool | Decimal | date | datetime | None
 
 _MASKED_FINDINGS = frozenset({Finding.EMAIL, Finding.PHONE, Finding.ADDRESS})
 _SCALARS = (str, int, float, bool, Decimal, date, datetime)
@@ -80,22 +86,6 @@ class ResultLimits:
     def __post_init__(self) -> None:
         if self.max_rows < 1 or self.max_bytes < 1024:
             raise ValueError("result limits are too small")
-
-
-@dataclass(frozen=True, slots=True)
-class QueryRows:
-    """What an executor read back, before any privacy check.
-
-    ``complete`` is False when the executor stopped reading early (for example
-    at its own page limit); the release is then marked truncated.
-    """
-
-    columns: tuple[str, ...]
-    rows: Sequence[Sequence[object]]
-    complete: bool = True
-
-    def __repr__(self) -> str:
-        return f"QueryRows(columns={self.columns}, rows=<{len(self.rows)} rows>)"
 
 
 @dataclass(frozen=True, slots=True)

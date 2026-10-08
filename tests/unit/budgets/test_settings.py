@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from retail_analytics.application.query_compiler import AnalysisQuery
+from retail_analytics.application.contracts.query_compiler import AnalysisQuery
 from retail_analytics.bootstrap.budgets import build_run_budgets, run_limits
 from retail_analytics.bootstrap.config import ConfigError, load_backend_settings
 from retail_analytics.bootstrap.query import (

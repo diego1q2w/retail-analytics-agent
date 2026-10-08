@@ -24,8 +24,8 @@ import jwt
 from retail_analytics.application.authentication import (
     AuthenticationFailed,
     AuthFailure,
-    VerifiedToken,
 )
+from retail_analytics.application.contracts.authentication import VerifiedToken
 
 ALGORITHM: Final = "HS256"
 MIN_KEY_BYTES: Final = 32

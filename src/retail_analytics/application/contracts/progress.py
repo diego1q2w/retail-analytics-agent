@@ -1,22 +1,18 @@
-"""User-visible progress events: one schema for persistence, SSE and the CLI.
-
-Events describe observable actions and brief grounded summaries, never private
-model reasoning; the strict schema has no field that could carry it. Tool
-activity uses generic ``tool.*`` kinds with the capability name, so the CLI can
-render e.g. "query started" without the loop knowing each capability.
-
-Producers publish a ``ProgressUpdate``; the run-event store stamps it into a
-``ProgressEvent`` with its event ID, per-run sequence and time, which is what
-replay (Last-Event-ID) and SSE deliver.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Protocol, Self
+from typing import (
+    Annotated,
+    Self,
+)
 
-from pydantic import AwareDatetime, Field, StringConstraints, model_validator
+from pydantic import (
+    AwareDatetime,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from retail_analytics.application.contracts import (
     CapabilityName,
@@ -125,9 +121,3 @@ class ProgressEvent(ProgressUpdate):
                 "occurred_at": occurred_at,
             }
         )
-
-
-class ProgressSink(Protocol):
-    """Port to the run-event store/stream; implemented by adapters."""
-
-    async def publish(self, update: ProgressUpdate) -> None: ...

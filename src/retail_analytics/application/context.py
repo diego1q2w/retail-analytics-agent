@@ -26,17 +26,21 @@ Request admission (off-topic decline) lives in ``domain.request_scope``.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
 
 from retail_analytics.application.authorization import (
     AccessResolver,
     OwnershipGuard,
-    Principal,
 )
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.context import TopicReset
 from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.application.ports.context import (
+    MessageHistory,
+    TopicResets,
+)
 from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.domain.context import (
     CHARS_PER_TOKEN,
@@ -45,7 +49,7 @@ from retail_analytics.domain.context import (
     HistoryTreatment,
     standings_by_id,
 )
-from retail_analytics.domain.conversation import Message, MessageRole
+from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.disclosure import (
     MASK,
     Detection,
@@ -70,31 +74,6 @@ _SUPERSEDED_NOTE = (
     "[Earlier answer superseded: its findings used a definition or setting "
     "that has since changed and need recalculation.]"
 )
-
-
-@dataclass(frozen=True, slots=True)
-class TopicReset:
-    session_id: str
-    reset_id: str
-    reset_at: datetime
-
-
-class TopicResets(Protocol):
-    """Durable topic boundaries of sessions."""
-
-    async def record_reset(self, session_id: str, reset_id: str) -> TopicReset:
-        """Record once; repeating the same ``reset_id`` returns the original."""
-        ...
-
-    async def latest_reset(self, session_id: str) -> TopicReset | None: ...
-
-
-class MessageHistory(Protocol):
-    """Satisfied by ``SessionRepository``."""
-
-    async def recent_messages(self, session_id: str, limit: int) -> Sequence[Message]:
-        """The latest ``limit`` messages, oldest first."""
-        ...
 
 
 @dataclass(frozen=True, slots=True)

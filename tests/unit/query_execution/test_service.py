@@ -15,12 +15,24 @@ from datetime import datetime, timedelta
 import pytest
 from duckdb import DuckDBPyConnection as Connection
 
-from retail_analytics.application.authorization import Principal
-from retail_analytics.application.persistence import OperationRequest
-from retail_analytics.application.query_compiler import AnalysisQuery, CompiledQuery
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.persistence import OperationRequest
+from retail_analytics.application.contracts.query_compiler import (
+    AnalysisQuery,
+    CompiledQuery,
+)
+from retail_analytics.application.contracts.tools import ExecutionContext
+from retail_analytics.application.contracts.warehouse_jobs import (
+    JobRef,
+    JobSnapshot,
+    JobSubmission,
+)
+from retail_analytics.application.ports.query_execution import (
+    QueryAdmission,
+    QueryUsageRecorder,
+)
 from retail_analytics.application.query_execution import (
     QUERY_CAPABILITY,
-    QueryAdmission,
     QueryAttempt,
     QueryCancelled,
     QueryExecutionService,
@@ -31,19 +43,12 @@ from retail_analytics.application.query_execution import (
     QueryOutcomeUnknown,
     QueryPending,
     QuerySucceeded,
-    QueryUsageRecorder,
     query_fingerprint,
 )
 from retail_analytics.application.result_privacy import (
     ResultLimits,
     ResultPrivacyBoundary,
     TruncationReason,
-)
-from retail_analytics.application.tools.context import ExecutionContext
-from retail_analytics.application.warehouse_jobs import (
-    JobRef,
-    JobSnapshot,
-    JobSubmission,
 )
 from retail_analytics.domain.executions import ToolExecutionStatus, query_job_id
 from retail_analytics.domain.operations import SideEffect, ToolErrorCode

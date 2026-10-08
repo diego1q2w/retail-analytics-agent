@@ -33,8 +33,9 @@ from pydantic_ai.tools import RunContext
 from pydantic_core import to_json
 from temporalio import activity
 
-from retail_analytics.application.budgets import ProviderBudget, ProviderUsage
+from retail_analytics.application.contracts.budgets import ProviderUsage
 from retail_analytics.application.investigation_runtime import RunStopped, StopReason
+from retail_analytics.application.ports.budgets import ProviderBudget
 from retail_analytics.domain.budgets import BudgetExhausted
 
 CHARS_PER_TOKEN = 4

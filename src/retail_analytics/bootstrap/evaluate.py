@@ -24,13 +24,13 @@ from retail_analytics.adapters.evaluation.files import (
     write_result,
 )
 from retail_analytics.application.evaluation.compare import compare_runs
-from retail_analytics.application.evaluation.ports import EvaluationTarget
 from retail_analytics.application.evaluation.results import VERSION_KEYS
 from retail_analytics.application.evaluation.runner import RunConfig, run_manifest
 from retail_analytics.application.evaluation.summary import (
     render_comparison,
     render_summary,
 )
+from retail_analytics.application.ports.evaluation import EvaluationTarget
 from retail_analytics.bootstrap.config import ConfigError, load_backend_settings
 
 EXIT_FAILED = 1

@@ -35,9 +35,9 @@ from retail_analytics.adapters.evaluation.retrieval_files import (
 )
 from retail_analytics.application.authorization import (
     AccessResolver,
-    ExecutiveRegistration,
     OwnershipGuard,
 )
+from retail_analytics.application.contracts.authorization import ExecutiveRegistration
 from retail_analytics.application.evaluation.manifest import Manifest
 from retail_analytics.application.evaluation.retrieval_labels import (
     EvalCorpus,
@@ -64,11 +64,11 @@ from retail_analytics.application.golden_seed_library import (
     seed_library,
 )
 from retail_analytics.application.golden_seeding import seed_principals
+from retail_analytics.application.ports.retrieval import TextEmbedder
 from retail_analytics.application.retrieval import (
     GoldenIndex,
     GoldenRetriever,
     RetrievalUnavailable,
-    TextEmbedder,
 )
 from retail_analytics.bootstrap.artifacts import build_artifacts
 from retail_analytics.bootstrap.config import (

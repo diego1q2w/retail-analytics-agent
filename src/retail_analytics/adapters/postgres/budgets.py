@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.schema import budget_charges, run_budgets
-from retail_analytics.application.persistence import RecordNotFound
+from retail_analytics.application.contracts.persistence import RecordNotFound
 from retail_analytics.domain.budgets import (
     Charge,
     ChargeKind,

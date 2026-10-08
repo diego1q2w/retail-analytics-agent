@@ -20,7 +20,10 @@ from typing import Protocol
 import sqlglot
 from sqlglot import exp
 
-from retail_analytics.application.query_compiler import ParameterType, QueryParameter
+from retail_analytics.application.contracts.query_compiler import (
+    ParameterType,
+    QueryParameter,
+)
 from retail_analytics.domain.catalog import (
     DIRECT_IDENTIFIER_COLUMNS,
     EXACT_AGE_COLUMNS,

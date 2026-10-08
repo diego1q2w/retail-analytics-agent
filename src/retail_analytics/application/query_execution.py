@@ -49,47 +49,52 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Protocol
 
 from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
-    Principal,
+)
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.persistence import OperationRequest
+from retail_analytics.application.contracts.query_compiler import (
+    AnalysisQuery,
+    CompiledQuery,
+)
+from retail_analytics.application.contracts.query_execution import QueryAuthority
+from retail_analytics.application.contracts.warehouse_jobs import (
+    JobRef,
+    JobSnapshot,
+    JobState,
+    JobStatistics,
+    JobSubmission,
 )
 from retail_analytics.application.discovery import CatalogUnavailable, DiscoveryService
-from retail_analytics.application.persistence import (
-    OperationRequest,
+from retail_analytics.application.ports.persistence import (
     QueryJobRepository,
     ToolExecutionRepository,
 )
-from retail_analytics.application.query_compiler import (
-    AnalysisQuery,
-    CompiledQuery,
-    QueryRejected,
-    ScopedQueryCompilers,
+from retail_analytics.application.ports.query_compiler import ScopedQueryCompilers
+from retail_analytics.application.ports.query_execution import (
+    AuthorityProvider,
+    QueryAdmission,
+    QueryUsageRecorder,
 )
+from retail_analytics.application.ports.warehouse_jobs import WarehouseQueryJobs
+from retail_analytics.application.query_compiler import QueryRejected
 from retail_analytics.application.result_privacy import (
     DEFAULT_MAX_ROWS,
     ReleasedResult,
     ResultPrivacyBoundary,
     ResultWithheld,
 )
-from retail_analytics.application.tools.context import ExecutionContext
 from retail_analytics.application.warehouse_jobs import (
     JobAlreadyExists,
-    JobRef,
-    JobSnapshot,
-    JobState,
-    JobStatistics,
-    JobSubmission,
     SubmissionRejected,
     WarehouseError,
-    WarehouseQueryJobs,
     WarehouseUnavailable,
     classify_reason,
 )
 from retail_analytics.domain.access import Permission
-from retail_analytics.domain.catalog import CatalogView
 from retail_analytics.domain.errors import InvalidTransition
 from retail_analytics.domain.executions import (
     QueryJob,
@@ -107,22 +112,6 @@ _S = ToolExecutionStatus
 
 # ---------------------------------------------------------------------------
 # Authority and admission ports
-
-
-@dataclass(frozen=True, slots=True)
-class QueryAuthority:
-    """Authority resolved for one attempt: never cached across attempts."""
-
-    context: ExecutionContext
-    catalog: CatalogView
-
-
-class AuthorityProvider(Protocol):
-    async def resolve(
-        self, principal: Principal, run_id: str, *, trace_id: str | None = None
-    ) -> QueryAuthority:
-        """Raises ``AccessDenied`` or ``CatalogUnavailable``."""
-        ...
 
 
 class FreshQueryAuthority:
@@ -152,37 +141,6 @@ class QueryNotAdmitted(Exception):
         self.code = code
         self.reason = reason
         self.message = message
-
-
-class QueryAdmission(Protocol):
-    """Decides, before a job reference is recorded, whether it may be submitted.
-
-    Called once per new submission (operation ID, submission number) with the
-    dry-run estimate; a retried attempt may call it again for the same pair,
-    so implementations must be idempotent on it. Raises ``QueryNotAdmitted``.
-    """
-
-    async def admit(
-        self,
-        context: ExecutionContext,
-        operation_id: str,
-        submission: int,
-        compiled: CompiledQuery,
-        estimated_bytes: int,
-    ) -> None: ...
-
-
-class QueryUsageRecorder(Protocol):
-    """Settles the actual usage of a finished job (idempotent, any number of
-    calls per (operation, submission))."""
-
-    async def settle(
-        self,
-        run_id: str,
-        operation_id: str,
-        submission: int,
-        statistics: JobStatistics,
-    ) -> None: ...
 
 
 # ---------------------------------------------------------------------------

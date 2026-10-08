@@ -18,139 +18,29 @@ and never reset anything. Budgets reach handlers only as the read-only
 from __future__ import annotations
 
 import random
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Protocol
 
-from retail_analytics.application.persistence import RecordNotFound
-from retail_analytics.application.query_compiler import CompiledQuery
+from retail_analytics.application.contracts.budgets import (
+    ProviderPermit,
+    ProviderUsage,
+)
+from retail_analytics.application.contracts.persistence import RecordNotFound
+from retail_analytics.application.contracts.query_compiler import CompiledQuery
+from retail_analytics.application.contracts.tools import ExecutionContext
+from retail_analytics.application.contracts.warehouse_jobs import JobStatistics
+from retail_analytics.application.ports.budgets import RunBudgetStore
 from retail_analytics.application.query_execution import QueryNotAdmitted
-from retail_analytics.application.tools.context import ExecutionContext
-from retail_analytics.application.warehouse_jobs import JobStatistics
 from retail_analytics.domain.budgets import (
     BudgetExhausted,
     BudgetResource,
     BudgetSnapshot,
-    Charge,
-    RunBudget,
     RunLimits,
     backoff_delay,
     query_charge_key,
 )
 from retail_analytics.domain.operations import ToolErrorCode
-
-
-class RunBudgetStore(Protocol):
-    """Persisted run accounting. Every mutation is atomic per run.
-
-    Charges are idempotent on (run, kind, key): repeating one returns the
-    recorded charge without counting again. ``limits`` only applies when the
-    run has no accounting yet (it is then opened, clock running); existing
-    accounting keeps its pinned limits. Refusals raise ``BudgetExhausted``.
-    """
-
-    async def open(
-        self, run_id: str, limits: RunLimits, *, at: datetime
-    ) -> RunBudget: ...
-
-    async def get(self, run_id: str) -> RunBudget | None: ...
-
-    async def pause(self, run_id: str, *, at: datetime) -> RunBudget:
-        """Stop the active clock. Raises ``RecordNotFound`` if never opened."""
-        ...
-
-    async def resume(self, run_id: str, *, at: datetime) -> RunBudget: ...
-
-    async def charge_query(
-        self,
-        run_id: str,
-        key: str,
-        estimated_bytes: int,
-        *,
-        limits: RunLimits,
-        at: datetime,
-    ) -> Charge: ...
-
-    async def settle_query(
-        self, run_id: str, key: str, actual_bytes: int | None
-    ) -> Charge | None:
-        """Settle once; ``None`` when no such charge exists."""
-        ...
-
-    async def charge_provider_request(
-        self,
-        run_id: str,
-        key: str,
-        estimated_tokens: int,
-        *,
-        limits: RunLimits,
-        at: datetime,
-    ) -> Charge: ...
-
-    async def settle_provider_request(
-        self, run_id: str, key: str, reported_tokens: int | None
-    ) -> Charge | None: ...
-
-    async def charge_correction(
-        self,
-        run_id: str,
-        key: str,
-        corrects: str,
-        *,
-        limits: RunLimits,
-        at: datetime,
-    ) -> Charge:
-        """Charge ``key`` as a reformulation of ``corrects``.
-
-        The chain root is ``corrects`` itself, or the root ``corrects`` was
-        charged to if it is a correction too.
-        """
-        ...
-
-    async def charges(self, run_id: str) -> Sequence[Charge]: ...
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderUsage:
-    """Token usage a provider reported for one request; ``None`` if absent."""
-
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-
-    @property
-    def total(self) -> int | None:
-        if self.input_tokens is None and self.output_tokens is None:
-            return None
-        return (self.input_tokens or 0) + (self.output_tokens or 0)
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderPermit:
-    request_key: str
-    charged_tokens: int
-    remaining_tokens: int
-    remaining_requests: int
-
-
-class ProviderBudget(Protocol):
-    """What a model provider adapter calls around every request it sends.
-
-    ``request_key`` must be stable across retries of the same logical request
-    attempt (for example ``<run>/<turn>/<provider>/<attempt>``) and new for
-    every request actually sent, fallback included. Reserve before sending
-    (raises ``BudgetExhausted``); record after the response or failure. A
-    request that failed before reaching the provider may be recorded with
-    zero usage.
-    """
-
-    async def reserve_provider_request(
-        self, run_id: str, request_key: str, *, estimated_input_tokens: int
-    ) -> ProviderPermit: ...
-
-    async def record_provider_usage(
-        self, run_id: str, request_key: str, usage: ProviderUsage
-    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,8 +17,8 @@ from sqlalchemy.dialects.postgresql import insert
 
 from retail_analytics.adapters.postgres.database import Database, violated_constraint
 from retail_analytics.adapters.postgres.schema import executives, product_entitlements
-from retail_analytics.application.authorization import ExecutiveRegistration
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.authorization import ExecutiveRegistration
+from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
     RecordNotFound,
 )

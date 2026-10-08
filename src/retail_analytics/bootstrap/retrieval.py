@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from retail_analytics.adapters.embedding.gemini import GeminiEmbedder
 from retail_analytics.adapters.embedding.hashing import HashingEmbedder
+from retail_analytics.application.ports.retrieval import TextEmbedder
 from retail_analytics.application.retrieval import (
     GoldenIndex,
     GoldenRetriever,
-    TextEmbedder,
 )
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 from retail_analytics.bootstrap.knowledge import KnowledgeServices

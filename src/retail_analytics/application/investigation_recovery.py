@@ -7,32 +7,13 @@ idempotent; pending inputs remain authoritative until the model consumes them.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Protocol
-
-from retail_analytics.application.authorization import Principal
-from retail_analytics.application.investigations import (
+from retail_analytics.application.investigations import InvestigationLauncher
+from retail_analytics.application.ports.investigation_recovery import RecoveryCandidates
+from retail_analytics.application.ports.investigations import (
     InvestigationInputs,
-    InvestigationLauncher,
     InvestigationScheduler,
 )
 from retail_analytics.domain.runs import RunStatus
-
-
-@dataclass(frozen=True)
-class RecoveryCandidate:
-    run_id: str
-    session_id: str
-    principal: Principal
-    request_text: str
-    submission_key: str
-    status: RunStatus
-
-
-class RecoveryCandidates(Protocol):
-    async def active(self) -> Sequence[RecoveryCandidate]: ...
-    async def queued_sessions(self) -> Sequence[str]: ...
 
 
 class InvestigationRecovery:

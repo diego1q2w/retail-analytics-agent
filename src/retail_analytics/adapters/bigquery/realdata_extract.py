@@ -23,10 +23,10 @@ from typing import Any, Final
 
 from google.cloud import bigquery
 
+from retail_analytics.application.contracts.evaluation import EngineResult
 from retail_analytics.application.evaluation.realdata import (
     EXTRACT_COLUMNS,
     BenchmarkSpec,
-    EngineResult,
     ExtractQueryRecord,
     SourceTableInfo,
     sql_fingerprint,

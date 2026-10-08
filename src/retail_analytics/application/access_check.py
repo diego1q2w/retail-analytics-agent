@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+
+from retail_analytics.application.ports.access_check import (
+    ModelAccess,
+    WarehouseAccess,
+)
 
 PUBLIC_DATASET = "bigquery-public-data.thelook_ecommerce"
 REQUIRED_TABLES: tuple[str, ...] = ("orders", "order_items", "products", "users")
@@ -24,31 +28,6 @@ class AccessError(Exception):
         self.problem = problem
         self.remedy = remedy
         super().__init__(problem)
-
-
-@dataclass(frozen=True)
-class TableMetadata:
-    table: str
-    rows: int
-    columns: int
-
-
-class WarehouseAccess(Protocol):
-    def credentials_ready(self) -> None:
-        """Raise AccessError if application default credentials are unusable."""
-
-    def table_metadata(self, table: str) -> TableMetadata: ...
-
-    def dry_run_bytes(self, sql: str) -> int:
-        """Bytes a query would scan, without running it. Raises AccessError."""
-
-
-class ModelAccess(Protocol):
-    @property
-    def model_name(self) -> str: ...
-
-    def ping(self) -> None:
-        """Send a minimal non-sensitive request. Raises AccessError on failure."""
 
 
 @dataclass(frozen=True)

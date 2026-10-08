@@ -7,8 +7,8 @@ from sqlalchemy.dialects.postgresql import insert
 
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.schema import topic_resets as tr
-from retail_analytics.application.context import TopicReset
-from retail_analytics.application.persistence import IdempotencyConflict
+from retail_analytics.application.contracts.context import TopicReset
+from retail_analytics.application.contracts.persistence import IdempotencyConflict
 
 
 class PostgresTopicResets:

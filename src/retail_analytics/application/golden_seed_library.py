@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from retail_analytics.application.query_compiler import ScalarValue
+from retail_analytics.application.contracts.query_compiler import ScalarValue
 from retail_analytics.domain.catalog import LogicalCatalog
 from retail_analytics.domain.knowledge import MetricRef
 from retail_analytics.domain.logical_catalog import CATALOG_VERSION

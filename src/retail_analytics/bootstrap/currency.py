@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from retail_analytics.adapters.exchange_rates.frankfurter import (
-    FrankfurterRateProvider,
-)
+from retail_analytics.adapters.exchange_rates.frankfurter import FrankfurterRateProvider
 from retail_analytics.adapters.postgres.database import Clock, utc_now
 from retail_analytics.application.currency_conversion import (
     CurrencyConversionService,
     DeclaredSourceCurrency,
-    ExchangeRateProvider,
-    SourceCurrencyProvider,
     StoredDisplayCurrency,
     UnverifiedSourceCurrency,
 )
 from retail_analytics.application.evidence import EvidenceService
-from retail_analytics.application.preferences import PreferenceStore
+from retail_analytics.application.ports.currency_conversion import (
+    ExchangeRateProvider,
+    SourceCurrencyProvider,
+)
+from retail_analytics.application.ports.preferences import PreferenceStore
 from retail_analytics.bootstrap.config import BackendSettings
 
 

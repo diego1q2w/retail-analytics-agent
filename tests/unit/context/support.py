@@ -15,14 +15,15 @@ from decimal import Decimal
 from retail_analytics.application.authorization import (
     AccessResolver,
     OwnershipGuard,
-    Principal,
 )
-from retail_analytics.application.context import ContextBuilder, TopicReset
+from retail_analytics.application.context import ContextBuilder
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.context import TopicReset
+from retail_analytics.application.contracts.tools import OperationContext
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.output_privacy import OutputPrivacyGate
 from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.application.result_privacy import ReleasedResult
-from retail_analytics.application.tools.context import OperationContext
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.context import ContextBudget
 from retail_analytics.domain.conversation import Message, MessageRole

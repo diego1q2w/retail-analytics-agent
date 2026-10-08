@@ -16,10 +16,12 @@ from retail_analytics.adapters.google_access import (
 )
 from retail_analytics.application.access_check import (
     CheckResult,
-    ModelAccess,
-    WarehouseAccess,
     check_model,
     check_warehouse,
+)
+from retail_analytics.application.ports.access_check import (
+    ModelAccess,
+    WarehouseAccess,
 )
 from retail_analytics.bootstrap.config import (
     BACKEND_ENV_PREFIX,

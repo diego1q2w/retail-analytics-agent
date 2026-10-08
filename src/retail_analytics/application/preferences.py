@@ -18,13 +18,21 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
 
 from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
     OwnershipGuard,
-    Principal,
+)
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.preferences import (
+    ObservationResult,
+    ResolveResult,
+    SaveResult,
+)
+from retail_analytics.application.ports.preferences import (
+    FindingInvalidator,
+    PreferenceStore,
 )
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.metrics import MetricCatalog, UnknownMetricError
@@ -40,104 +48,6 @@ from retail_analytics.domain.preferences import (
     PreferenceSource,
     parse_slot,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class SaveResult:
-    preference: Preference
-    previous: Preference | None
-
-    @property
-    def changed(self) -> bool:
-        """Anything about the stored preference changed (value or source)."""
-        return self.previous is None or self.previous.version != self.preference.version
-
-    @property
-    def meaning_changed(self) -> bool:
-        return self.previous is None or (
-            self.previous.setting.value != self.preference.setting.value
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ObservationResult:
-    proposal: InferenceProposal
-    newly_proposed: bool
-
-
-@dataclass(frozen=True, slots=True)
-class ResolveResult:
-    proposal: InferenceProposal
-    preference: Preference | None
-
-
-class PreferenceStore(Protocol):
-    """Durable preferences, proposals and their append-only audit trail.
-
-    Each method is one atomic change including its audit event. Audit events
-    record who/what slot/when/which action and version, never the values.
-    """
-
-    async def save(
-        self,
-        executive_id: str,
-        setting: PreferenceSetting,
-        scope: OverrideScope,
-        session_id: str | None,
-        source: PreferenceSource,
-    ) -> SaveResult:
-        """Create or change; an identical value and source is a no-op."""
-        ...
-
-    async def list_preferences(
-        self, executive_id: str, session_id: str | None
-    ) -> tuple[Preference, ...]:
-        """Saved defaults plus, when given, that session's preferences."""
-        ...
-
-    async def forget(
-        self,
-        executive_id: str,
-        slot: str,
-        scope: OverrideScope,
-        session_id: str | None,
-    ) -> Preference | None:
-        """Delete one preference; returns what was removed, if anything."""
-        ...
-
-    async def forget_all(self, executive_id: str) -> tuple[Preference, ...]:
-        """Delete every preference and every pending proposal of the executive."""
-        ...
-
-    async def observe(
-        self, executive_id: str, session_id: str, setting: PreferenceSetting
-    ) -> ObservationResult:
-        """Count one observed repetition. Never persists a default."""
-        ...
-
-    async def open_proposals(
-        self, executive_id: str, session_id: str | None
-    ) -> tuple[InferenceProposal, ...]: ...
-
-    async def resolve_proposal(
-        self, executive_id: str, proposal_id: str, *, confirm: bool
-    ) -> ResolveResult:
-        """Confirm (saving the default atomically) or decline an open proposal.
-
-        Raises ``AccessDenied`` when unknown/not owned and ``InvalidTransition``
-        when it is not open (already resolved or expired).
-        """
-        ...
-
-
-class FindingInvalidator(Protocol):
-    """Marks findings computed under an old meaning as needing recalculation."""
-
-    async def invalidate_dependent_findings(
-        self, executive_id: str, session_id: str | None, slot: str
-    ) -> None:
-        """``session_id`` None means every session of the executive."""
-        ...
 
 
 class PreferenceAction(StrEnum):

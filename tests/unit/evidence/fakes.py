@@ -7,13 +7,13 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 from retail_analytics.application.authorization import AccessDenied
-from retail_analytics.application.evidence import (
+from retail_analytics.application.contracts.evidence import (
     DEFAULT_CANDIDATE_LIMIT,
     NewEvidence,
     RunEvidenceLink,
     StoredEvidence,
 )
-from retail_analytics.application.persistence import IdempotencyConflict
+from retail_analytics.application.contracts.persistence import IdempotencyConflict
 from retail_analytics.domain.evidence import Evidence, EvidenceUse, PinHolder
 
 

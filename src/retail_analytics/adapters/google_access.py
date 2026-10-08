@@ -17,8 +17,8 @@ from google.genai import types as genai_types
 from retail_analytics.application.access_check import (
     DRY_RUN_BYTES_LIMIT,
     AccessError,
-    TableMetadata,
 )
+from retail_analytics.application.contracts.access_check import TableMetadata
 
 LOGIN_REMEDY = (
     "run `gcloud auth application-default login` and set the quota project with "

@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from retail_analytics.adapters.exchange_rates.fixture import FixtureRateProvider
+from retail_analytics.application.contracts.tools import ExecutionContext
 from retail_analytics.application.currency_conversion import (
     ConversionRefused,
     ConversionRequest,
@@ -28,7 +29,6 @@ from retail_analytics.application.tools import (
     ToolSucceeded,
     invoke,
 )
-from retail_analytics.application.tools.context import ExecutionContext
 from retail_analytics.capabilities.currency import (
     CONVERT_CURRENCY,
     ConvertCurrencyOutput,

@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.schema import messages, sessions
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
     RecordNotFound,
 )

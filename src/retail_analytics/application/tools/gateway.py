@@ -13,13 +13,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from retail_analytics.application.progress import (
+from retail_analytics.application.contracts.progress import (
     EventKind,
-    ProgressSink,
     ProgressUpdate,
     ToolActivity,
 )
-from retail_analytics.application.tools.context import OperationContext
+from retail_analytics.application.contracts.tools import OperationContext
+from retail_analytics.application.ports.progress import ProgressSink
 from retail_analytics.application.tools.contracts import (
     InputIssue,
     ToolCall,

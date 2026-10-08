@@ -19,12 +19,12 @@ from retail_analytics.application.authentication import (
     AuthenticationFailed,
     AuthFailure,
 )
-from retail_analytics.application.authorization import (
-    AccessDenied,
+from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.authorization import (
     ExecutiveRegistration,
     Principal,
 )
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
     OperationRequest,
     RunRequest,

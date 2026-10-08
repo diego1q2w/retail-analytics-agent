@@ -26,9 +26,9 @@ from pathlib import Path
 from retail_analytics.application.artifacts import (
     BlobConflict,
     BlobError,
-    BlobInfo,
     BlobNotFound,
 )
+from retail_analytics.application.contracts.artifacts import BlobInfo
 
 KEY_PATTERN = re.compile(r"([0-9a-f]{32})/([0-9a-f]{64})")
 _DIR_MODE = 0o700

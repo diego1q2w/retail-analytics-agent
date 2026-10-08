@@ -22,7 +22,7 @@ from retail_analytics.application.artifacts import (
     ArtifactPolicy,
     ArtifactService,
 )
-from retail_analytics.application.authorization import ExecutiveRegistration
+from retail_analytics.application.contracts.authorization import ExecutiveRegistration
 from retail_analytics.application.knowledge import KnowledgeError
 from retail_analytics.bootstrap.access import build_access
 from retail_analytics.bootstrap.artifacts import ArtifactServices

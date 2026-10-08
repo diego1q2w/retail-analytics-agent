@@ -34,11 +34,11 @@ from retail_analytics.adapters.sql_compiler.compiler import (
     CompilerLimits,
     SqlglotQueryCompiler,
 )
-from retail_analytics.application.query_compiler import (
+from retail_analytics.application.contracts.query_compiler import (
     ParameterType,
-    QueryCompiler,
     QueryParameter,
 )
+from retail_analytics.application.ports.query_compiler import QueryCompiler
 from retail_analytics.domain.privacy import (
     AGE_BAND_WIDTH,
     AGE_TOP_CODE,

@@ -18,15 +18,17 @@ from retail_analytics.adapters.sql_compiler import (
     CompilerLimits,
     SqlglotQueryCompiler,
 )
-from retail_analytics.application.query_compiler import (
-    DEFAULT_MAXIMUM_BYTES_BILLED,
+from retail_analytics.application.contracts.query_compiler import (
     CompiledQuery,
     FieldRef,
     OutputColumn,
     ParameterType,
-    QueryCompiler,
-    QueryRejected,
     ScalarValue,
+)
+from retail_analytics.application.ports.query_compiler import QueryCompiler
+from retail_analytics.application.query_compiler import (
+    DEFAULT_MAXIMUM_BYTES_BILLED,
+    QueryRejected,
 )
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.catalog import (
@@ -355,7 +357,9 @@ def test_derivation_parameters_must_be_trusted_policy_names() -> None:
             return raw_age
 
         def parameters(self) -> tuple[object, ...]:
-            from retail_analytics.application.query_compiler import QueryParameter
+            from retail_analytics.application.contracts.query_compiler import (
+                QueryParameter,
+            )
 
             return (QueryParameter("key", ParameterType.STRING, "k"),)
 

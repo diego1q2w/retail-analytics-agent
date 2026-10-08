@@ -22,10 +22,10 @@ from typing import Annotated, Final, Literal
 from pydantic import Field
 
 from retail_analytics.application.contracts import ContractModel, Identifier
+from retail_analytics.application.contracts.evaluation import Mode
 from retail_analytics.application.evaluation.manifest import (
     Importance,
     Level,
-    Mode,
 )
 
 RESULT_SCHEMA_VERSION: Final = 1

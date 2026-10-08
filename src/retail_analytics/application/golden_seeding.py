@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from retail_analytics.application.authorization import Principal
+from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.golden_seed_library import (
     SEED_LIBRARY_REVISION,
     SEED_SCHEMA_VERSION,

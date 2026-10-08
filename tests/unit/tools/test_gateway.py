@@ -6,7 +6,10 @@ from typing import Any
 
 import pytest
 
-from retail_analytics.application.progress import EventKind, ProgressUpdate
+from retail_analytics.application.contracts.progress import (
+    EventKind,
+    ProgressUpdate,
+)
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     ExecutionContext,

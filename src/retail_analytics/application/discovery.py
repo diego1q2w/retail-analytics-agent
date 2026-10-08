@@ -19,9 +19,9 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Protocol
 
-from retail_analytics.application.tools.context import ExecutionContext
+from retail_analytics.application.contracts.tools import ExecutionContext
+from retail_analytics.application.ports.discovery import SourceMetadataProvider
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.catalog import (
     CatalogHealth,
@@ -48,14 +48,6 @@ class CatalogUnavailable(Exception):
 
 class RelationNotAvailable(Exception):
     """Unknown, forbidden or disabled relation (deliberately indistinguishable)."""
-
-
-class SourceMetadataProvider(Protocol):
-    """Reads column names and types of the given source tables (metadata only)."""
-
-    async def read_schema(self, tables: frozenset[str]) -> SourceSchema:
-        """Raise SourceMetadataUnavailable if metadata cannot be read."""
-        ...
 
 
 @dataclass(frozen=True, slots=True)

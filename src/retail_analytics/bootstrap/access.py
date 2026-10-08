@@ -10,8 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from retail_analytics.adapters.auth.local_jwt import LocalJwtAuthority
-from retail_analytics.application.authentication import Authenticator, TokenVerifier
+from retail_analytics.application.authentication import Authenticator
 from retail_analytics.application.authorization import AccessResolver, OwnershipGuard
+from retail_analytics.application.ports.authentication import TokenVerifier
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 from retail_analytics.bootstrap.persistence import Persistence
 

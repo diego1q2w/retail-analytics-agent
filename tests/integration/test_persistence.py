@@ -15,7 +15,7 @@ import pytest
 import sqlalchemy as sa
 
 from retail_analytics.application.contracts import Correlation
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.persistence import (
     ActiveRunExists,
     IdempotencyConflict,
     OperationRequest,
@@ -23,7 +23,7 @@ from retail_analytics.application.persistence import (
     RunRequest,
     RunStart,
 )
-from retail_analytics.application.progress import (
+from retail_analytics.application.contracts.progress import (
     EventKind,
     ProgressUpdate,
     ToolActivity,

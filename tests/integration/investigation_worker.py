@@ -22,7 +22,7 @@ from temporalio.worker import Worker
 from retail_analytics.adapters.temporal.activities import REGISTERED
 from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
 from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
-from retail_analytics.application.persistence import OperationRequest
+from retail_analytics.application.contracts.persistence import OperationRequest
 from retail_analytics.application.tools import (
     AuthorizationSpec,
     CapabilityRegistry,

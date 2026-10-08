@@ -30,8 +30,9 @@ from retail_analytics.application.artifacts import (
 from retail_analytics.application.authorization import (
     AccessResolver,
     OwnershipGuard,
-    Principal,
 )
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.query_compiler import ScalarValue
 from retail_analytics.application.golden_seed_library import (
     SEED_SCHEMA_VERSION,
     Claim,
@@ -52,7 +53,6 @@ from retail_analytics.application.knowledge import (
     KnowledgeErrorCode,
     KnowledgeService,
 )
-from retail_analytics.application.query_compiler import ScalarValue
 from retail_analytics.domain.access import ExecutiveAccess, ProductScope, Role
 from retail_analytics.domain.knowledge import (
     ApplicabilityContext,
@@ -241,7 +241,8 @@ def test_every_step_compiles_and_the_stored_sql_is_those_steps(
 
 
 def test_the_compiler_rejects_the_whole_script_but_accepts_each_step() -> None:
-    from retail_analytics.application.query_compiler import AnalysisQuery, QueryRejected
+    from retail_analytics.application.contracts.query_compiler import AnalysisQuery
+    from retail_analytics.application.query_compiler import QueryRejected
     from tests.unit.sql_compiler.support import view
 
     example = next(e for e in LIBRARY if len(e.steps) > 1)

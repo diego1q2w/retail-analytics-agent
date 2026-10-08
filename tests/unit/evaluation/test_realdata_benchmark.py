@@ -17,6 +17,7 @@ import pytest
 
 from retail_analytics.adapters.evaluation import realdata_files as files
 from retail_analytics.adapters.evaluation.realdata_duckdb import DuckDbExtractEngine
+from retail_analytics.application.contracts.evaluation import EngineResult
 from retail_analytics.application.evaluation.manifest import (
     NumericExpectation,
     TextExpectation,
@@ -24,7 +25,6 @@ from retail_analytics.application.evaluation.manifest import (
 from retail_analytics.application.evaluation.realdata import (
     EXTRACT_COLUMNS,
     BenchmarkSpec,
-    EngineResult,
     ExpectedValues,
     RouteDisagreement,
     assert_publishable,

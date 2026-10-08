@@ -20,8 +20,8 @@ from retail_analytics.application.investigation_runtime import InvestigationRunt
 from retail_analytics.application.investigations import (
     InvestigationControl,
     InvestigationLauncher,
-    InvestigationScheduler,
 )
+from retail_analytics.application.ports.investigations import InvestigationScheduler
 from retail_analytics.application.query_execution import QueryExecutionService
 from retail_analytics.application.tool_runner import ToolRunner
 from retail_analytics.application.tools import CapabilityRegistry, CapabilitySpec

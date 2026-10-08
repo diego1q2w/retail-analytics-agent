@@ -27,7 +27,8 @@ from retail_analytics.adapters.postgres.investigation_recovery import (
 )
 from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
 from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
-from retail_analytics.application.authorization import Principal
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.persistence import OperationRequest
 from retail_analytics.application.investigation_recovery import InvestigationRecovery
 from retail_analytics.application.investigation_runtime import (
     AnswerDraft,
@@ -37,7 +38,6 @@ from retail_analytics.application.investigation_runtime import (
     StopReason,
 )
 from retail_analytics.application.investigations import RunNotActive
-from retail_analytics.application.persistence import OperationRequest
 from retail_analytics.application.query_execution import QueryCancelled
 from retail_analytics.application.tools import ToolFailed
 from retail_analytics.bootstrap.config import BackendSettings
@@ -544,8 +544,8 @@ def _payload_bytes(message: Any) -> Iterator[bytes]:
 async def test_execute_analysis_reconciles_lost_response_and_records_one_evidence(
     stack: Stack,
 ) -> None:
+    from retail_analytics.application.contracts.query_execution import QueryAuthority
     from retail_analytics.application.query_execution import (
-        QueryAuthority,
         QueryExecutionService,
         QueryExecutionSettings,
     )

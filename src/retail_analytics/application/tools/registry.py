@@ -20,7 +20,7 @@ from typing import Any
 from pydantic import Field, JsonValue
 
 from retail_analytics.application.contracts import CapabilityName, ContractModel
-from retail_analytics.application.tools.context import (
+from retail_analytics.application.contracts.tools import (
     ExecutionContext,
     OperationContext,
 )

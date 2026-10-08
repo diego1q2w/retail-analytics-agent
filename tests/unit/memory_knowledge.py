@@ -10,15 +10,17 @@ from collections.abc import Sequence
 from dataclasses import replace
 
 from retail_analytics.application.authorization import AccessDenied
-from retail_analytics.application.knowledge import (
+from retail_analytics.application.contracts.knowledge import (
     ChangeResult,
     IndexChange,
     IndexDocument,
-    KnowledgeError,
-    KnowledgeErrorCode,
     NewCandidate,
     ReviewEvent,
     StatusChange,
+)
+from retail_analytics.application.knowledge import (
+    KnowledgeError,
+    KnowledgeErrorCode,
 )
 from retail_analytics.domain.knowledge import (
     ExampleRef,

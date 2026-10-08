@@ -13,7 +13,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from retail_analytics.application.retrieval import TextEmbedder
+from retail_analytics.application.ports.retrieval import TextEmbedder
 
 
 class CachedQueryEmbedder:

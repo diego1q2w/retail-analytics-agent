@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable, Sequence
 
 import pytest
 
-from retail_analytics.application.budgets import RunBudgetStore
+from retail_analytics.application.ports.budgets import RunBudgetStore
 from tests.unit.budgets.contract import CONTRACT
 from tests.unit.budgets.memory_store import MemoryRunBudgetStore
 

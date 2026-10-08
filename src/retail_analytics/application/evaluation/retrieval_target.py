@@ -12,20 +12,20 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from retail_analytics.application.authorization import Principal
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.evaluation import (
+    Mode,
+    ScenarioInput,
+    ScopeSpec,
+    TargetObservation,
+    TargetUnavailable,
+    Turn,
+)
 from retail_analytics.application.evaluation.manifest import (
     ExactExpectation,
     Expectation,
     Manifest,
-    Mode,
     Scenario,
-    ScopeSpec,
-    Turn,
-)
-from retail_analytics.application.evaluation.ports import (
-    ScenarioInput,
-    TargetObservation,
-    TargetUnavailable,
 )
 from retail_analytics.application.evaluation.retrieval_labels import (
     EvalCorpus,

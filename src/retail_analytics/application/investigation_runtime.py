@@ -40,33 +40,33 @@ from enum import StrEnum
 from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
-    Principal,
 )
 from retail_analytics.application.budgets import RunBudgets, budget_message
 from retail_analytics.application.context import ContextBuilder, ModelContext
 from retail_analytics.application.contracts import Correlation
-from retail_analytics.application.evidence import EvidenceService
-from retail_analytics.application.investigations import (
-    AssistantOutput,
-    InvestigationInputs,
-    InvestigationLauncher,
-    RunPrincipals,
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.investigations import AssistantOutput
+from retail_analytics.application.contracts.progress import (
+    EventKind,
+    InputRequest,
+    ProgressUpdate,
 )
+from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.application.investigations import InvestigationLauncher
 from retail_analytics.application.output_privacy import (
     OutputDestination,
     OutputPrivacyGate,
     OutputSection,
     OutputWithheld,
 )
-from retail_analytics.application.persistence import (
+from retail_analytics.application.ports.investigations import (
+    InvestigationInputs,
+    RunPrincipals,
+)
+from retail_analytics.application.ports.persistence import (
     RunEventStore,
     RunRepository,
     ToolExecutionRepository,
-)
-from retail_analytics.application.progress import (
-    EventKind,
-    InputRequest,
-    ProgressUpdate,
 )
 from retail_analytics.application.query_execution import (
     QUERY_CAPABILITY,

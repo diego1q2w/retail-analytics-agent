@@ -20,8 +20,14 @@ from retail_analytics.adapters.bigquery.jobs import BigQueryQueryJobs
 from retail_analytics.adapters.google_access import create_bigquery_client
 from retail_analytics.adapters.sql_compiler import ScopedSqlglotCompilers
 from retail_analytics.application.access_check import PUBLIC_DATASET
-from retail_analytics.application.authorization import Principal
-from retail_analytics.application.query_compiler import AnalysisQuery
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.query_compiler import AnalysisQuery
+from retail_analytics.application.contracts.result_privacy import QueryRows
+from retail_analytics.application.contracts.warehouse_jobs import (
+    JobRef,
+    JobSnapshot,
+    JobSubmission,
+)
 from retail_analytics.application.query_execution import (
     QueryAttempt,
     QueryExecutionService,
@@ -29,16 +35,10 @@ from retail_analytics.application.query_execution import (
     QueryOutcomeUnknown,
     QuerySucceeded,
 )
-from retail_analytics.application.result_privacy import (
-    QueryRows,
-    ResultPrivacyBoundary,
-)
+from retail_analytics.application.result_privacy import ResultPrivacyBoundary
 from retail_analytics.application.warehouse_jobs import (
     FINGERPRINT_LABEL,
     JobAlreadyExists,
-    JobRef,
-    JobSnapshot,
-    JobSubmission,
     WarehouseUnavailable,
 )
 from retail_analytics.bootstrap.config import load_backend_settings

@@ -23,7 +23,7 @@ from retail_analytics.adapters.sql_compiler import (
     ReferenceKeyring,
     ScopedSqlglotCompilers,
 )
-from retail_analytics.application.query_compiler import (
+from retail_analytics.application.contracts.query_compiler import (
     AnalysisQuery,
     CompiledQuery,
     QueryParameter,

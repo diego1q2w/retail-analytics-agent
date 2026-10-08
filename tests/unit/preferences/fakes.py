@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from retail_analytics.application.authorization import AccessDenied
-from retail_analytics.application.preferences import (
+from retail_analytics.application.contracts.preferences import (
     ObservationResult,
     ResolveResult,
     SaveResult,

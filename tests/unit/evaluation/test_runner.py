@@ -14,14 +14,14 @@ from retail_analytics.adapters.evaluation.files import (
     load_result,
     write_result,
 )
-from retail_analytics.application.evaluation.compare import compare_runs
-from retail_analytics.application.evaluation.manifest import Manifest
-from retail_analytics.application.evaluation.ports import (
+from retail_analytics.application.contracts.evaluation import (
     JudgeScoreOut,
     ScenarioInput,
     TargetObservation,
     TargetUnavailable,
 )
+from retail_analytics.application.evaluation.compare import compare_runs
+from retail_analytics.application.evaluation.manifest import Manifest
 from retail_analytics.application.evaluation.results import (
     RunResult,
     SensitiveContentError,

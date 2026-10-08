@@ -7,7 +7,8 @@ from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from sqlglot import exp
 
-from retail_analytics.application.query_compiler import CompiledQuery, QueryRejected
+from retail_analytics.application.contracts.query_compiler import CompiledQuery
+from retail_analytics.application.query_compiler import QueryRejected
 from tests.unit.sql_compiler.support import (
     ALICE,
     DATASET,

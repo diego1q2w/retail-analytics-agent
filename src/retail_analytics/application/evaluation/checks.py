@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import math
 
+from retail_analytics.application.contracts.evaluation import Scalar, TargetObservation
 from retail_analytics.application.evaluation.manifest import (
     ExactExpectation,
     Expectation,
     NumericExpectation,
-    Scalar,
     TextExpectation,
     ToolExpectation,
 )
-from retail_analytics.application.evaluation.ports import TargetObservation
 from retail_analytics.application.evaluation.results import (
     CheckDetail,
     CheckResult,

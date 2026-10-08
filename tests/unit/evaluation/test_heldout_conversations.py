@@ -15,6 +15,11 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from retail_analytics.adapters.evaluation.files import load_manifest
+from retail_analytics.application.contracts.evaluation import (
+    JudgeScoreOut,
+    ScenarioInput,
+    TargetObservation,
+)
 from retail_analytics.application.evaluation.manifest import (
     ExactExpectation,
     Expectation,
@@ -23,11 +28,6 @@ from retail_analytics.application.evaluation.manifest import (
     Scenario,
     TextExpectation,
     ToolExpectation,
-)
-from retail_analytics.application.evaluation.ports import (
-    JudgeScoreOut,
-    ScenarioInput,
-    TargetObservation,
 )
 from retail_analytics.application.evaluation.results import RunResult
 from retail_analytics.application.evaluation.runner import (

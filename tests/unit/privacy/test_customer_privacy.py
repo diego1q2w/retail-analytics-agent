@@ -20,8 +20,10 @@ from retail_analytics.adapters.sql_compiler import (
     ReferenceKeyring,
     ScopedSqlglotCompilers,
 )
-from retail_analytics.application.query_compiler import AnalysisQuery, QueryRejected
-from retail_analytics.application.result_privacy import Cell, ColumnRole
+from retail_analytics.application.contracts.query_compiler import AnalysisQuery
+from retail_analytics.application.contracts.result_privacy import Cell
+from retail_analytics.application.query_compiler import QueryRejected
+from retail_analytics.application.result_privacy import ColumnRole
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.operations import ToolErrorCode
 from retail_analytics.domain.privacy import is_age_band, is_reference

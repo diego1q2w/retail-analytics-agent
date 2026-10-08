@@ -22,16 +22,16 @@ from retail_analytics.adapters.postgres.schema import (
     runs,
 )
 from retail_analytics.adapters.postgres.sessions import insert_message
-from retail_analytics.application.authorization import Principal
-from retail_analytics.application.investigations import (
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.investigations import (
     AssistantOutput,
     RunClosure,
-    RunNotActive,
 )
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
     RecordNotFound,
 )
+from retail_analytics.application.investigations import RunNotActive
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.investigations import (
     ClarificationQuestion,

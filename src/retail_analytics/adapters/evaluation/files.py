@@ -6,12 +6,12 @@ import json
 import os
 from pathlib import Path
 
-from retail_analytics.application.evaluation.manifest import Manifest
-from retail_analytics.application.evaluation.ports import (
+from retail_analytics.application.contracts.evaluation import (
     ScenarioInput,
     TargetObservation,
     TargetUnavailable,
 )
+from retail_analytics.application.evaluation.manifest import Manifest
 from retail_analytics.application.evaluation.results import RunResult, serialize_result
 
 

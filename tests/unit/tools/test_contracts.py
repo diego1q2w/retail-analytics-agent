@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from retail_analytics.application.contracts import CONTRACT_VERSION, Correlation
-from retail_analytics.application.progress import (
+from retail_analytics.application.contracts.progress import (
     EventKind,
     EventSource,
     InputRequest,

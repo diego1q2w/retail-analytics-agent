@@ -11,15 +11,15 @@ from retail_analytics.application.authentication import (
     AuthenticationFailed,
     Authenticator,
     AuthFailure,
-    VerifiedToken,
 )
 from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
     OwnershipGuard,
-    Principal,
     require_owner,
 )
+from retail_analytics.application.contracts.authentication import VerifiedToken
+from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.tools.registry import (
     AuthorizationSpec,
     CapabilityRegistry,

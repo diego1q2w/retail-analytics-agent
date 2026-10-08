@@ -18,10 +18,10 @@ from retail_analytics.application.access_check import (
     DRY_RUN_BYTES_LIMIT,
     REQUIRED_TABLES,
     AccessError,
-    TableMetadata,
     check_model,
     check_warehouse,
 )
+from retail_analytics.application.contracts.access_check import TableMetadata
 from retail_analytics.bootstrap import check_credentials
 
 SECRET = "AIza-super-secret"

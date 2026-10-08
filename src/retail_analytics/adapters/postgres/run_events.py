@@ -14,8 +14,11 @@ import sqlalchemy as sa
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.runs import lock_run
 from retail_analytics.adapters.postgres.schema import run_events, runs
-from retail_analytics.application.persistence import RecordNotFound
-from retail_analytics.application.progress import ProgressEvent, ProgressUpdate
+from retail_analytics.application.contracts.persistence import RecordNotFound
+from retail_analytics.application.contracts.progress import (
+    ProgressEvent,
+    ProgressUpdate,
+)
 
 
 def _event(row: sa.Row[tuple[object, ...]]) -> ProgressEvent:

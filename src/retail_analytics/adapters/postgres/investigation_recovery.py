@@ -13,8 +13,8 @@ from retail_analytics.adapters.postgres.schema import (
     run_principals,
     runs,
 )
-from retail_analytics.application.authorization import Principal
-from retail_analytics.application.investigation_recovery import RecoveryCandidate
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.investigations import RecoveryCandidate
 from retail_analytics.domain.investigations import InputKind, InputStatus
 from retail_analytics.domain.runs import ACTIVE_RUN_STATUSES, RunStatus
 

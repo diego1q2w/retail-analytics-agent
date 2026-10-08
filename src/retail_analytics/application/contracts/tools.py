@@ -1,17 +1,9 @@
-"""Trusted execution context: what the backend knows and the model never sets.
-
-These are plain dataclasses, not contract models: they are never part of a
-model-facing schema and are loaded fresh by application code for every
-execution (inside retryable activities), not deserialized from model output.
-``ExecutionContext.budget`` is a read-only snapshot of the run's persisted
-accounting (``RunBudgets.with_budget``) so handlers and the runtime can see
-what is left; enforcement always re-reads the store. Budgets are never tool
-arguments.
-"""
-
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import (
+    dataclass,
+    replace,
+)
 
 from retail_analytics.application.contracts import Correlation
 from retail_analytics.domain.access import ProductScope

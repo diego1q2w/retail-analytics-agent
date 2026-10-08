@@ -14,10 +14,8 @@ from retail_analytics.adapters.evaluation.realdata_files import (
     EXTRACT_DIR,
     table_columns,
 )
-from retail_analytics.application.evaluation.realdata import (
-    EXTRACT_COLUMNS,
-    EngineResult,
-)
+from retail_analytics.application.contracts.evaluation import EngineResult
+from retail_analytics.application.evaluation.realdata import EXTRACT_COLUMNS
 
 SCHEMA: Final = "thelook"
 _TYPES: Final = {

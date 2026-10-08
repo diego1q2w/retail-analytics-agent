@@ -17,17 +17,20 @@ from retail_analytics.application.artifacts import (
     ArtifactMaintenance,
     ArtifactService,
 )
-from retail_analytics.application.authorization import AccessDenied, Principal
+from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.knowledge import IndexChange
 from retail_analytics.application.knowledge import (
     ApprovalChecks,
     ExampleDraft,
     GoldenKnowledgeReader,
-    IndexChange,
     KnowledgeError,
     KnowledgeErrorCode,
+    KnowledgeService,
+)
+from retail_analytics.application.ports.knowledge import (
     KnowledgeIndexSource,
     KnowledgeRepository,
-    KnowledgeService,
 )
 from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.errors import InvalidTransition

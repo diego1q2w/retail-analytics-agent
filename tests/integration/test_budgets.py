@@ -8,7 +8,8 @@ from collections.abc import Awaitable, Callable, Iterator, Sequence
 
 import pytest
 
-from retail_analytics.application.budgets import RunBudgets, RunBudgetStore
+from retail_analytics.application.budgets import RunBudgets
+from retail_analytics.application.ports.budgets import RunBudgetStore
 from retail_analytics.bootstrap.persistence import Persistence, build_persistence
 from retail_analytics.domain.budgets import BudgetExhausted, RunLimits
 from tests.integration.compose_stack import Stack, running_stack

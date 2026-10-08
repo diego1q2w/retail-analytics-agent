@@ -16,25 +16,28 @@ from datetime import UTC, datetime
 import duckdb
 import sqlglot
 
-from retail_analytics.application.authorization import AccessDenied, Principal
+from retail_analytics.application.authorization import AccessDenied
 from retail_analytics.application.contracts import Correlation
-from retail_analytics.application.discovery import CatalogUnavailable
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
     OperationRequest,
     OperationStart,
     RecordNotFound,
 )
-from retail_analytics.application.query_execution import QueryAuthority
-from retail_analytics.application.result_privacy import QueryRows
-from retail_analytics.application.tools.context import ExecutionContext
-from retail_analytics.application.warehouse_jobs import (
-    JobAlreadyExists,
+from retail_analytics.application.contracts.query_execution import QueryAuthority
+from retail_analytics.application.contracts.result_privacy import QueryRows
+from retail_analytics.application.contracts.tools import ExecutionContext
+from retail_analytics.application.contracts.warehouse_jobs import (
     JobRef,
     JobSnapshot,
     JobState,
     JobStatistics,
     JobSubmission,
+)
+from retail_analytics.application.discovery import CatalogUnavailable
+from retail_analytics.application.warehouse_jobs import (
+    JobAlreadyExists,
     SubmissionRejected,
     WarehouseUnavailable,
 )

@@ -20,13 +20,18 @@ from retail_analytics.adapters.bigquery.jobs import (
     BigQueryQueryJobs,
     to_bigquery_parameter,
 )
-from retail_analytics.application.query_compiler import ParameterType, QueryParameter
-from retail_analytics.application.warehouse_jobs import (
-    FINGERPRINT_LABEL,
-    JobAlreadyExists,
+from retail_analytics.application.contracts.query_compiler import (
+    ParameterType,
+    QueryParameter,
+)
+from retail_analytics.application.contracts.warehouse_jobs import (
     JobRef,
     JobState,
     JobSubmission,
+)
+from retail_analytics.application.warehouse_jobs import (
+    FINGERPRINT_LABEL,
+    JobAlreadyExists,
     SubmissionRejected,
     WarehouseUnavailable,
 )

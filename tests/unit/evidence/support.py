@@ -12,16 +12,16 @@ from datetime import date
 from typing import Any
 
 from retail_analytics.application.contracts import Correlation
+from retail_analytics.application.contracts.query_compiler import CompiledQuery
+from retail_analytics.application.contracts.tools import (
+    ExecutionContext,
+    OperationContext,
+)
 from retail_analytics.application.evidence import EvidenceService, QueryBasis
-from retail_analytics.application.query_compiler import CompiledQuery
 from retail_analytics.application.result_privacy import (
     ReleasedResult,
     ResultLimits,
     ResultPrivacyBoundary,
-)
-from retail_analytics.application.tools.context import (
-    ExecutionContext,
-    OperationContext,
 )
 from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.evidence import DefinitionRef, Requirements, ReusePolicy

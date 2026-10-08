@@ -9,8 +9,8 @@ from datetime import timedelta
 import psycopg
 import pytest
 
-from retail_analytics.application.authorization import (
-    AccessDenied,
+from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.authorization import (
     ExecutiveRegistration,
     Principal,
 )

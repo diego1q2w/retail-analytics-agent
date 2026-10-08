@@ -15,26 +15,26 @@ from datetime import timedelta
 import psycopg
 import pytest
 
-from retail_analytics.application.authorization import (
-    AccessDenied,
+from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.authorization import (
     ExecutiveRegistration,
     Principal,
+)
+from retail_analytics.application.contracts.persistence import (
+    IdempotencyConflict,
+    OperationRequest,
+    RunRequest,
+)
+from retail_analytics.application.contracts.query_compiler import CompiledQuery
+from retail_analytics.application.contracts.tools import (
+    ExecutionContext,
+    OperationContext,
 )
 from retail_analytics.application.evidence import (
     EvidenceRejected,
     EvidenceService,
     ReuseRequest,
     query_subject_key,
-)
-from retail_analytics.application.persistence import (
-    IdempotencyConflict,
-    OperationRequest,
-    RunRequest,
-)
-from retail_analytics.application.query_compiler import CompiledQuery
-from retail_analytics.application.tools.context import (
-    ExecutionContext,
-    OperationContext,
 )
 from retail_analytics.bootstrap.access import AccessServices, build_access
 from retail_analytics.bootstrap.evidence import build_evidence

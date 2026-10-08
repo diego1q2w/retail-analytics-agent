@@ -10,9 +10,9 @@ from retail_analytics.application.access_check import PUBLIC_DATASET
 from retail_analytics.application.discovery import (
     DEFAULT_MAX_STALE,
     DiscoveryService,
-    SourceMetadataProvider,
     SourceSchemaCache,
 )
+from retail_analytics.application.ports.discovery import SourceMetadataProvider
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 from retail_analytics.domain.logical_catalog import default_logical_catalog
 

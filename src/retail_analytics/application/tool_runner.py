@@ -37,18 +37,18 @@ from retail_analytics.application.authorization import (
     AccessResolver,
 )
 from retail_analytics.application.budgets import RunBudgets, budget_message
-from retail_analytics.application.investigations import RunPrincipals
-from retail_analytics.application.persistence import (
-    OperationRequest,
-    RunRepository,
-    ToolExecutionRepository,
-)
-from retail_analytics.application.progress import (
+from retail_analytics.application.contracts.persistence import OperationRequest
+from retail_analytics.application.contracts.progress import (
     EventKind,
-    ProgressSink,
     ProgressUpdate,
     ToolActivity,
 )
+from retail_analytics.application.ports.investigations import RunPrincipals
+from retail_analytics.application.ports.persistence import (
+    RunRepository,
+    ToolExecutionRepository,
+)
+from retail_analytics.application.ports.progress import ProgressSink
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     CapabilitySpec,

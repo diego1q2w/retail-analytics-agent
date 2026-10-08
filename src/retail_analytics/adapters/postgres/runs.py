@@ -21,7 +21,7 @@ from retail_analytics.adapters.postgres.sessions import (
     message_from_row,
     session_from_row,
 )
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.persistence import (
     ActiveRunExists,
     IdempotencyConflict,
     RecordNotFound,

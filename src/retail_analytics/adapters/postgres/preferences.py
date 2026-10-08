@@ -19,8 +19,8 @@ from retail_analytics.adapters.postgres.schema import (
     user_preferences,
 )
 from retail_analytics.application.authorization import AccessDenied
-from retail_analytics.application.persistence import RecordNotFound
-from retail_analytics.application.preferences import (
+from retail_analytics.application.contracts.persistence import RecordNotFound
+from retail_analytics.application.contracts.preferences import (
     ObservationResult,
     ResolveResult,
     SaveResult,

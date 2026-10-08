@@ -10,13 +10,16 @@ next tool check. Inaccessible and missing records raise the same
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass
-from typing import Protocol
-
 from retail_analytics.application.contracts import Correlation
-from retail_analytics.application.tools.context import ExecutionContext
-from retail_analytics.domain.access import ExecutiveAccess, Permission, Role
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.tools import ExecutionContext
+from retail_analytics.application.ports.authorization import (
+    ExecutiveDirectory,
+    OperationLookup,
+    RunLookup,
+    SessionLookup,
+)
+from retail_analytics.domain.access import ExecutiveAccess, Permission
 from retail_analytics.domain.conversation import Session
 from retail_analytics.domain.executions import ToolExecution
 from retail_analytics.domain.runs import Run
@@ -31,88 +34,10 @@ class AccessDenied(Exception):
         super().__init__(f"{kind} {key!r} is not available")
 
 
-@dataclass(frozen=True, slots=True)
-class Principal:
-    """An authenticated executive and the operations their token allows.
-
-    ``scopes`` is a ceiling, not a grant: effective permissions are the
-    executive's current server-side permissions intersected with it. A
-    principal may be stored with a run so retried activities can re-resolve
-    authority without the original token.
-    """
-
-    executive_id: str
-    scopes: frozenset[str]
-
-    def __post_init__(self) -> None:
-        if not self.executive_id:
-            raise ValueError("executive_id is required")
-
-
-class ExecutiveDirectory(Protocol):
-    """Read side: current authority of executives."""
-
-    async def find_by_subject(
-        self, issuer: str, subject: str
-    ) -> ExecutiveAccess | None: ...
-
-    async def get(self, executive_id: str) -> ExecutiveAccess | None: ...
-
-
-@dataclass(frozen=True, slots=True)
-class ExecutiveRegistration:
-    executive_id: str
-    issuer: str
-    subject: str
-    roles: frozenset[Role]
-    # Non-identifying label for operators, e.g. "Demo executive A".
-    label: str
-
-    def __post_init__(self) -> None:
-        if not (self.executive_id and self.issuer and self.subject):
-            raise ValueError("executive_id, issuer and subject are required")
-        if not 0 < len(self.label) <= 120:
-            raise ValueError("label must be 1-120 characters")
-
-
-class AccessAdministration(Protocol):
-    """Write side, for trusted operator paths only (never a model tool).
-
-    Every effective change increments the executive's authorization version
-    in the same transaction; a repeated identical request changes nothing.
-    """
-
-    async def register_executive(
-        self, registration: ExecutiveRegistration
-    ) -> ExecutiveAccess:
-        """Create, or update roles/label of the same identity."""
-        ...
-
-    async def replace_products(
-        self, executive_id: str, product_ids: Iterable[str]
-    ) -> ExecutiveAccess:
-        """Make the given set the executive's complete product entitlement."""
-        ...
-
-    async def set_active(self, executive_id: str, active: bool) -> ExecutiveAccess: ...
-
-
 def require_owner(kind: str, key: str, owner_id: str, executive_id: str) -> None:
     """Reusable ownership rule for any owned record (sessions, reports, ...)."""
     if not executive_id or owner_id != executive_id:
         raise AccessDenied(kind, key)
-
-
-class SessionLookup(Protocol):
-    async def get_session(self, session_id: str) -> Session | None: ...
-
-
-class RunLookup(Protocol):
-    async def get_run(self, run_id: str) -> Run | None: ...
-
-
-class OperationLookup(Protocol):
-    async def get(self, operation_id: str) -> ToolExecution | None: ...
 
 
 class OwnershipGuard:

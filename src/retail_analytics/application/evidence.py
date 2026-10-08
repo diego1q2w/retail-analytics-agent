@@ -23,15 +23,27 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import ClassVar, Protocol
+from typing import ClassVar
 
 from retail_analytics.application.authorization import AccessDenied
-from retail_analytics.application.query_compiler import CompiledQuery, QueryParameter
-from retail_analytics.application.result_privacy import ReleasedResult
-from retail_analytics.application.tools.context import (
+from retail_analytics.application.contracts.evidence import (
+    DEFAULT_CANDIDATE_LIMIT,
+    NewEvidence,
+    StoredEvidence,
+)
+from retail_analytics.application.contracts.query_compiler import (
+    CompiledQuery,
+    QueryParameter,
+)
+from retail_analytics.application.contracts.tools import (
     ExecutionContext,
     OperationContext,
 )
+from retail_analytics.application.ports.evidence import (
+    EvidencePins,
+    EvidenceRepository,
+)
+from retail_analytics.application.result_privacy import ReleasedResult
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.context import EvidenceStanding
 from retail_analytics.domain.evidence import (
@@ -61,90 +73,6 @@ from retail_analytics.domain.evidence import (
     snapshot,
 )
 from retail_analytics.domain.periods import DEFAULT_TIME_ZONE, DateWindow
-
-DEFAULT_CANDIDATE_LIMIT = 20
-
-
-@dataclass(frozen=True, slots=True)
-class StoredEvidence:
-    evidence: Evidence
-    invalidated: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class NewEvidence:
-    """A record to store. The repository assigns lineage and version."""
-
-    evidence_id: str
-    executive_id: str
-    session_id: str
-    run_id: str
-    operation_id: str
-    authority: AuthorityStamp
-    content: EvidenceContent
-    computed_at: datetime
-    content_digest: str
-    # Earlier evidence this one refreshes: same lineage, next version.
-    refreshes: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class RunEvidenceLink:
-    run_id: str
-    evidence_id: str
-    use: EvidenceUse
-    linked_at: datetime
-
-
-class EvidenceRepository(Protocol):
-    """Immutable evidence records and which runs used them."""
-
-    async def record(self, new: NewEvidence) -> Evidence:
-        """Store once per operation and link it to its run as produced.
-
-        Repeating the same operation with the same content returns the stored
-        record; different content raises ``IdempotencyConflict``. A refresh of
-        evidence owned by someone else, or in another session, raises
-        ``AccessDenied``.
-        """
-        ...
-
-    async def get(self, evidence_id: str) -> StoredEvidence | None: ...
-
-    async def candidates(
-        self,
-        executive_id: str,
-        session_id: str,
-        *,
-        subject_key: str | None = None,
-        limit: int = DEFAULT_CANDIDATE_LIMIT,
-    ) -> Sequence[StoredEvidence]:
-        """The executive's evidence in that session, newest computation first."""
-        ...
-
-    async def link_run(self, run_id: str, evidence_id: str, use: EvidenceUse) -> None:
-        """Record that a run used the evidence (repeating is a no-op)."""
-        ...
-
-    async def for_run(self, run_id: str) -> Sequence[RunEvidenceLink]: ...
-
-
-class EvidencePins(Protocol):
-    """Retention holds, e.g. a saved report keeping its supporting snapshots."""
-
-    async def pin(
-        self, executive_id: str, evidence_ids: Sequence[str], holder: PinHolder
-    ) -> None:
-        """Pin all or nothing; any unknown or not-owned ID raises AccessDenied."""
-        ...
-
-    async def unpin(self, holder: PinHolder) -> int:
-        """Release every pin of the holder; returns how many were removed."""
-        ...
-
-    async def holders(self, evidence_id: str) -> tuple[PinHolder, ...]: ...
-
-    async def pinned(self, holder: PinHolder) -> tuple[str, ...]: ...
 
 
 class EvidenceRejected(Exception):

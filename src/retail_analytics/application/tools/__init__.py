@@ -1,6 +1,6 @@
 """Typed tool contracts, trusted execution context, registry and gateway."""
 
-from retail_analytics.application.tools.context import (
+from retail_analytics.application.contracts.tools import (
     ExecutionContext,
     OperationContext,
 )

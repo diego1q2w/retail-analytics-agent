@@ -25,13 +25,13 @@ from retail_analytics.adapters.postgres.schema import (
     run_evidence,
 )
 from retail_analytics.application.authorization import AccessDenied
-from retail_analytics.application.evidence import (
+from retail_analytics.application.contracts.evidence import (
     DEFAULT_CANDIDATE_LIMIT,
     NewEvidence,
     RunEvidenceLink,
     StoredEvidence,
 )
-from retail_analytics.application.persistence import IdempotencyConflict
+from retail_analytics.application.contracts.persistence import IdempotencyConflict
 from retail_analytics.domain.evidence import (
     AuthorityStamp,
     Evidence,

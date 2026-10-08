@@ -21,10 +21,10 @@ from datetime import timedelta
 
 import click
 
-from retail_analytics.application.authorization import (
+from retail_analytics.application.contracts.authorization import ExecutiveRegistration
+from retail_analytics.application.ports.authorization import (
     AccessAdministration,
     ExecutiveDirectory,
-    ExecutiveRegistration,
 )
 from retail_analytics.bootstrap.access import local_token_authority
 from retail_analytics.bootstrap.config import (

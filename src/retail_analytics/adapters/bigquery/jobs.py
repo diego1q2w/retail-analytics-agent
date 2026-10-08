@@ -25,16 +25,18 @@ from google.auth import exceptions as auth_exceptions
 from google.cloud import bigquery
 
 from retail_analytics.adapters.google_access import create_bigquery_client
-from retail_analytics.application.query_compiler import QueryParameter
-from retail_analytics.application.result_privacy import QueryRows
-from retail_analytics.application.warehouse_jobs import (
-    FINGERPRINT_LABEL,
-    JobAlreadyExists,
+from retail_analytics.application.contracts.query_compiler import QueryParameter
+from retail_analytics.application.contracts.result_privacy import QueryRows
+from retail_analytics.application.contracts.warehouse_jobs import (
     JobRef,
     JobSnapshot,
     JobState,
     JobStatistics,
     JobSubmission,
+)
+from retail_analytics.application.warehouse_jobs import (
+    FINGERPRINT_LABEL,
+    JobAlreadyExists,
     SubmissionRejected,
     WarehouseUnavailable,
     sanitize_reason,

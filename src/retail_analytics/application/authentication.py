@@ -8,12 +8,11 @@ with the token, or a subject with no active executive, fails authentication.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
 
-from retail_analytics.application.authorization import ExecutiveDirectory, Principal
+from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.ports.authentication import TokenVerifier
+from retail_analytics.application.ports.authorization import ExecutiveDirectory
 
 
 class AuthFailure(StrEnum):
@@ -38,23 +37,6 @@ class AuthenticationFailed(Exception):
     def __init__(self, reason: AuthFailure) -> None:
         self.reason = reason
         super().__init__(f"authentication failed: {reason.value}")
-
-
-@dataclass(frozen=True, slots=True)
-class VerifiedToken:
-    issuer: str
-    subject: str
-    scopes: frozenset[str]
-    expires_at: datetime
-
-
-class TokenVerifier(Protocol):
-    def verify(self, token: str) -> VerifiedToken:
-        """Check signature, issuer, audience and validity period.
-
-        Raises ``AuthenticationFailed``; never returns unverified claims.
-        """
-        ...
 
 
 class Authenticator:

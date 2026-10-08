@@ -12,9 +12,10 @@ from retail_analytics.application.access_check import PUBLIC_DATASET
 from retail_analytics.application.authorization import AccessResolver
 from retail_analytics.application.budgets import RunBudgets
 from retail_analytics.application.discovery import DiscoveryService
+from retail_analytics.application.ports.query_execution import QueryAdmission
+from retail_analytics.application.ports.warehouse_jobs import WarehouseQueryJobs
 from retail_analytics.application.query_execution import (
     FreshQueryAuthority,
-    QueryAdmission,
     QueryExecutionService,
     QueryExecutionSettings,
 )
@@ -22,7 +23,6 @@ from retail_analytics.application.result_privacy import (
     ResultLimits,
     ResultPrivacyBoundary,
 )
-from retail_analytics.application.warehouse_jobs import WarehouseQueryJobs
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 from retail_analytics.bootstrap.persistence import Persistence
 

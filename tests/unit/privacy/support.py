@@ -16,13 +16,13 @@ from retail_analytics.adapters.sql_compiler import (
     ReferenceKeyring,
     ScopedSqlglotCompilers,
 )
-from retail_analytics.application.query_compiler import (
+from retail_analytics.application.contracts.query_compiler import (
     AnalysisQuery,
     CompiledQuery,
     ScalarValue,
 )
+from retail_analytics.application.contracts.result_privacy import QueryRows
 from retail_analytics.application.result_privacy import (
-    QueryRows,
     ReleasedResult,
     ResultPrivacyBoundary,
 )

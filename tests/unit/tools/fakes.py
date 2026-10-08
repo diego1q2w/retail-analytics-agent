@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 from pydantic import Field, StringConstraints
 
 from retail_analytics.application.contracts import Correlation
-from retail_analytics.application.progress import ProgressUpdate
+from retail_analytics.application.contracts.progress import ProgressUpdate
 from retail_analytics.application.tools import (
     AuthorizationSpec,
     CapabilitySpec,

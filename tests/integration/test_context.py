@@ -11,22 +11,22 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 
-from retail_analytics.application.authorization import (
-    AccessDenied,
+from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.authorization import (
     ExecutiveRegistration,
     Principal,
 )
+from retail_analytics.application.contracts.persistence import (
+    IdempotencyConflict,
+    OperationRequest,
+    RunRequest,
+)
+from retail_analytics.application.contracts.tools import OperationContext
 from retail_analytics.application.output_privacy import (
     OutputDestination,
     OutputSection,
     OutputWithheld,
 )
-from retail_analytics.application.persistence import (
-    IdempotencyConflict,
-    OperationRequest,
-    RunRequest,
-)
-from retail_analytics.application.tools.context import OperationContext
 from retail_analytics.bootstrap.access import build_access
 from retail_analytics.bootstrap.context import ContextServices, build_context
 from retail_analytics.bootstrap.evidence import build_evidence

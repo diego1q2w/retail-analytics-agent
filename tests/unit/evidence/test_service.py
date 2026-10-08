@@ -9,13 +9,13 @@ from typing import Any
 import pytest
 
 from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.persistence import IdempotencyConflict
+from retail_analytics.application.contracts.query_compiler import CompiledQuery
 from retail_analytics.application.evidence import (
     EvidenceRejected,
     ReuseRequest,
     query_subject_key,
 )
-from retail_analytics.application.persistence import IdempotencyConflict
-from retail_analytics.application.query_compiler import CompiledQuery
 from retail_analytics.application.result_privacy import ReleasedResult
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.evidence import (

@@ -10,11 +10,11 @@ from types import MappingProxyType
 
 import pytest
 
-from retail_analytics.application.query_compiler import CompiledQuery
+from retail_analytics.application.contracts.query_compiler import CompiledQuery
+from retail_analytics.application.contracts.result_privacy import QueryRows
 from retail_analytics.application.result_privacy import (
     MASK,
     ColumnRole,
-    QueryRows,
     ReleasedResult,
     ResultLimits,
     ResultPrivacyBoundary,

@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime
 
-from retail_analytics.application.persistence import RecordNotFound
+from retail_analytics.application.contracts.persistence import RecordNotFound
 from retail_analytics.domain.budgets import Charge, ChargeKind, RunBudget, RunLimits
 
 

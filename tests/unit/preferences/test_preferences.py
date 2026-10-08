@@ -10,8 +10,8 @@ from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
     OwnershipGuard,
-    Principal,
 )
+from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.preferences import PreferenceAction, PreferenceService
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.errors import InvalidTransition

@@ -22,7 +22,7 @@ from retail_analytics.adapters.postgres.schema import (
     runs,
     tool_executions,
 )
-from retail_analytics.application.persistence import (
+from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
     OperationRequest,
     OperationStart,

@@ -1,17 +1,37 @@
-"""Ports the runner needs. The agent under test is just one implementation."""
-
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Protocol
-
-from retail_analytics.application.contracts import ContractModel, Identifier
-from retail_analytics.application.evaluation.manifest import (
-    Mode,
-    Scalar,
-    ScopeSpec,
-    Turn,
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import (
+    Annotated,
+    Any,
+    Literal,
 )
+
+from pydantic import Field
+
+from retail_analytics.application.contracts import (
+    ContractModel,
+    Identifier,
+)
+
+Mode = Literal["fixture", "live"]
+
+
+Scalar = bool | int | float | str | None
+
+
+class ScopeSpec(ContractModel):
+    """Who is asking and what they may see (synthetic references only)."""
+
+    executive_ref: Identifier
+    product_scope: tuple[Identifier, ...] = ()
+
+
+class Turn(ContractModel):
+    """One user message. Agent turns are produced by the target, not authored."""
+
+    text: Annotated[str, Field(min_length=1, max_length=8000)]
 
 
 class TargetUnavailable(Exception):
@@ -45,27 +65,15 @@ class TargetObservation(ContractModel):
     measurements: Mapping[Identifier, float] = {}
 
 
-class EvaluationTarget(Protocol):
-    target_id: str
-
-    def run(self, case: ScenarioInput) -> TargetObservation: ...
-
-
 class JudgeScoreOut(ContractModel):
     dimension: Identifier
     score: float
     evidence_refs: tuple[Identifier, ...] = ()
 
 
-class JudgeScorer(Protocol):
-    """One judge model applying one versioned rubric to one evidence packet."""
-
-    judge_id: str
-
-    def score(
-        self,
-        case: ScenarioInput,
-        observation: TargetObservation,
-        rubric_id: str,
-        dimensions: Sequence[str],
-    ) -> Sequence[JudgeScoreOut]: ...
+@dataclass(frozen=True)
+class EngineResult:
+    row: Mapping[str, Any]
+    bytes_processed: int = 0
+    bytes_billed: int = 0
+    job_id: str = ""
