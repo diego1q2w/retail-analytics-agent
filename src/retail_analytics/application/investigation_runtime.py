@@ -30,6 +30,8 @@ it at the next safe boundary.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -178,6 +180,8 @@ class ModelStep:
 
     instructions: str
     tools: frozenset[str]
+    history_key: str
+    evidence_versions: tuple[tuple[str, int], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,6 +334,22 @@ class InvestigationRuntime:
                 [INVESTIGATION_POLICY, _budget_line(snapshot), built.render()]
             ),
             tools=tools,
+            history_key=hashlib.sha256(
+                json.dumps(
+                    [
+                        run_id,
+                        built.authorization_version,
+                        built.request,
+                        built.preferences,
+                        str(built.topic_reset_at),
+                        [(m.role.value, m.text) for m in built.history],
+                    ],
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest(),
+            evidence_versions=tuple(
+                (digest.evidence_id, digest.version) for digest in built.evidence
+            ),
         )
 
     async def catalog(self, run_id: str) -> tuple[ToolDescriptor, ...]:

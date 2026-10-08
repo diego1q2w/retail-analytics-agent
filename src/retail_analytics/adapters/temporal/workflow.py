@@ -22,6 +22,7 @@ with workflow.unsafe.imports_passed_through():
         AnswerOutput,
         InvestigationDeps,
         investigation_agent,
+        is_context_changed,
         is_run_stopped,
     )
     from retail_analytics.application.investigation_runtime import (
@@ -147,6 +148,10 @@ class InvestigationWorkflow(PydanticAIWorkflow):
             try:
                 result = await task
             except (ActivityError, AgentRunError) as error:
+                if is_context_changed(error):
+                    # Durable run budgets and tool effects survive this fresh
+                    # conversation; unsafe provider history does not.
+                    continue
                 stopped = is_run_stopped(error)
                 if stopped and stopped[0] == StopReason.CANCELLED.value:
                     self._cancelled = True

@@ -194,6 +194,12 @@ async def test_worker_kill_after_committed_effect_resumes_once_and_replays(
                 await asyncio.sleep(0.1)
         before = await env.model_requests(run_id)
         env.stop(process)
+        await env.services.control.steer(
+            env.principal,
+            run_id=run_id,
+            text="Use annual sales.",
+            submission_key="restart-with-new-context",
+        )
         replacement = env.worker(stack)
         await env.wait_status(run_id, RunStatus.COMPLETED, 90)
         operations = await env.db.tool_executions.for_run(run_id)
@@ -210,6 +216,7 @@ async def test_worker_kill_after_committed_effect_resumes_once_and_replays(
         handle = env.client.get_workflow_handle(env.scheduler.workflow_id(run_id))
         assert await handle.result() == "closed"
         history = await handle.fetch_history()
+        assert "InvestigationContextChanged" in str(history)
         await Replayer(
             workflows=[InvestigationWorkflow], plugins=[PydanticAIPlugin()]
         ).replay_workflow(history)

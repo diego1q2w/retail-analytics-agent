@@ -63,6 +63,8 @@ from retail_analytics.application.tools import ToolDescriptor, ToolResult
 AGENT_NAME = "investigator"
 TOOLSET_ID = "catalog"
 RUN_STOPPED = "RunStopped"
+CONTEXT_CHANGED = "InvestigationContextChanged"
+_HISTORY_PROVENANCE = "retail_context"
 MAX_ANSWER_CHARS = 20_000
 
 # Activity limits. A worker that dies is detected by the heartbeat timeout and
@@ -195,6 +197,30 @@ class GuardedModel(Model):
         deps = _deps()
         try:
             step = await services.steps.prepare_model_step(deps.run_id)
+            provenance = {
+                "key": step.history_key,
+                "evidence": dict(step.evidence_versions),
+            }
+            for message in messages:
+                if not isinstance(message, ModelResponse):
+                    continue
+                previous = (message.metadata or {}).get(_HISTORY_PROVENANCE)
+                if (
+                    not isinstance(previous, dict)
+                    or previous.get("key") != step.history_key
+                    or not isinstance(previous.get("evidence"), dict)
+                    or any(
+                        dict(step.evidence_versions).get(key) != version
+                        for key, version in previous["evidence"].items()
+                    )
+                ):
+                    # Restart the agent loop; never replay derived claims or
+                    # tool arguments from a context that is no longer valid.
+                    raise ApplicationError(
+                        "investigation context changed",
+                        type=CONTEXT_CHANGED,
+                        non_retryable=True,
+                    )
             parameters = replace(
                 model_request_parameters,
                 function_tools=[
@@ -207,7 +233,11 @@ class GuardedModel(Model):
                 ModelRequest(parts=[SystemPromptPart(step.instructions)]),
                 *messages,
             ]
-            return await services.model.request(framed, model_settings, parameters)
+            response = await services.model.request(framed, model_settings, parameters)
+            return replace(
+                response,
+                metadata={**(response.metadata or {}), _HISTORY_PROVENANCE: provenance},
+            )
         except RunStopped as stopped:
             raise stopped_error(stopped) from None
 
@@ -349,3 +379,16 @@ def is_run_stopped(error: BaseException) -> tuple[str, str | None] | None:
         cause = getattr(current, "cause", None)
         current = cause if isinstance(cause, BaseException) else current.__cause__
     return None
+
+
+def is_context_changed(error: BaseException) -> bool:
+    """Recognize a context restart through Temporal and agent error wrappers."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ApplicationError) and current.type == CONTEXT_CHANGED:
+            return True
+        cause = getattr(current, "cause", None)
+        current = cause if isinstance(cause, BaseException) else current.__cause__
+    return False

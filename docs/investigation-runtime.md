@@ -64,6 +64,15 @@ model messages, tool arguments and final drafts can still appear in the
 private Temporal history; its access controls and seven-day closed-history
 retention remain necessary. No public traces should copy that content.
 
+Each model response carries application-owned context provenance: a fingerprint
+of the authorization version, request, preferences and selected conversation,
+plus the evidence IDs and versions it saw. Before sending provider history,
+the next activity checks that provenance against freshly authorized context.
+Changed context, missing provenance or removed/revised evidence restarts the
+agent conversation without sending the old messages. New evidence can be added
+without a restart. The investigation keeps its durable budgets and operation
+records; a conversation restart does not grant extra budget or undo tool effects.
+
 Answer and clarification release use a fresh output privacy gate and evidence
 provenance. A stopped or revoked investigation cannot start new tool work.
 Provider requests reserve persistent budget before sending. A worker dying
