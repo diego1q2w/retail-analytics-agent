@@ -38,5 +38,21 @@
     "golden_seed_fixture_id": "golden-seed-fixture/1",
     "golden_seed_source": "retail_analytics.application.golden_seed_library.seed_library",
     "rule": "Golden seed questions, keys and fixture rows are training material. Held-out scenarios must never reuse them and are not used to tune prompts, retrieval or seeds."
+  },
+  "realdata": {
+    "manifest_id": "realdata-reference-conversations",
+    "manifest_path": "evaluation/realdata/manifest.json",
+    "data_ref": "thelook-realdata-extract-1",
+    "extract_dir": "evaluation/realdata/extract",
+    "id_prefix": "rd-",
+    "scenario_ids": [
+      "rd-l1-revenue-q3-customers",
+      "rd-l1-state-top3-q4",
+      "rd-l1-product-top3-q4",
+      "rd-l1-age-band-spend-q4",
+      "rd-l2-monthly-trend-h2",
+      "rd-l2-customer-concentration-report",
+      "rd-l2-category-change-report"
+    ]
   }
 }

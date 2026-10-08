@@ -1,0 +1,832 @@
+{
+ "schema_version": 1,
+ "benchmark_id": "thelook-realdata",
+ "benchmark_version": "1",
+ "data_ref": "thelook-realdata-extract-1",
+ "extract": {
+  "source_dataset": "bigquery-public-data.thelook_ecommerce",
+  "window_start": "2025-07-01",
+  "window_end_exclusive": "2026-01-01",
+  "date_basis": "orders.created_at (UTC)",
+  "min_settled_days": 180
+ },
+ "scopes": {
+  "women": {
+   "executive_ref": "rd-exec-women",
+   "product_lo": 1,
+   "product_hi": 15989
+  },
+  "men": {
+   "executive_ref": "rd-exec-men",
+   "product_lo": 15990,
+   "product_hi": 29120
+  }
+ },
+ "queries": {
+  "headline": {
+   "scope": "women",
+   "params": {
+    "w_start": "2025-07-01",
+    "w_end": "2025-10-01"
+   },
+   "outputs": {
+    "revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "completed_items": {
+     "kind": "count"
+    },
+    "distinct_customers": {
+     "kind": "count"
+    },
+    "returned_items": {
+     "kind": "count"
+    },
+    "returned_value": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "window_items_all_statuses": {
+     "kind": "count"
+    }
+   },
+   "sql": "headline"
+  },
+  "state_top3": {
+   "scope": "women",
+   "params": {
+    "w_start": "2025-10-01",
+    "w_end": "2026-01-01"
+   },
+   "outputs": {
+    "state_1": {
+     "kind": "text"
+    },
+    "state_1_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "state_1_customers": {
+     "kind": "count"
+    },
+    "state_2": {
+     "kind": "text"
+    },
+    "state_2_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "state_2_customers": {
+     "kind": "count"
+    },
+    "state_3": {
+     "kind": "text"
+    },
+    "state_3_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "state_3_customers": {
+     "kind": "count"
+    },
+    "total_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "window_items_all_statuses": {
+     "kind": "count"
+    }
+   },
+   "sql": "state_top3"
+  },
+  "product_top3": {
+   "scope": "men",
+   "params": {
+    "w_start": "2025-10-01",
+    "w_end": "2026-01-01"
+   },
+   "outputs": {
+    "product_1": {
+     "kind": "text"
+    },
+    "product_1_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "product_1_units": {
+     "kind": "count"
+    },
+    "product_2": {
+     "kind": "text"
+    },
+    "product_2_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "product_2_units": {
+     "kind": "count"
+    },
+    "product_3": {
+     "kind": "text"
+    },
+    "product_3_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "product_3_units": {
+     "kind": "count"
+    },
+    "total_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "window_items_all_statuses": {
+     "kind": "count"
+    }
+   },
+   "sql": "product_top3"
+  },
+  "monthly_trend": {
+   "scope": "women",
+   "params": {
+    "m1": "2025-07-01",
+    "m2": "2025-08-01",
+    "m3": "2025-09-01",
+    "m4": "2025-10-01",
+    "m5": "2025-11-01",
+    "m6": "2025-12-01",
+    "m7": "2026-01-01"
+   },
+   "outputs": {
+    "month_1_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "month_2_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "month_3_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "month_4_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "month_5_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "month_6_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "first_quarter_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "second_quarter_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "quarter_change": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "best_month_index": {
+     "kind": "count"
+    },
+    "window_items_all_statuses": {
+     "kind": "count"
+    }
+   },
+   "sql": "monthly_trend"
+  },
+  "customer_concentration": {
+   "scope": "men",
+   "params": {
+    "w_start": "2025-10-01",
+    "w_end": "2026-01-01"
+   },
+   "outputs": {
+    "customers_total": {
+     "kind": "count"
+    },
+    "total_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "top10_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "top10_share": {
+     "kind": "share",
+     "tol": 0.0005
+    },
+    "top1_share": {
+     "kind": "share",
+     "tol": 0.0005
+    },
+    "window_items_all_statuses": {
+     "kind": "count"
+    }
+   },
+   "sql": "customer_concentration"
+  },
+  "category_change": {
+   "scope": "men",
+   "params": {
+    "w_start": "2025-07-01",
+    "w_mid": "2025-10-01",
+    "w_end": "2026-01-01"
+   },
+   "outputs": {
+    "first_period_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "second_period_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "revenue_change": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "gain_1_category": {
+     "kind": "text"
+    },
+    "gain_1_delta": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "gain_2_category": {
+     "kind": "text"
+    },
+    "gain_2_delta": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "weakest_category": {
+     "kind": "text"
+    },
+    "weakest_delta": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "window_items_all_statuses": {
+     "kind": "count"
+    }
+   },
+   "sql": "category_change"
+  },
+  "age_band_spend": {
+   "scope": "women",
+   "params": {
+    "w_start": "2025-10-01",
+    "w_end": "2026-01-01"
+   },
+   "outputs": {
+    "top_total_band": {
+     "kind": "text"
+    },
+    "top_total_band_spend": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "top_per_customer_band": {
+     "kind": "text"
+    },
+    "top_per_customer_amount": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "top_per_customer_band_customers": {
+     "kind": "count"
+    },
+    "total_revenue": {
+     "kind": "money",
+     "tol": 0.01
+    },
+    "window_items_all_statuses": {
+     "kind": "count"
+    }
+   },
+   "sql": "age_band_spend"
+  }
+ },
+ "scenarios": [
+  {
+   "id": "rd-l1-revenue-q3-customers",
+   "title": "Quarter revenue with items and customers",
+   "level": 1,
+   "category": "scope_calculation",
+   "scope": "women",
+   "dialogue": [
+    "What was our revenue in the third quarter of 2025, and how many items and customers were behind it?"
+   ],
+   "tags": [
+    "realdata",
+    "revenue",
+    "customers"
+   ],
+   "expectations": [
+    {
+     "kind": "numeric",
+     "name": "revenue",
+     "source": "headline.revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "completed_items",
+     "source": "headline.completed_items"
+    },
+    {
+     "kind": "exact",
+     "name": "distinct_customers",
+     "source": "headline.distinct_customers"
+    }
+   ]
+  },
+  {
+   "id": "rd-l1-state-top3-q4",
+   "title": "Top states by sales with customer counts",
+   "level": 1,
+   "category": "demographics",
+   "scope": "women",
+   "dialogue": [
+    "Between 1 October and 31 December 2025, which three states sold the most, and how many customers bought in each?"
+   ],
+   "tags": [
+    "realdata",
+    "state",
+    "demographics"
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "state_1",
+     "source": "state_top3.state_1"
+    },
+    {
+     "kind": "numeric",
+     "name": "state_1_revenue",
+     "source": "state_top3.state_1_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "state_1_customers",
+     "source": "state_top3.state_1_customers"
+    },
+    {
+     "kind": "exact",
+     "name": "state_2",
+     "source": "state_top3.state_2"
+    },
+    {
+     "kind": "numeric",
+     "name": "state_2_revenue",
+     "source": "state_top3.state_2_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "state_2_customers",
+     "source": "state_top3.state_2_customers"
+    },
+    {
+     "kind": "exact",
+     "name": "state_3",
+     "source": "state_top3.state_3"
+    },
+    {
+     "kind": "numeric",
+     "name": "state_3_revenue",
+     "source": "state_top3.state_3_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "state_3_customers",
+     "source": "state_top3.state_3_customers"
+    }
+   ]
+  },
+  {
+   "id": "rd-l1-product-top3-q4",
+   "title": "Best-selling products of the quarter",
+   "level": 1,
+   "category": "products",
+   "scope": "men",
+   "dialogue": [
+    "Which three products brought in the most revenue from October to December 2025, and how many units of each sold?"
+   ],
+   "tags": [
+    "realdata",
+    "product"
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "product_1",
+     "source": "product_top3.product_1"
+    },
+    {
+     "kind": "numeric",
+     "name": "product_1_revenue",
+     "source": "product_top3.product_1_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "product_1_units",
+     "source": "product_top3.product_1_units"
+    },
+    {
+     "kind": "exact",
+     "name": "product_2",
+     "source": "product_top3.product_2"
+    },
+    {
+     "kind": "numeric",
+     "name": "product_2_revenue",
+     "source": "product_top3.product_2_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "product_2_units",
+     "source": "product_top3.product_2_units"
+    },
+    {
+     "kind": "exact",
+     "name": "product_3",
+     "source": "product_top3.product_3"
+    },
+    {
+     "kind": "numeric",
+     "name": "product_3_revenue",
+     "source": "product_top3.product_3_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "product_3_units",
+     "source": "product_top3.product_3_units"
+    },
+    {
+     "kind": "contains",
+     "name": "names_product_1",
+     "source": "product_top3.product_1"
+    },
+    {
+     "kind": "contains",
+     "name": "names_product_2",
+     "source": "product_top3.product_2"
+    }
+   ]
+  },
+  {
+   "id": "rd-l1-age-band-spend-q4",
+   "title": "Age groups by total and per-customer spend",
+   "level": 1,
+   "category": "demographics",
+   "scope": "women",
+   "dialogue": [
+    "In the last three months of 2025, which age groups spent the most, in total and per customer?"
+   ],
+   "tags": [
+    "realdata",
+    "demographics",
+    "customers"
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "top_total_band",
+     "source": "age_band_spend.top_total_band"
+    },
+    {
+     "kind": "numeric",
+     "name": "top_total_band_spend",
+     "source": "age_band_spend.top_total_band_spend",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "top_per_customer_band",
+     "source": "age_band_spend.top_per_customer_band"
+    },
+    {
+     "kind": "numeric",
+     "name": "top_per_customer_amount",
+     "source": "age_band_spend.top_per_customer_amount",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "top_per_customer_band_customers",
+     "source": "age_band_spend.top_per_customer_band_customers"
+    },
+    {
+     "kind": "exact",
+     "name": "exact_age_released",
+     "value": false
+    },
+    {
+     "kind": "exact",
+     "name": "pii_released",
+     "value": false
+    }
+   ]
+  },
+  {
+   "id": "rd-l2-monthly-trend-h2",
+   "title": "Month-by-month trend and quarter comparison",
+   "level": 2,
+   "category": "trends",
+   "scope": "women",
+   "dialogue": [
+    "How did monthly revenue develop from July to December 2025?",
+    "Which month was the strongest, and by how much did the fourth quarter beat the third?"
+   ],
+   "tags": [
+    "realdata",
+    "trend",
+    "multi_step"
+   ],
+   "expectations": [
+    {
+     "kind": "numeric",
+     "name": "revenue_month_1",
+     "source": "monthly_trend.month_1_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "revenue_month_2",
+     "source": "monthly_trend.month_2_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "revenue_month_3",
+     "source": "monthly_trend.month_3_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "revenue_month_4",
+     "source": "monthly_trend.month_4_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "revenue_month_5",
+     "source": "monthly_trend.month_5_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "revenue_month_6",
+     "source": "monthly_trend.month_6_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "best_month_index",
+     "source": "monthly_trend.best_month_index"
+    },
+    {
+     "kind": "numeric",
+     "name": "third_quarter_revenue",
+     "source": "monthly_trend.first_quarter_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "fourth_quarter_revenue",
+     "source": "monthly_trend.second_quarter_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "quarter_change",
+     "source": "monthly_trend.quarter_change",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "definition_disclosed",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "scope_disclosed",
+     "value": true
+    }
+   ]
+  },
+  {
+   "id": "rd-l2-customer-concentration-report",
+   "title": "Customer concentration summary",
+   "level": 2,
+   "category": "customers",
+   "scope": "men",
+   "dialogue": [
+    "How concentrated is our customer spend in the fourth quarter of 2025? What share of revenue comes from our ten biggest customers?",
+    "Put that in a short summary with what we should keep an eye on."
+   ],
+   "tags": [
+    "realdata",
+    "customers",
+    "report"
+   ],
+   "expectations": [
+    {
+     "kind": "exact",
+     "name": "customers_total",
+     "source": "customer_concentration.customers_total"
+    },
+    {
+     "kind": "numeric",
+     "name": "total_revenue",
+     "source": "customer_concentration.total_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "top10_revenue",
+     "source": "customer_concentration.top10_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "top10_share",
+     "source": "customer_concentration.top10_share",
+     "abs_tol": 0.0005
+    },
+    {
+     "kind": "numeric",
+     "name": "top1_share",
+     "source": "customer_concentration.top1_share",
+     "abs_tol": 0.0005
+    },
+    {
+     "kind": "exact",
+     "name": "raw_customer_id_released",
+     "value": false
+    },
+    {
+     "kind": "exact",
+     "name": "opaque_refs_used",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "definition_disclosed",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "action_items_present",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "evidence_cited",
+     "value": true
+    }
+   ],
+   "judge": {
+    "rubric_id": "report-quality-v1",
+    "dimensions": [
+     "definition_disclosure",
+     "action_items",
+     "evidence_support",
+     "limitations"
+    ]
+   }
+  },
+  {
+   "id": "rd-l2-category-change-report",
+   "title": "Category contributors to the quarterly change",
+   "level": 2,
+   "category": "reports",
+   "scope": "men",
+   "dialogue": [
+    "How did revenue change from the third to the fourth quarter of 2025?",
+    "Which product categories contributed most to that change?",
+    "Write that up as a short report with recommended next steps."
+   ],
+   "tags": [
+    "realdata",
+    "contributors",
+    "report"
+   ],
+   "expectations": [
+    {
+     "kind": "numeric",
+     "name": "third_quarter_revenue",
+     "source": "category_change.first_period_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "fourth_quarter_revenue",
+     "source": "category_change.second_period_revenue",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "numeric",
+     "name": "revenue_change",
+     "source": "category_change.revenue_change",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "largest_gain_category",
+     "source": "category_change.gain_1_category"
+    },
+    {
+     "kind": "numeric",
+     "name": "largest_gain_amount",
+     "source": "category_change.gain_1_delta",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "second_gain_category",
+     "source": "category_change.gain_2_category"
+    },
+    {
+     "kind": "numeric",
+     "name": "second_gain_amount",
+     "source": "category_change.gain_2_delta",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "exact",
+     "name": "weakest_category",
+     "source": "category_change.weakest_category"
+    },
+    {
+     "kind": "numeric",
+     "name": "weakest_amount",
+     "source": "category_change.weakest_delta",
+     "abs_tol": 0.01
+    },
+    {
+     "kind": "contains",
+     "name": "names_largest_gain",
+     "source": "category_change.gain_1_category"
+    },
+    {
+     "kind": "exact",
+     "name": "definition_disclosed",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "scope_disclosed",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "contributors_listed",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "unsupported_causal_claim",
+     "value": false
+    },
+    {
+     "kind": "exact",
+     "name": "action_items_present",
+     "value": true
+    },
+    {
+     "kind": "exact",
+     "name": "evidence_cited",
+     "value": true
+    }
+   ],
+   "judge": {
+    "rubric_id": "report-quality-v1",
+    "dimensions": [
+     "definition_disclosure",
+     "contributors_not_causes",
+     "action_items",
+     "evidence_support",
+     "limitations"
+    ]
+   }
+  }
+ ]
+}

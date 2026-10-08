@@ -1,0 +1,94 @@
+{
+ "data_ref": "thelook-realdata-extract-1",
+ "date_basis": "orders.created_at (UTC)",
+ "extract_digest": "8ba6e7f4060217811b81bfe8cb33fb19fe8723dda6e141dae9f853e8cbaaa382",
+ "extract_version": "1",
+ "extracted_at": "2026-10-08T17:04:37Z",
+ "extractor": "retail_analytics.bootstrap.realdata_benchmark/1",
+ "files": [
+  {
+   "path": "extract/orders.csv.gz",
+   "rows": 16022,
+   "sha256": "d8e043396d4964a5fcc5a6e9e8fd6fed4f672b0318e7cb270a4250c0a2178d7c",
+   "table": "orders"
+  },
+  {
+   "path": "extract/order_items.csv.gz",
+   "rows": 23208,
+   "sha256": "a2ce59736780ab71566ebe4ea15b4461e83ad8b7460a90e6a0af7dcdd6ababd8",
+   "table": "order_items"
+  },
+  {
+   "path": "extract/users.csv.gz",
+   "rows": 14496,
+   "sha256": "05d7c9794c1c4406b33449b9482d8d9378e20151f69bacc9a62f4c0723e591ca",
+   "table": "users"
+  },
+  {
+   "path": "extract/products.csv.gz",
+   "rows": 16027,
+   "sha256": "d42d6939438b9899c103c4c0e34ebd79d29cd5f30cbbeb56b17a4647a6f4e2ae",
+   "table": "products"
+  }
+ ],
+ "location": "US",
+ "queries": [
+  {
+   "bytes_billed": 10485760,
+   "bytes_processed": 2999688,
+   "fingerprint": "57a479d0e808d21b22a2de6e65d9ca70",
+   "job_id": "64d7056d-0df1-4104-917b-2f6783754e81",
+   "table": "orders"
+  },
+  {
+   "bytes_billed": 20971520,
+   "bytes_processed": 10653616,
+   "fingerprint": "0aa204d7f9cc01708d09f5b955cfb074",
+   "job_id": "1d0e501a-8630-4937-a783-e6b3da8f46d4",
+   "table": "order_items"
+  },
+  {
+   "bytes_billed": 20971520,
+   "bytes_processed": 4748170,
+   "fingerprint": "ba94793b6fddf356c8ffa40ab4fbb043",
+   "job_id": "03f23b35-4241-4aea-aef2-6f8d5e4507c0",
+   "table": "users"
+  },
+  {
+   "bytes_billed": 31457280,
+   "bytes_processed": 6968042,
+   "fingerprint": "d24f6887f23ee5130085101134a7d867",
+   "job_id": "3d0df35f-cd4d-4c67-a2dd-e6d6388c87ae",
+   "table": "products"
+  }
+ ],
+ "sanitization": [
+  "order, customer and item identifiers replaced by dense pseudonyms inside BigQuery",
+  "users.age reduced to the start of a 5-year band (top-coded at 90)",
+  "no name, e-mail, address, coordinate or traffic-source column selected",
+  "order timestamps truncated to whole seconds; sale_price rounded to 2 decimals",
+  "only orders created inside the window, with all of their items, are copied"
+ ],
+ "schema_version": 1,
+ "source_dataset": "bigquery-public-data.thelook_ecommerce",
+ "source_tables": {
+  "order_items": {
+   "modified": "2026-10-08T02:50:59.229000+00:00",
+   "num_rows": 181162
+  },
+  "orders": {
+   "modified": "2026-10-08T02:51:00.446000+00:00",
+   "num_rows": 124987
+  },
+  "products": {
+   "modified": "2026-10-08T02:50:58.933000+00:00",
+   "num_rows": 29120
+  },
+  "users": {
+   "modified": "2026-10-08T02:51:21.391000+00:00",
+   "num_rows": 100000
+  }
+ },
+ "window_end_exclusive": "2026-01-01",
+ "window_start": "2025-07-01"
+}

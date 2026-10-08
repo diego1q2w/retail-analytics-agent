@@ -1,0 +1,118 @@
+{
+ "computed_with": "duckdb over the frozen extract",
+ "data_ref": "thelook-realdata-extract-1",
+ "extract_digest": "8ba6e7f4060217811b81bfe8cb33fb19fe8723dda6e141dae9f853e8cbaaa382",
+ "queries": {
+  "age_band_spend": {
+   "crosscheck_fingerprint": "6660c53244f8c81e49989047091ee1c1",
+   "primary_fingerprint": "b3cb093775c3a5a5889d2c3183cd141e",
+   "values": {
+    "top_per_customer_amount": 104.56,
+    "top_per_customer_band": "55-59",
+    "top_per_customer_band_customers": 84,
+    "top_total_band": "65-69",
+    "top_total_band_spend": 9035.13,
+    "total_revenue": 87362.3,
+    "window_items_all_statuses": 6246
+   }
+  },
+  "category_change": {
+   "crosscheck_fingerprint": "e948b908346431324de8be5bfa1743bc",
+   "primary_fingerprint": "ea7633ac38f72dfd69d30e014fe3a645",
+   "values": {
+    "first_period_revenue": 89156.88,
+    "gain_1_category": "Tops & Tees",
+    "gain_1_delta": 2674.82,
+    "gain_2_category": "Fashion Hoodies & Sweatshirts",
+    "gain_2_delta": 996.25,
+    "revenue_change": -545.8,
+    "second_period_revenue": 88611.08,
+    "weakest_category": "Sweaters",
+    "weakest_delta": -2169.1,
+    "window_items_all_statuses": 11593
+   }
+  },
+  "customer_concentration": {
+   "crosscheck_fingerprint": "125111f7ab46fbad013f7fd7bfb5bddd",
+   "primary_fingerprint": "c221b9b91d093352624a84635ef0b60e",
+   "values": {
+    "customers_total": 1004,
+    "top10_revenue": 5756.37,
+    "top10_share": 0.065,
+    "top1_share": 0.0102,
+    "total_revenue": 88611.08,
+    "window_items_all_statuses": 6112
+   }
+  },
+  "headline": {
+   "crosscheck_fingerprint": "85411ab4cb0916dec03232f1037e2157",
+   "primary_fingerprint": "ad37904a24dc025b1eee9057891c65df",
+   "values": {
+    "completed_items": 1304,
+    "distinct_customers": 886,
+    "returned_items": 512,
+    "returned_value": 29726.1,
+    "revenue": 73164.81,
+    "window_items_all_statuses": 5369
+   }
+  },
+  "monthly_trend": {
+   "crosscheck_fingerprint": "d9a713663e38e847a65556a159c67399",
+   "primary_fingerprint": "dfbb82503ffb6ccd642478a0d0e385bc",
+   "values": {
+    "best_month_index": 5,
+    "first_quarter_revenue": 73164.81,
+    "month_1_revenue": 22767.75,
+    "month_2_revenue": 25291.09,
+    "month_3_revenue": 25105.97,
+    "month_4_revenue": 26653.78,
+    "month_5_revenue": 30722.31,
+    "month_6_revenue": 29986.21,
+    "quarter_change": 14197.49,
+    "second_quarter_revenue": 87362.3,
+    "window_items_all_statuses": 11615
+   }
+  },
+  "product_top3": {
+   "crosscheck_fingerprint": "7d32e1c4d42d9c11855b6761dfcedbcb",
+   "primary_fingerprint": "02f0731d36380ec6732b0d58fe1ae247",
+   "values": {
+    "product_1": "The North Face Apex Bionic Soft Shell Jacket - Men's",
+    "product_1_revenue": 903.0,
+    "product_1_units": 1,
+    "product_2": "Diesel Men's Lisardo Jacket",
+    "product_2_revenue": 758.0,
+    "product_2_units": 1,
+    "product_3": "Diesel Men's Lagnum Leather Jacket",
+    "product_3_revenue": 598.0,
+    "product_3_units": 1,
+    "total_revenue": 88611.08,
+    "window_items_all_statuses": 6112
+   }
+  },
+  "state_top3": {
+   "crosscheck_fingerprint": "780606fbdd96083d8025300fee53719b",
+   "primary_fingerprint": "07b8bf0b871133968b5fb7c195987dff",
+   "values": {
+    "state_1": "England",
+    "state_1_customers": 52,
+    "state_1_revenue": 4182.08,
+    "state_2": "Guangdong",
+    "state_2_customers": 42,
+    "state_2_revenue": 4174.63,
+    "state_3": "California",
+    "state_3_customers": 39,
+    "state_3_revenue": 3223.18,
+    "total_revenue": 87362.3,
+    "window_items_all_statuses": 6246
+   }
+  }
+ },
+ "review": {
+  "human_review": "pending: a named reviewer has not signed off the figures",
+  "independence": "no compiler, agent or metric-catalog code is involved",
+  "routes": "primary and crosscheck statements agree within tolerance"
+ },
+ "schema_version": 1,
+ "spec_digest": "d1af39422ff046564c05251d78aa9779f52a83852190068357a40e2561b326e7"
+}

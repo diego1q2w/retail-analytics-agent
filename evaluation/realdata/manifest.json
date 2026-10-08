@@ -1,0 +1,685 @@
+{
+ "manifest_id": "realdata-reference-conversations",
+ "manifest_version": "1.8ba6e7f4",
+ "scenarios": [
+  {
+   "category": "scope_calculation",
+   "dialogue": [
+    {
+     "text": "What was our revenue in the third quarter of 2025, and how many items and customers were behind it?"
+    }
+   ],
+   "expectations": [
+    {
+     "abs_tol": 0.01,
+     "expected": 73164.81,
+     "kind": "numeric",
+     "name": "revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 1304,
+     "kind": "exact",
+     "name": "completed_items"
+    },
+    {
+     "expected": 886,
+     "kind": "exact",
+     "name": "distinct_customers"
+    }
+   ],
+   "fixture_ref": "thelook-realdata-extract-1",
+   "id": "rd-l1-revenue-q3-customers",
+   "implementation_status": "implemented",
+   "importance": "threshold",
+   "judge": null,
+   "level": 1,
+   "mode": "fixture",
+   "requires": [
+    "agent_runtime",
+    "frozen_extract_source"
+   ],
+   "scope": {
+    "executive_ref": "rd-exec-women",
+    "product_scope": [
+     "products:1-15989"
+    ]
+   },
+   "tags": [
+    "customers",
+    "realdata",
+    "revenue"
+   ],
+   "title": "Quarter revenue with items and customers",
+   "verification": [
+    "deterministic"
+   ]
+  },
+  {
+   "category": "demographics",
+   "dialogue": [
+    {
+     "text": "Between 1 October and 31 December 2025, which three states sold the most, and how many customers bought in each?"
+    }
+   ],
+   "expectations": [
+    {
+     "expected": "England",
+     "kind": "exact",
+     "name": "state_1"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 4182.08,
+     "kind": "numeric",
+     "name": "state_1_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 52,
+     "kind": "exact",
+     "name": "state_1_customers"
+    },
+    {
+     "expected": "Guangdong",
+     "kind": "exact",
+     "name": "state_2"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 4174.63,
+     "kind": "numeric",
+     "name": "state_2_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 42,
+     "kind": "exact",
+     "name": "state_2_customers"
+    },
+    {
+     "expected": "California",
+     "kind": "exact",
+     "name": "state_3"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 3223.18,
+     "kind": "numeric",
+     "name": "state_3_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 39,
+     "kind": "exact",
+     "name": "state_3_customers"
+    }
+   ],
+   "fixture_ref": "thelook-realdata-extract-1",
+   "id": "rd-l1-state-top3-q4",
+   "implementation_status": "implemented",
+   "importance": "threshold",
+   "judge": null,
+   "level": 1,
+   "mode": "fixture",
+   "requires": [
+    "agent_runtime",
+    "frozen_extract_source"
+   ],
+   "scope": {
+    "executive_ref": "rd-exec-women",
+    "product_scope": [
+     "products:1-15989"
+    ]
+   },
+   "tags": [
+    "demographics",
+    "realdata",
+    "state"
+   ],
+   "title": "Top states by sales with customer counts",
+   "verification": [
+    "deterministic"
+   ]
+  },
+  {
+   "category": "products",
+   "dialogue": [
+    {
+     "text": "Which three products brought in the most revenue from October to December 2025, and how many units of each sold?"
+    }
+   ],
+   "expectations": [
+    {
+     "expected": "The North Face Apex Bionic Soft Shell Jacket - Men's",
+     "kind": "exact",
+     "name": "product_1"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 903.0,
+     "kind": "numeric",
+     "name": "product_1_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 1,
+     "kind": "exact",
+     "name": "product_1_units"
+    },
+    {
+     "expected": "Diesel Men's Lisardo Jacket",
+     "kind": "exact",
+     "name": "product_2"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 758.0,
+     "kind": "numeric",
+     "name": "product_2_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 1,
+     "kind": "exact",
+     "name": "product_2_units"
+    },
+    {
+     "expected": "Diesel Men's Lagnum Leather Jacket",
+     "kind": "exact",
+     "name": "product_3"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 598.0,
+     "kind": "numeric",
+     "name": "product_3_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 1,
+     "kind": "exact",
+     "name": "product_3_units"
+    },
+    {
+     "kind": "contains",
+     "name": "names_product_1",
+     "needle": "The North Face Apex Bionic Soft Shell Jacket - Men's"
+    },
+    {
+     "kind": "contains",
+     "name": "names_product_2",
+     "needle": "Diesel Men's Lisardo Jacket"
+    }
+   ],
+   "fixture_ref": "thelook-realdata-extract-1",
+   "id": "rd-l1-product-top3-q4",
+   "implementation_status": "implemented",
+   "importance": "threshold",
+   "judge": null,
+   "level": 1,
+   "mode": "fixture",
+   "requires": [
+    "agent_runtime",
+    "frozen_extract_source"
+   ],
+   "scope": {
+    "executive_ref": "rd-exec-men",
+    "product_scope": [
+     "products:15990-29120"
+    ]
+   },
+   "tags": [
+    "product",
+    "realdata"
+   ],
+   "title": "Best-selling products of the quarter",
+   "verification": [
+    "deterministic"
+   ]
+  },
+  {
+   "category": "demographics",
+   "dialogue": [
+    {
+     "text": "In the last three months of 2025, which age groups spent the most, in total and per customer?"
+    }
+   ],
+   "expectations": [
+    {
+     "expected": "65-69",
+     "kind": "exact",
+     "name": "top_total_band"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 9035.13,
+     "kind": "numeric",
+     "name": "top_total_band_spend",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": "55-59",
+     "kind": "exact",
+     "name": "top_per_customer_band"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 104.56,
+     "kind": "numeric",
+     "name": "top_per_customer_amount",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 84,
+     "kind": "exact",
+     "name": "top_per_customer_band_customers"
+    },
+    {
+     "expected": false,
+     "kind": "exact",
+     "name": "exact_age_released"
+    },
+    {
+     "expected": false,
+     "kind": "exact",
+     "name": "pii_released"
+    }
+   ],
+   "fixture_ref": "thelook-realdata-extract-1",
+   "id": "rd-l1-age-band-spend-q4",
+   "implementation_status": "implemented",
+   "importance": "threshold",
+   "judge": null,
+   "level": 1,
+   "mode": "fixture",
+   "requires": [
+    "agent_runtime",
+    "frozen_extract_source"
+   ],
+   "scope": {
+    "executive_ref": "rd-exec-women",
+    "product_scope": [
+     "products:1-15989"
+    ]
+   },
+   "tags": [
+    "customers",
+    "demographics",
+    "realdata"
+   ],
+   "title": "Age groups by total and per-customer spend",
+   "verification": [
+    "deterministic"
+   ]
+  },
+  {
+   "category": "trends",
+   "dialogue": [
+    {
+     "text": "How did monthly revenue develop from July to December 2025?"
+    },
+    {
+     "text": "Which month was the strongest, and by how much did the fourth quarter beat the third?"
+    }
+   ],
+   "expectations": [
+    {
+     "abs_tol": 0.01,
+     "expected": 22767.75,
+     "kind": "numeric",
+     "name": "revenue_month_1",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 25291.09,
+     "kind": "numeric",
+     "name": "revenue_month_2",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 25105.97,
+     "kind": "numeric",
+     "name": "revenue_month_3",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 26653.78,
+     "kind": "numeric",
+     "name": "revenue_month_4",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 30722.31,
+     "kind": "numeric",
+     "name": "revenue_month_5",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 29986.21,
+     "kind": "numeric",
+     "name": "revenue_month_6",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": 5,
+     "kind": "exact",
+     "name": "best_month_index"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 73164.81,
+     "kind": "numeric",
+     "name": "third_quarter_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 87362.3,
+     "kind": "numeric",
+     "name": "fourth_quarter_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 14197.49,
+     "kind": "numeric",
+     "name": "quarter_change",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "definition_disclosed"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "scope_disclosed"
+    }
+   ],
+   "fixture_ref": "thelook-realdata-extract-1",
+   "id": "rd-l2-monthly-trend-h2",
+   "implementation_status": "implemented",
+   "importance": "threshold",
+   "judge": null,
+   "level": 2,
+   "mode": "fixture",
+   "requires": [
+    "agent_runtime",
+    "frozen_extract_source"
+   ],
+   "scope": {
+    "executive_ref": "rd-exec-women",
+    "product_scope": [
+     "products:1-15989"
+    ]
+   },
+   "tags": [
+    "multi_step",
+    "realdata",
+    "trend"
+   ],
+   "title": "Month-by-month trend and quarter comparison",
+   "verification": [
+    "deterministic"
+   ]
+  },
+  {
+   "category": "customers",
+   "dialogue": [
+    {
+     "text": "How concentrated is our customer spend in the fourth quarter of 2025? What share of revenue comes from our ten biggest customers?"
+    },
+    {
+     "text": "Put that in a short summary with what we should keep an eye on."
+    }
+   ],
+   "expectations": [
+    {
+     "expected": 1004,
+     "kind": "exact",
+     "name": "customers_total"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 88611.08,
+     "kind": "numeric",
+     "name": "total_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 5756.37,
+     "kind": "numeric",
+     "name": "top10_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.0005,
+     "expected": 0.065,
+     "kind": "numeric",
+     "name": "top10_share",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.0005,
+     "expected": 0.0102,
+     "kind": "numeric",
+     "name": "top1_share",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": false,
+     "kind": "exact",
+     "name": "raw_customer_id_released"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "opaque_refs_used"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "definition_disclosed"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "action_items_present"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "evidence_cited"
+    }
+   ],
+   "fixture_ref": "thelook-realdata-extract-1",
+   "id": "rd-l2-customer-concentration-report",
+   "implementation_status": "implemented",
+   "importance": "threshold",
+   "judge": {
+    "dimensions": [
+     "definition_disclosure",
+     "action_items",
+     "evidence_support",
+     "limitations"
+    ],
+    "rubric_id": "report-quality-v1"
+   },
+   "level": 2,
+   "mode": "fixture",
+   "requires": [
+    "agent_runtime",
+    "frozen_extract_source"
+   ],
+   "scope": {
+    "executive_ref": "rd-exec-men",
+    "product_scope": [
+     "products:15990-29120"
+    ]
+   },
+   "tags": [
+    "customers",
+    "realdata",
+    "report"
+   ],
+   "title": "Customer concentration summary",
+   "verification": [
+    "deterministic",
+    "judge"
+   ]
+  },
+  {
+   "category": "reports",
+   "dialogue": [
+    {
+     "text": "How did revenue change from the third to the fourth quarter of 2025?"
+    },
+    {
+     "text": "Which product categories contributed most to that change?"
+    },
+    {
+     "text": "Write that up as a short report with recommended next steps."
+    }
+   ],
+   "expectations": [
+    {
+     "abs_tol": 0.01,
+     "expected": 89156.88,
+     "kind": "numeric",
+     "name": "third_quarter_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 88611.08,
+     "kind": "numeric",
+     "name": "fourth_quarter_revenue",
+     "rel_tol": 0.0
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": -545.8,
+     "kind": "numeric",
+     "name": "revenue_change",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": "Tops & Tees",
+     "kind": "exact",
+     "name": "largest_gain_category"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 2674.82,
+     "kind": "numeric",
+     "name": "largest_gain_amount",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": "Fashion Hoodies & Sweatshirts",
+     "kind": "exact",
+     "name": "second_gain_category"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": 996.25,
+     "kind": "numeric",
+     "name": "second_gain_amount",
+     "rel_tol": 0.0
+    },
+    {
+     "expected": "Sweaters",
+     "kind": "exact",
+     "name": "weakest_category"
+    },
+    {
+     "abs_tol": 0.01,
+     "expected": -2169.1,
+     "kind": "numeric",
+     "name": "weakest_amount",
+     "rel_tol": 0.0
+    },
+    {
+     "kind": "contains",
+     "name": "names_largest_gain",
+     "needle": "Tops & Tees"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "definition_disclosed"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "scope_disclosed"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "contributors_listed"
+    },
+    {
+     "expected": false,
+     "kind": "exact",
+     "name": "unsupported_causal_claim"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "action_items_present"
+    },
+    {
+     "expected": true,
+     "kind": "exact",
+     "name": "evidence_cited"
+    }
+   ],
+   "fixture_ref": "thelook-realdata-extract-1",
+   "id": "rd-l2-category-change-report",
+   "implementation_status": "implemented",
+   "importance": "threshold",
+   "judge": {
+    "dimensions": [
+     "definition_disclosure",
+     "contributors_not_causes",
+     "action_items",
+     "evidence_support",
+     "limitations"
+    ],
+    "rubric_id": "report-quality-v1"
+   },
+   "level": 2,
+   "mode": "fixture",
+   "requires": [
+    "agent_runtime",
+    "frozen_extract_source"
+   ],
+   "scope": {
+    "executive_ref": "rd-exec-men",
+    "product_scope": [
+     "products:15990-29120"
+    ]
+   },
+   "tags": [
+    "contributors",
+    "realdata",
+    "report"
+   ],
+   "title": "Category contributors to the quarterly change",
+   "verification": [
+    "deterministic",
+    "judge"
+   ]
+  }
+ ],
+ "schema_version": 1
+}
