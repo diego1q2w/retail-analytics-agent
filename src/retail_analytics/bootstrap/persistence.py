@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import sqlalchemy as sa
 
+from retail_analytics.adapters.postgres.budgets import PostgresRunBudgetStore
 from retail_analytics.adapters.postgres.database import (
     Clock,
     Database,
@@ -28,6 +29,7 @@ from retail_analytics.application.authorization import (
     AccessAdministration,
     ExecutiveDirectory,
 )
+from retail_analytics.application.budgets import RunBudgetStore
 from retail_analytics.application.persistence import (
     QueryJobRepository,
     RunEventStore,
@@ -52,6 +54,7 @@ class Persistence:
     preferences: PreferenceStore
     # Evidence records, pins and the preference FindingInvalidator in one store.
     evidence: PostgresEvidenceStore
+    budgets: RunBudgetStore
 
     def close(self) -> None:
         self.engine.dispose()
@@ -75,6 +78,7 @@ def build_persistence(
         access_admin=executives,
         preferences=PostgresPreferenceStore(db),
         evidence=PostgresEvidenceStore(db),
+        budgets=PostgresRunBudgetStore(db),
     )
 
 

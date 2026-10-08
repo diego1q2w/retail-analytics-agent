@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 import pytest
 from duckdb import DuckDBPyConnection as Connection
@@ -19,6 +20,7 @@ from retail_analytics.application.persistence import OperationRequest
 from retail_analytics.application.query_compiler import AnalysisQuery, CompiledQuery
 from retail_analytics.application.query_execution import (
     QUERY_CAPABILITY,
+    QueryAdmission,
     QueryAttempt,
     QueryCancelled,
     QueryExecutionService,
@@ -29,6 +31,7 @@ from retail_analytics.application.query_execution import (
     QueryOutcomeUnknown,
     QueryPending,
     QuerySucceeded,
+    QueryUsageRecorder,
     query_fingerprint,
 )
 from retail_analytics.application.result_privacy import (
@@ -54,6 +57,7 @@ from tests.unit.privacy.support import (
     released,
 )
 from tests.unit.query_execution.fakes import (
+    T0,
     CrashAfterSubmit,
     FakeAuthority,
     FakeWarehouse,
@@ -90,6 +94,9 @@ class FakeClock:
     def monotonic(self) -> float:
         return self.now
 
+    def wall(self) -> datetime:
+        return T0 + timedelta(seconds=self.now)
+
 
 @dataclass
 class RecordingAdmission:
@@ -122,7 +129,8 @@ class Harness:
         self.authority = FakeAuthority(EXEC_A, SCOPE_A)
         self.clock = FakeClock()
         self.settings = SETTINGS
-        self.admission: RecordingAdmission | None = None
+        self.admission: QueryAdmission | None = None
+        self.usage: QueryUsageRecorder | None = None
         self.limits: ResultLimits | None = None
 
     def service(self) -> QueryExecutionService:
@@ -136,8 +144,10 @@ class Harness:
             operations=self.operations,
             jobs=self.jobs,
             admission=self.admission,
+            usage=self.usage,
             sleep=self.clock.sleep,
             monotonic=self.clock.monotonic,
+            clock=self.clock.wall,
         )
 
     async def run(
@@ -585,12 +595,13 @@ async def test_dry_run_rejection_and_transient_failure(h: Harness) -> None:
 
 @pytest.mark.asyncio
 async def test_admission_seam_sees_estimate_and_can_refuse(h: Harness) -> None:
-    h.admission = RecordingAdmission(refuse=True)
+    admission = RecordingAdmission(refuse=True)
+    h.admission = admission
 
     outcome = failed(await h.run())
 
     assert outcome.code is ToolErrorCode.BUDGET_EXCEEDED
-    assert h.admission.calls == [(OP, 1, h.warehouse.estimated_bytes)]
+    assert admission.calls == [(OP, 1, h.warehouse.estimated_bytes)]
     assert h.jobs.rows == {}
 
 

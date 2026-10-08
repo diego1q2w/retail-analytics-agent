@@ -223,16 +223,44 @@ Tests: `tests/unit/privacy/` (end-to-end compiled queries over the DuckDB oracle
 
 ### Durable query execution
 
-`QueryExecutionService.execute(QueryAttempt(...))` (`application/query_execution.py`) runs one attempt of one query operation. The BigQuery adapter is `adapters/bigquery/jobs.py`, behind the SDK-free `WarehouseQueryJobs` port (`application/warehouse_jobs.py`). Wiring: `bootstrap.query.build_query_execution(settings, persistence, resolver, discovery, admission=None)`.
+`QueryExecutionService.execute(QueryAttempt(...))` (`application/query_execution.py`) runs one attempt of one query operation. The BigQuery adapter is `adapters/bigquery/jobs.py`, behind the SDK-free `WarehouseQueryJobs` port (`application/warehouse_jobs.py`). Wiring: `bootstrap.query.build_query_execution(settings, persistence, resolver, discovery, budgets=...)`.
 
 - **Fresh authority on every attempt.** Each attempt re-reads the executive's entitlements and catalog view and recompiles the model's query with them. Authority is read again right before rows pass `ResultPrivacyBoundary`. If access was revoked, nothing is released. If the scope changed while a job ran, that job is cancelled and its result is never used.
 - **Reference before submission.** The job ID is derived from the operation ID and a submission number (`domain.executions.query_job_id`). It is recorded in `query_executions` before the job is submitted. Every job carries the compiled `maximum_bytes_billed` and a statement fingerprint label. A dry run comes first: it validates the statement and estimates its bytes, and an estimate over the cap stops the query before any job exists.
 - **Reconcile first.** If a job reference exists, the attempt looks the job up before doing anything else. A lost submission response or a worker crash leads back to the same job. Resubmitting a recorded ID cannot create a second job, because BigQuery refuses the duplicate. A second job of the same operation is only submitted after the first one has ended with no result to release: a transient job failure, or authority that changed after submission.
 - **Outcomes** are `QuerySucceeded` (released rows plus job statistics), `QueryPending` (JOB_PENDING: the job is still running after the attempt's bounded wait), `QueryOutcomeUnknown` (reconcile before anything else), `QueryFailed` (an error code with `retryable`/`correctable`), and `QueryCancelled`. `cancel(run_id, operation_id)` requests BigQuery cancellation and reconciles it. Failure details are a fixed vocabulary. SQL and parameter values are never logged or persisted by this path. The statement itself stays in BigQuery's job metadata.
-- **Budgets and retry timing** (run limits, attempt counts, backoff, the query deadline) belong to the caller. `QueryAdmission.admit(...)` is called with the dry-run estimate before each new submission is recorded.
+- **Limits held by the operation record.** The operation gets a deadline when it is first recorded (`RETAIL_ANALYTICS_QUERY_DEADLINE_SECONDS`, default 120). Past it, the job is cancelled and reconciled. The operation then fails with `BUDGET_EXCEEDED`/`query_deadline`, and no result is released. While cancellation is still unconfirmed, `QueryFailed.stopping` names the job, and `reconcile_cancel` finishes it. The job also carries a BigQuery job timeout 30 seconds longer than the deadline, as a backstop if no worker is left. At most `RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS` (3) attempts may end in a transient failure, and at most that many jobs are submitted. The last allowed failure fails the operation with `retries_exhausted` instead of asking for a retry. Both counts come from the persisted history, so a restart cannot reset them.
+- **Run budgets** plug in through `QueryAdmission.admit(...)`. It is called with the dry-run estimate before each new submission is recorded. `QueryUsageRecorder.settle(...)` is called once a job has finished. Both are implemented by `RunBudgets` (see "Run budgets and recovery").
 - The source tables are public, so these credentials can read them directly. The application query path is the enforcement boundary, not IAM on the rows.
 
 Tests: `tests/unit/query_execution/` (fault injection with fakes: lost responses, crash after submit, slow jobs, missing jobs, quota and transient failures, revoked or changed access, cancellation; adapter request shape and error mapping) and `tests/live/test_query_execution_live.py` (tiny bounded queries, live reconciliation of a lost response, and a duplicate job ID refused by BigQuery).
+
+### Run budgets and recovery
+
+One investigation run has one persisted account (`run_budgets`, `budget_charges`; `domain/budgets.py`, `application/budgets.py`, `adapters/postgres/budgets.py`). Wiring: `bootstrap.budgets.build_run_budgets(settings, persistence.budgets)`, passed as `budgets=` to `build_query_execution`. Defaults (design section 39), all validated settings:
+
+| Limit | Setting | Default |
+| --- | --- | --- |
+| Active time (clarification waits excluded) | `RETAIL_ANALYTICS_RUN_ACTIVE_SECONDS` | 600 |
+| Provider requests, fallback included | `RETAIL_ANALYTICS_RUN_MAX_PROVIDER_REQUESTS` | 20 |
+| Input + output tokens | `RETAIL_ANALYTICS_RUN_MAX_TOKENS` | 100000 |
+| Query executions (job submissions) | `RETAIL_ANALYTICS_RUN_MAX_QUERIES` | 10 |
+| Bytes per query / per run | `RETAIL_ANALYTICS_QUERY_MAX_BYTES` / `RETAIL_ANALYTICS_RUN_MAX_BYTES` | 1 GiB / 5 GiB |
+| Reformulations per failed query | `RETAIL_ANALYTICS_QUERY_MAX_CORRECTIONS` | 2 |
+| Attempts that may fail transiently | `RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS` | 3 |
+| Backoff base / cap (seconds) | `RETAIL_ANALYTICS_RETRY_BASE_SECONDS` / `RETAIL_ANALYTICS_RETRY_MAX_SECONDS` | 1 / 20 |
+| Query deadline (seconds) | `RETAIL_ANALYTICS_QUERY_DEADLINE_SECONDS` | 120 |
+| Rows / bytes per tool result | `RETAIL_ANALYTICS_RESULT_MAX_ROWS` / `RETAIL_ANALYTICS_RESULT_MAX_BYTES` | 500 / 256 KiB |
+
+- **Pinned and never reset.** The limits are stored with the run when its account opens (`RunBudgets.open`, or lazily on the first charge). A resumed run, a restarted worker or a configuration change keeps the run's limits and its usage. New settings only apply to new runs.
+- **Atomic, idempotent charges.** Each charge locks the run's budget row, so concurrent charges from any number of workers can never jointly pass a limit. Each charge is recorded once per (run, kind, key). A retried activity that repeats a charge gets the recorded charge back and is not counted again.
+- **Queries.** Every job submission is one query, charged with its dry-run estimate before the job reference exists (key `<operation>#<submission>`). When the job finishes, the estimate is replaced by the billed bytes, or by the processed bytes when billing is not reported. A job that never reports usage keeps its estimate and is marked ambiguous. Real usage is recorded even when it is above a limit. Later charges are then refused.
+- **Provider requests** (`ProviderBudget`, implemented by `RunBudgets`; the model runtime calls it). `reserve_provider_request(run_id, request_key, estimated_input_tokens=...)` is called before each request is sent, fallback requests included. `record_provider_usage(run_id, request_key, ProviderUsage(input_tokens, output_tokens))` is called afterwards. The reported input+output tokens replace the estimate. If the provider reports nothing, the estimate stands and the charge is marked ambiguous, so usage is never undercounted to zero.
+- **Active time** is wall-clock time while the run is active. Waiting for the warehouse, backoff and model calls all count. Only a clarification wait is excluded: `pause_for_clarification` / `resume_after_clarification`.
+- **Recovery** (`application/recovery.py`). `classify(outcome)` returns the next action. `WAIT`/`RECONCILE` mean a job may exist: check the recorded job and never submit again. `RETRY` is the same operation after `RunBudgets.retry_decision(run_id, failures)` allows it. The delay uses exponential backoff with equal jitter and honours a longer provider retry-after. `REFORMULATE` and `NARROW` are new operations, reserved with `reserve_correction(run_id, op, corrects=...)` (2 per chain). `EMPTY` is a valid, complete empty result. `STOP` means a run limit, access or an unrecoverable failure. `complete` is false whenever rows were cut, so a truncated result is never presented as the whole answer.
+- Handlers see `ExecutionContext.budget`, a read-only snapshot (`RunBudgets.with_budget`). Budgets are never tool arguments.
+
+Tests: `tests/unit/budgets/` (boundaries with a fake clock, settlement, pausing, backoff, settings, and the store contract run against an in-memory store), `tests/unit/query_execution/test_limits.py` (deadline cancellation and reconciliation, transient-attempt and submission caps, budgets through admission, truncation and empty results), and `tests/integration/test_budgets.py` (PostgreSQL: the same contract with concurrent reservations from separate connection pools, plus a restart with other settings).
 
 ### Evidence and guarded reuse
 

@@ -156,6 +156,8 @@ class BigQueryQueryJobs:
             maximum_bytes_billed=submission.maximum_bytes_billed,
             query_parameters=[to_bigquery_parameter(p) for p in submission.parameters],
         )
+        if not dry_run and submission.timeout_seconds is not None:
+            config.job_timeout_ms = int(submission.timeout_seconds * 1000)
         if not dry_run:
             config.labels = {
                 APP_LABEL[0]: APP_LABEL[1],

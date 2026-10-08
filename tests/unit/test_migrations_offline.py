@@ -90,3 +90,19 @@ def test_topic_resets_schema_upgrades_and_downgrades_offline() -> None:
     buffer = StringIO()
     command.downgrade(_config(buffer), "0010:0009", sql=True)
     assert "DROP TABLE topic_resets" in buffer.getvalue()
+
+
+def test_run_budget_schema_upgrades_and_downgrades_offline() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0010:0011", sql=True)
+    sql = buffer.getvalue()
+    assert "CREATE TABLE run_budgets" in sql
+    assert "CREATE TABLE budget_charges" in sql
+    assert "PRIMARY KEY (run_id, kind, charge_key)" in sql
+    assert "(kind = 'correction') = (group_key IS NOT NULL)" in sql
+
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0011:0010", sql=True)
+    sql = buffer.getvalue()
+    assert "DROP TABLE budget_charges" in sql
+    assert "DROP TABLE run_budgets" in sql

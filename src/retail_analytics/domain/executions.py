@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -178,3 +179,20 @@ def query_job_id(namespace: str, operation_id: str, submission: int) -> str:
         raise ValueError("submission starts at 1")
     digest = hashlib.sha256(operation_id.encode()).hexdigest()[:40]
     return f"{namespace}_{digest}_{submission}"
+
+
+def transient_failures(history: Sequence[ExecutionEvent]) -> int:
+    """Attempts of an operation that ended in a transient failure.
+
+    Counted from the persisted transition history (a ``RETRYING`` transition
+    carrying an error code), so resumption or a new worker cannot reset it.
+    A resubmission notice without an error is not a failure.
+    """
+    return len(
+        {
+            event.attempt
+            for event in history
+            if event.to_status is ToolExecutionStatus.RETRYING
+            and event.error_code is not None
+        }
+    )

@@ -22,9 +22,21 @@ authority changed since submission). Resubmitting the *same* submission reuses
 its job ID, which the warehouse rejects as a duplicate instead of running it
 twice.
 
-Run budgets, retry counts, backoff and the query deadline belong to the caller
-(:class:`QueryAdmission` is the pre-submission seam). This module never logs
-SQL or parameter values; failure details are a fixed vocabulary.
+Limits enforced here, all from persisted state so a retry or resumption
+cannot reset them:
+
+- the query deadline (``deadline_at`` of the operation, set when it is first
+  recorded): past it, the job is cancelled and reconciled and the operation
+  fails with ``BUDGET_EXCEEDED``/``query_deadline``; the warehouse job also
+  carries a slightly longer timeout as a backstop if no worker is left;
+- transient attempts: at most ``max_transient_attempts`` attempts may end in
+  a transient failure and at most that many job submissions are made; the
+  last one fails the operation instead of asking for a retry.
+
+Run budgets are charged through :class:`QueryAdmission` (before a job
+reference is recorded) and settled through :class:`QueryUsageRecorder` once a
+job has finished. Backoff between attempts belongs to the caller. This module
+never logs SQL or parameter values; failure details are a fixed vocabulary.
 """
 
 from __future__ import annotations
@@ -35,7 +47,7 @@ import json
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 
@@ -84,6 +96,7 @@ from retail_analytics.domain.executions import (
     ToolExecution,
     ToolExecutionStatus,
     query_job_id,
+    transient_failures,
 )
 from retail_analytics.domain.operations import SideEffect, ToolErrorCode
 
@@ -159,6 +172,19 @@ class QueryAdmission(Protocol):
     ) -> None: ...
 
 
+class QueryUsageRecorder(Protocol):
+    """Settles the actual usage of a finished job (idempotent, any number of
+    calls per (operation, submission))."""
+
+    async def settle(
+        self,
+        run_id: str,
+        operation_id: str,
+        submission: int,
+        statistics: JobStatistics,
+    ) -> None: ...
+
+
 # ---------------------------------------------------------------------------
 # Requests and outcomes
 
@@ -220,6 +246,9 @@ class QueryFailed:
     message: str
     # A later attempt of the same operation may succeed (after backoff).
     retryable: bool = False
+    # The job is being cancelled but has not stopped yet: call
+    # ``reconcile_cancel`` (after a delay) until the operation is final.
+    stopping: QueryJob | None = None
 
     @property
     def correctable(self) -> bool:
@@ -257,10 +286,29 @@ _MESSAGES: dict[ToolErrorCode, str] = {
 }
 
 
+QUERY_DEADLINE = "query_deadline"
+RETRIES_EXHAUSTED = "retries_exhausted"
+_SPECIAL_MESSAGES = {
+    QUERY_DEADLINE: (
+        "The query ran past its time limit and was stopped; narrow it or "
+        "aggregate more at the source."
+    ),
+    RETRIES_EXHAUSTED: (
+        "The warehouse kept failing; the query was stopped after the maximum "
+        "number of attempts."
+    ),
+}
+
+
 def _failed(
-    code: ToolErrorCode, reason: str, *, retryable: bool = False
+    code: ToolErrorCode,
+    reason: str,
+    *,
+    retryable: bool = False,
+    stopping: QueryJob | None = None,
 ) -> QueryFailed:
-    return QueryFailed(code, reason, _MESSAGES[code], retryable)
+    message = _SPECIAL_MESSAGES.get(reason, _MESSAGES[code])
+    return QueryFailed(code, reason, message, retryable, stopping)
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +362,13 @@ class QueryExecutionSettings:
     poll_initial_seconds: float = 0.5
     poll_max_seconds: float = 5.0
     max_rows: int = DEFAULT_MAX_ROWS
+    # From first recording of the operation; then cancel and reconcile.
+    query_deadline_seconds: float = 120.0
+    # The warehouse's own job timeout is the deadline plus this grace, a
+    # backstop for when no worker is left to cancel the job.
+    job_timeout_grace_seconds: float = 30.0
+    # Attempts that may end in a transient failure; also caps submissions.
+    max_transient_attempts: int = 3
 
     def __post_init__(self) -> None:
         if not self.project or not self.location:
@@ -321,10 +376,18 @@ class QueryExecutionSettings:
         query_job_id(self.job_namespace, "check", 1)
         if self.wait_seconds < 0 or self.poll_initial_seconds <= 0:
             raise ValueError("invalid wait settings")
+        if self.query_deadline_seconds <= 0 or self.job_timeout_grace_seconds < 0:
+            raise ValueError("invalid deadline settings")
+        if self.max_transient_attempts < 1:
+            raise ValueError("at least one attempt is required")
 
 
 class _Superseded(Exception):
     """A newer attempt already moved the operation on."""
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class QueryExecutionService:
@@ -339,8 +402,10 @@ class QueryExecutionService:
         operations: ToolExecutionRepository,
         jobs: QueryJobRepository,
         admission: QueryAdmission | None = None,
+        usage: QueryUsageRecorder | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         self._settings = settings
         self._authority = authority
@@ -350,8 +415,10 @@ class QueryExecutionService:
         self._operations = operations
         self._jobs = jobs
         self._admission = admission
+        self._usage = usage
         self._sleep = sleep
         self._monotonic = monotonic
+        self._clock = clock
 
     # -- public use cases -------------------------------------------------
 
@@ -395,7 +462,7 @@ class QueryExecutionService:
         if op.status is not _S.CANCEL_REQUESTED:
             return await self._terminal_summary(op)
         job = await self._jobs.get_job(operation_id)
-        return await self._reconcile_cancel(op, job, max(op.attempt_count, 1))
+        return await self._continue_cancel(op, job, max(op.attempt_count, 1))
 
     # -- attempt flow -----------------------------------------------------
 
@@ -417,10 +484,26 @@ class QueryExecutionService:
             return _failed(ToolErrorCode.ACCESS_DENIED, "operation_not_in_run")
         if op.status is _S.CANCEL_REQUESTED:
             job = await self._jobs.get_job(op.operation_id)
-            return await self._reconcile_cancel(op, job, max(op.attempt_count, 1))
+            return await self._continue_cancel(op, job, max(op.attempt_count, 1))
+
+        job = await self._jobs.get_job(op.operation_id)
+        if not op.status.is_terminal:
+            if self._past_deadline(op):
+                return await self._deadline(op, job, attempt.attempt)
+            if op.status is _S.RETRYING and (
+                transient_failures(await self._operations.history(op.operation_id))
+                >= self._settings.max_transient_attempts
+            ):
+                await self._move(
+                    op,
+                    _S.FAILED,
+                    attempt.attempt,
+                    error_code=ToolErrorCode.TEMPORARY_FAILURE,
+                    detail=RETRIES_EXHAUSTED,
+                )
+                return _failed(ToolErrorCode.TEMPORARY_FAILURE, RETRIES_EXHAUSTED)
 
         compiler = self._compilers.for_executive(authority.context.executive_id)
-        job = await self._jobs.get_job(op.operation_id)
         try:
             compiled = compiler.compile(
                 attempt.query,
@@ -459,6 +542,8 @@ class QueryExecutionService:
                     capability=QUERY_CAPABILITY,
                     capability_version=QUERY_CAPABILITY_VERSION,
                     side_effect=SideEffect.EXTERNAL_JOB,
+                    deadline_at=self._clock()
+                    + timedelta(seconds=self._settings.query_deadline_seconds),
                 )
             )
             op = started.execution
@@ -487,6 +572,8 @@ class QueryExecutionService:
                 )
             return QueryOutcomeUnknown(job, "lookup_failed")
 
+        if snapshot is not None and snapshot.state is JobState.DONE:
+            await self._account(op, job, snapshot)
         if snapshot is None:
             # Never created (or not yet visible): resubmitting the same job ID
             # cannot create a duplicate, the warehouse would reject it.
@@ -532,9 +619,18 @@ class QueryExecutionService:
         submission: int,
     ) -> QueryOutcome:
         settings = self._settings
+        if submission > settings.max_transient_attempts:
+            await self._move(
+                op,
+                _S.FAILED,
+                attempt.attempt,
+                error_code=ToolErrorCode.TEMPORARY_FAILURE,
+                detail=RETRIES_EXHAUSTED,
+            )
+            return _failed(ToolErrorCode.TEMPORARY_FAILURE, RETRIES_EXHAUSTED)
         job_id = query_job_id(settings.job_namespace, op.operation_id, submission)
         ref = JobRef(settings.project, settings.location, job_id)
-        statement = _statement(ref, compiled, fingerprint)
+        statement = self._statement(ref, compiled, fingerprint)
         try:
             estimated = await self._warehouse.dry_run(statement)
         except WarehouseError as error:
@@ -598,7 +694,7 @@ class QueryExecutionService:
         ref = JobRef.of(job)
         try:
             snapshot = await self._warehouse.submit(
-                _statement(ref, compiled, job.query_fingerprint)
+                self._statement(ref, compiled, job.query_fingerprint)
             )
         except JobAlreadyExists:
             try:
@@ -622,10 +718,7 @@ class QueryExecutionService:
             failure = classify_reason(rejected.reason)
             detail = f"submit_{rejected.reason}"
             if failure.retryable:
-                await self._move(
-                    op, _S.RETRYING, n, error_code=failure.code, detail=detail
-                )
-                return _failed(failure.code, detail, retryable=True)
+                return await self._transient(op, n, failure.code, detail)
             await self._move(op, _S.FAILED, n, error_code=failure.code, detail=detail)
             return _failed(failure.code, detail)
         except WarehouseUnavailable:
@@ -650,17 +743,17 @@ class QueryExecutionService:
             # job we started running unobserved.
             await self._stop_job(job)
             raise
-        done = await self._wait(job, snapshot)
+        done = await self._wait(op, job, snapshot)
         if done is None:
+            if self._past_deadline(op):
+                return await self._deadline(op, job, n)
             return QueryPending(job)
+        await self._account(op, job, done)
         if done.error_reason is not None:
             failure = classify_reason(done.error_reason)
             detail = f"job_{done.error_reason}"
             if failure.retryable:
-                await self._move(
-                    op, _S.RETRYING, n, error_code=failure.code, detail=detail
-                )
-                return _failed(failure.code, detail, retryable=True)
+                return await self._transient(op, n, failure.code, detail)
             await self._move(op, _S.FAILED, n, error_code=failure.code, detail=detail)
             return _failed(failure.code, detail)
         outcome = await self._release(attempt, compiled, job, done)
@@ -668,9 +761,7 @@ class QueryExecutionService:
             await self._move(op, _S.SUCCEEDED, n)
         elif outcome.retryable:
             # The finished job is kept; the next attempt reads it again.
-            await self._move(
-                op, _S.RETRYING, n, error_code=outcome.code, detail=outcome.reason
-            )
+            return await self._transient(op, n, outcome.code, outcome.reason)
         else:
             await self._move(
                 op, _S.FAILED, n, error_code=outcome.code, detail=outcome.reason[:64]
@@ -749,10 +840,14 @@ class QueryExecutionService:
             return _failed(ToolErrorCode.INTERNAL_ERROR, "already_succeeded")
         if op.status is _S.FAILED:
             code = op.error_code or ToolErrorCode.INTERNAL_ERROR
+            detail = op.error_detail or "failed"
             return QueryFailed(
                 code,
-                op.error_detail or "failed",
-                _MESSAGES.get(code, _MESSAGES[ToolErrorCode.INTERNAL_ERROR]),
+                detail,
+                _SPECIAL_MESSAGES.get(
+                    detail,
+                    _MESSAGES.get(code, _MESSAGES[ToolErrorCode.INTERNAL_ERROR]),
+                ),
             )
         if job is None:
             return QueryOutcomeUnknown(None, "not_finished")
@@ -770,9 +865,104 @@ class QueryExecutionService:
             return QueryCancelled(job, confirmed=False)
         if snapshot is not None and snapshot.state is not JobState.DONE:
             return QueryCancelled(job, confirmed=False)
+        if snapshot is not None:
+            await self._account(op, job, snapshot)
         # Not found, stopped, failed or even finished: no result is released.
         await self._move(op, _S.CANCELLED, attempt, detail="cancelled")
         return QueryCancelled(job, confirmed=True)
+
+    async def _continue_cancel(
+        self, op: ToolExecution, job: QueryJob | None, attempt: int
+    ) -> QueryOutcome:
+        """Continue a requested cancellation, user- or deadline-initiated."""
+        if await self._cancel_reason(op) == QUERY_DEADLINE:
+            return await self._finish_deadline(op, job, attempt)
+        return await self._reconcile_cancel(op, job, attempt)
+
+    async def _cancel_reason(self, op: ToolExecution) -> str | None:
+        history = await self._operations.history(op.operation_id)
+        for event in reversed(history):
+            if event.to_status is _S.CANCEL_REQUESTED:
+                return event.detail
+        return None
+
+    # -- deadline and transient limits --------------------------------------
+
+    def _past_deadline(self, op: ToolExecution) -> bool:
+        return op.deadline_at is not None and self._clock() >= op.deadline_at
+
+    async def _deadline(
+        self, op: ToolExecution, job: QueryJob | None, attempt: int
+    ) -> QueryOutcome:
+        """The query deadline passed: request cancellation, then reconcile."""
+        if job is None:
+            await self._move(
+                op,
+                _S.FAILED,
+                attempt,
+                error_code=ToolErrorCode.BUDGET_EXCEEDED,
+                detail=QUERY_DEADLINE,
+            )
+            return _failed(ToolErrorCode.BUDGET_EXCEEDED, QUERY_DEADLINE)
+        op = await self._move(op, _S.CANCEL_REQUESTED, attempt, detail=QUERY_DEADLINE)
+        await self._stop_job(job)
+        return await self._finish_deadline(op, job, attempt)
+
+    async def _finish_deadline(
+        self, op: ToolExecution, job: QueryJob | None, attempt: int
+    ) -> QueryOutcome:
+        if job is not None:
+            try:
+                snapshot = await self._warehouse.lookup(JobRef.of(job))
+            except WarehouseError:
+                return _failed(
+                    ToolErrorCode.BUDGET_EXCEEDED, QUERY_DEADLINE, stopping=job
+                )
+            if snapshot is not None and snapshot.state is not JobState.DONE:
+                return _failed(
+                    ToolErrorCode.BUDGET_EXCEEDED, QUERY_DEADLINE, stopping=job
+                )
+            if snapshot is not None:
+                await self._account(op, job, snapshot)
+        # Stopped, gone or even finished: no result is released after the
+        # deadline.
+        await self._move(
+            op,
+            _S.FAILED,
+            attempt,
+            error_code=ToolErrorCode.BUDGET_EXCEEDED,
+            detail=QUERY_DEADLINE,
+        )
+        return _failed(ToolErrorCode.BUDGET_EXCEEDED, QUERY_DEADLINE)
+
+    async def _transient(
+        self, op: ToolExecution, attempt: int, code: ToolErrorCode, detail: str
+    ) -> QueryFailed:
+        """Record a transient failure; the last allowed one fails the operation."""
+        history = await self._operations.history(op.operation_id)
+        counted = transient_failures(history)
+        if not any(
+            e.attempt == attempt
+            and e.to_status is _S.RETRYING
+            and e.error_code is not None
+            for e in history
+        ):
+            counted += 1
+        if counted >= self._settings.max_transient_attempts:
+            await self._move(
+                op, _S.FAILED, attempt, error_code=code, detail=RETRIES_EXHAUSTED
+            )
+            return _failed(code, RETRIES_EXHAUSTED)
+        await self._move(op, _S.RETRYING, attempt, error_code=code, detail=detail[:64])
+        return _failed(code, detail, retryable=True)
+
+    async def _account(
+        self, op: ToolExecution, job: QueryJob, snapshot: JobSnapshot
+    ) -> None:
+        if self._usage is not None and snapshot.state is JobState.DONE:
+            await self._usage.settle(
+                op.run_id, op.operation_id, job.submission, snapshot.statistics
+            )
 
     async def _pre_submission_failure(
         self,
@@ -783,14 +973,9 @@ class QueryExecutionService:
     ) -> QueryFailed:
         failure = classify_reason(error.reason)
         if isinstance(error, WarehouseUnavailable) or failure.retryable:
-            await self._move(
-                op,
-                _S.RETRYING,
-                attempt.attempt,
-                error_code=ToolErrorCode.TEMPORARY_FAILURE,
-                detail=detail[:64],
+            return await self._transient(
+                op, attempt.attempt, ToolErrorCode.TEMPORARY_FAILURE, detail
             )
-            return _failed(ToolErrorCode.TEMPORARY_FAILURE, detail, retryable=True)
         await self._move(
             op, _S.FAILED, attempt.attempt, error_code=failure.code, detail=detail[:64]
         )
@@ -798,9 +983,16 @@ class QueryExecutionService:
 
     # -- helpers ----------------------------------------------------------
 
-    async def _wait(self, job: QueryJob, snapshot: JobSnapshot) -> JobSnapshot | None:
-        """The finished job, or ``None`` if it is still running at the deadline."""
-        deadline = self._monotonic() + self._settings.wait_seconds
+    async def _wait(
+        self, op: ToolExecution, job: QueryJob, snapshot: JobSnapshot
+    ) -> JobSnapshot | None:
+        """The finished job, or ``None`` if it is still running when this
+        attempt stops waiting (its wait time or the query deadline)."""
+        wait = self._settings.wait_seconds
+        if op.deadline_at is not None:
+            left = (op.deadline_at - self._clock()).total_seconds()
+            wait = max(min(wait, left), 0.0)
+        deadline = self._monotonic() + wait
         delay = self._settings.poll_initial_seconds
         current = snapshot
         while current.state is not JobState.DONE:
@@ -843,12 +1035,16 @@ class QueryExecutionService:
             op.operation_id, to, attempt=attempt, error_code=error_code, detail=detail
         )
 
-
-def _statement(ref: JobRef, compiled: CompiledQuery, fingerprint: str) -> JobSubmission:
-    return JobSubmission(
-        ref=ref,
-        sql=compiled.sql,
-        parameters=compiled.parameters,
-        maximum_bytes_billed=compiled.maximum_bytes_billed,
-        fingerprint=fingerprint,
-    )
+    def _statement(
+        self, ref: JobRef, compiled: CompiledQuery, fingerprint: str
+    ) -> JobSubmission:
+        settings = self._settings
+        return JobSubmission(
+            ref=ref,
+            sql=compiled.sql,
+            parameters=compiled.parameters,
+            maximum_bytes_billed=compiled.maximum_bytes_billed,
+            fingerprint=fingerprint,
+            timeout_seconds=settings.query_deadline_seconds
+            + settings.job_timeout_grace_seconds,
+        )

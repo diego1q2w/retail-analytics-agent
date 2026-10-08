@@ -59,6 +59,9 @@ class RuntimeMode(StrEnum):
     LIVE = "live"
 
 
+_MIB = 1024 * 1024
+_GIB = 1024 * _MIB
+
 _STRICT_MODEL = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
 
@@ -109,6 +112,24 @@ class BackendSettings(BaseModel):
     retrieval_channel_candidates: int = Field(default=10, ge=3, le=100)
     retrieval_min_similarity: float = Field(default=0.55, ge=-1.0, le=1.0)
     retrieval_min_lexical_coverage: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Run budgets (design section 39). Pinned per run when its accounting
+    # opens; later changes only apply to new runs.
+    run_active_seconds: int = Field(default=600, ge=30, le=86400)
+    run_max_provider_requests: int = Field(default=20, ge=1, le=1000)
+    run_max_tokens: int = Field(default=100_000, ge=1000, le=10_000_000)
+    run_max_queries: int = Field(default=10, ge=1, le=1000)
+    query_max_bytes: int = Field(default=_GIB, ge=10 * _MIB, le=1024 * _GIB)
+    run_max_bytes: int = Field(default=5 * _GIB, ge=10 * _MIB, le=10240 * _GIB)
+    query_max_corrections: int = Field(default=2, ge=0, le=10)
+    # Attempts per operation that may end in a transient failure (total).
+    max_transient_attempts: int = Field(default=3, ge=1, le=10)
+    retry_base_seconds: float = Field(default=1.0, gt=0, le=60)
+    retry_max_seconds: float = Field(default=20.0, gt=0, le=600)
+    # Warehouse query deadline, then cancel and reconcile.
+    query_deadline_seconds: int = Field(default=120, ge=10, le=3600)
+    # Per tool result, whichever is reached first; truncation is flagged.
+    result_max_rows: int = Field(default=500, ge=1, le=10_000)
+    result_max_bytes: int = Field(default=256 * 1024, ge=1024, le=16 * _MIB)
     # Local (simulated) token authentication; see README "Authentication".
     auth_issuer: str = Field(default="retail-analytics-local", min_length=1)
     auth_audience: str = Field(default="retail-analytics-api", min_length=1)
@@ -132,6 +153,20 @@ class BackendSettings(BaseModel):
                 raise ValueError(
                     BACKEND_ENV_PREFIX + name.upper() + " must be at least 32 bytes"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_budget_order(self) -> Self:
+        if self.query_max_bytes > self.run_max_bytes:
+            raise ValueError(
+                "RETAIL_ANALYTICS_QUERY_MAX_BYTES must not exceed "
+                "RETAIL_ANALYTICS_RUN_MAX_BYTES"
+            )
+        if self.retry_base_seconds > self.retry_max_seconds:
+            raise ValueError(
+                "RETAIL_ANALYTICS_RETRY_BASE_SECONDS must not exceed "
+                "RETAIL_ANALYTICS_RETRY_MAX_SECONDS"
+            )
         return self
 
     @model_validator(mode="after")

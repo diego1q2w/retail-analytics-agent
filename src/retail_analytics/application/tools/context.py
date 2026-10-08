@@ -3,8 +3,10 @@
 These are plain dataclasses, not contract models: they are never part of a
 model-facing schema and are loaded fresh by application code for every
 execution (inside retryable activities), not deserialized from model output.
-Run budgets will join ``ExecutionContext`` when budget enforcement lands; they
-must not become tool arguments.
+``ExecutionContext.budget`` is a read-only snapshot of the run's persisted
+accounting (``RunBudgets.with_budget``) so handlers and the runtime can see
+what is left; enforcement always re-reads the store. Budgets are never tool
+arguments.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from dataclasses import dataclass, replace
 
 from retail_analytics.application.contracts import Correlation
 from retail_analytics.domain.access import ProductScope
+from retail_analytics.domain.budgets import BudgetSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +26,7 @@ class ExecutionContext:
     permissions: frozenset[str]
     product_scope: ProductScope
     correlation: Correlation
+    budget: BudgetSnapshot | None = None
 
     def __post_init__(self) -> None:
         if not self.executive_id:

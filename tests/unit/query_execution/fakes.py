@@ -72,6 +72,7 @@ class MemoryOperations:
             attempt_count=0,
             created_at=T0,
             updated_at=T0,
+            deadline_at=request.deadline_at,
         )
         self.records[op.operation_id] = op
         self.events[op.operation_id] = [
@@ -204,6 +205,9 @@ class FakeWarehouse:
     submit_calls: int = 0
     dry_runs: list[JobSubmission] = field(default_factory=list)
     cancels: list[str] = field(default_factory=list)
+    # False: a cancel request is recorded but the job keeps running until
+    # ``finish`` (a warehouse that stops jobs asynchronously).
+    cancel_takes_effect: bool = True
     before_submit: Callable[[JobSubmission], None] | None = None
     after_finish: Callable[[], None] | None = None
 
@@ -266,6 +270,11 @@ class FakeWarehouse:
     async def cancel(self, ref: JobRef) -> None:
         self.cancels.append(ref.job_id)
         job = self.jobs.get(ref.job_id)
+        if not self.cancel_takes_effect:
+            if job is not None:
+                job.remaining_polls = 10**9
+                job.error_reason = "stopped"
+            return
         if job is not None and job.state is not JobState.DONE:
             job.state = JobState.DONE
             job.cancelled = True

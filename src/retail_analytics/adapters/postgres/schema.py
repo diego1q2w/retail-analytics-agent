@@ -336,3 +336,33 @@ topic_resets = sa.Table(
     sa.Column("session_id", sa.Text, nullable=False),
     _ts("reset_at"),
 )
+
+run_budgets = sa.Table(
+    "run_budgets",
+    metadata,
+    sa.Column("run_id", sa.Text, primary_key=True),
+    sa.Column("limits", JSONB, nullable=False),
+    sa.Column("active_seconds_used", sa.Float(53), nullable=False),
+    _ts("active_since", nullable=True),
+    sa.Column("provider_requests", sa.Integer, nullable=False),
+    sa.Column("tokens", sa.BigInteger, nullable=False),
+    sa.Column("queries", sa.Integer, nullable=False),
+    sa.Column("bytes", sa.BigInteger, nullable=False),
+    _ts("created_at"),
+    _ts("updated_at"),
+)
+
+budget_charges = sa.Table(
+    "budget_charges",
+    metadata,
+    sa.Column("run_id", sa.Text, primary_key=True),
+    sa.Column("kind", sa.Text, primary_key=True),
+    sa.Column("charge_key", sa.Text, primary_key=True),
+    sa.Column("group_key", sa.Text),
+    sa.Column("bytes", sa.BigInteger, nullable=False),
+    sa.Column("tokens", sa.BigInteger, nullable=False),
+    sa.Column("settled", sa.Boolean, nullable=False),
+    sa.Column("ambiguous", sa.Boolean, nullable=False),
+    _ts("created_at"),
+    _ts("settled_at", nullable=True),
+)

@@ -70,6 +70,9 @@ class JobSubmission:
     parameters: tuple[QueryParameter, ...]
     maximum_bytes_billed: int
     fingerprint: str
+    # The warehouse stops the job by itself after this long (a backstop to
+    # the application's own deadline). None: no job timeout.
+    timeout_seconds: float | None = None
 
     def __repr__(self) -> str:
         return f"JobSubmission(ref={self.ref!r}, fingerprint={self.fingerprint!r})"
