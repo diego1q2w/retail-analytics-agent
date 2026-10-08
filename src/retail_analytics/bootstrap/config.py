@@ -98,6 +98,8 @@ class BackendSettings(BaseModel):
     embedding_provider: Literal["hashing", "gemini"] = "hashing"
     embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = Field(default=768, ge=128, le=3072)
+    # Exchange rates (ECB reference rates through Frankfurter; no API key).
+    exchange_rate_base_url: str = "https://api.frankfurter.dev/v2"
     retrieval_max_results: int = Field(default=3, ge=1, le=3)
     retrieval_channel_candidates: int = Field(default=10, ge=3, le=100)
     retrieval_min_similarity: float = Field(default=0.55, ge=-1.0, le=1.0)

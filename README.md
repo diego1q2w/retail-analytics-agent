@@ -240,6 +240,16 @@ Reused evidence is linked to the new run in `run_evidence`. Changing a preferenc
 
 Tests: `tests/unit/evidence/` (policy rules with a fake clock, encoding, recording from real compiled and released queries, two executives, version and entitlement changes, invalidation, pins) and `tests/integration/test_evidence.py` (PostgreSQL: immutability, idempotent concurrent recording, refresh versions, entitlement changes, preference invalidation, pin retention).
 
+### Currency conversion
+
+`convert_currency` (`capabilities/currency.py`, spec via `currency_capability(service)`; not yet registered in a runtime root) converts numeric amount columns of recorded evidence and records the result as derived evidence (`application/currency_conversion.py`). The original evidence is untouched; the derived record keeps the original columns, adds `<column>_<currency>` columns and names its input in `derived_from`. Provenance notes hold the source currency, rate, rate date, source, method, basis, requested date and rounding rule. Amounts round half up to the target currency's minor units.
+
+- **Source currency** comes only from a `SourceCurrencyProvider`; the default is unknown (`SourceCurrency.unknown()`), which refuses every conversion. Currency is never inferred from prices.
+- **Target** is the explicit `target_currency` argument, else the executive's saved `display_currency` preference (`StoredDisplayCurrency`).
+- **Basis.** `current` uses the latest published rate; `historical` needs `as_of`. If the basis is omitted and the amounts cover a finished period, the tool refuses and asks for a choice, since the figures differ.
+- **Refusals** (unknown source currency, unsupported pair or date, provider down, unclear basis, same currency) return an explanation, never an estimate.
+- **Provider.** Public ECB euro reference rates through [Frankfurter](https://frankfurter.dev) v2 (`adapters/exchange_rates/frankfurter.py`): no API key and no quota (only abuse limiting), mid-market, daily on TARGET business days, non-euro pairs crossed through EUR, about 30 currencies. Requests pin `providers=ECB`, because without it Frankfurter blends 100+ central banks. A dated request returns the latest business day on or before it; the returned date is what is disclosed. Retries 429/5xx with backoff. `RETAIL_ANALYTICS_EXCHANGE_RATE_BASE_URL` points at another instance. Offline tests use `adapters/exchange_rates/fixture.py`. Wiring: `bootstrap.currency.build_currency_conversion(settings, evidence, preference_store, source=...)`.
+
 ### Local telemetry (MLflow, Prometheus, Grafana)
 
 The same `compose.yaml` adds MLflow 3.14 (sanitized agent traces), Prometheus 3.12 (metrics) and Grafana 12.4 (dashboards), image versions pinned. For local development only: every port is bound to `127.0.0.1`, passwords are throwaway defaults, and none of it is a hardened or authenticated production setup (production hosting needs its own authentication, network restrictions, retention and backup design). No project-specific retention is configured; backend defaults apply.
