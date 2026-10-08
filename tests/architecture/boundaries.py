@@ -202,12 +202,49 @@ def check_sources(package_dir: Path, package: str) -> list[Violation]:
 
 
 _IMPORT_PROBE = r"""
-import importlib, json, os, sys
+import importlib, json, os, sys, sysconfig
 
 root, modules = sys.argv[1], json.loads(sys.argv[2])
+allowed_libraries = json.loads(sys.argv[3])
 sys.path.insert(0, root)
 effects = []
 ALLOWED_SUFFIXES = (".py", ".pyc", ".so", ".pyd", ".pth", ".typed")
+STDLIB = tuple(
+    {os.path.realpath(sysconfig.get_path(k)) for k in ("stdlib", "platstdlib")}
+)
+SITE = tuple(
+    {os.path.realpath(sysconfig.get_path(k)) for k in ("purelib", "platlib")}
+)
+
+# Third-party packages the layer may use are imported before watching, and
+# effects they perform themselves (e.g. pydantic reading its own plugin
+# settings when a model class is created) are theirs, not the layer's. An
+# effect is attributed to the nearest non-stdlib frame that performed it.
+library_dirs = []
+for name in allowed_libraries:
+    try:
+        module = importlib.import_module(name)
+    except ImportError:
+        continue
+    library_dirs.extend(getattr(module, "__path__", []))
+    if getattr(module, "__file__", None):
+        library_dirs.append(os.path.dirname(module.__file__))
+library_dirs = tuple(os.path.realpath(d) + os.sep for d in library_dirs)
+
+def performed_by_allowed_library():
+    frame = sys._getframe(2)
+    while frame is not None:
+        filename = frame.f_code.co_filename
+        if not filename.startswith("<"):
+            path = os.path.realpath(filename)
+            if path.startswith(SITE) or not path.startswith(STDLIB):
+                return path.startswith(library_dirs)
+        frame = frame.f_back
+    return False
+
+def record(effect):
+    if not performed_by_allowed_library():
+        effects.append(effect)
 
 def hook(event, args):
     if event in ("socket.connect", "socket.getaddrinfo", "socket.bind",
@@ -216,14 +253,14 @@ def hook(event, args):
     elif event == "open" and args and isinstance(args[0], (str, bytes, os.PathLike)):
         path = os.fsdecode(args[0])
         if not path.endswith(ALLOWED_SUFFIXES) and not os.path.isdir(path):
-            effects.append("open " + os.path.basename(path))
+            record("open " + os.path.basename(path))
 
 class WatchedEnviron(dict):
     def __getitem__(self, key):
-        effects.append("environ read " + str(key))
+        record("environ read " + str(key))
         return super().__getitem__(key)
     def get(self, key, default=None):
-        effects.append("environ read " + str(key))
+        record("environ read " + str(key))
         return super().get(key, default)
 
 os.environ = WatchedEnviron(os.environ)
@@ -259,6 +296,7 @@ def check_import_time(package_root: Path, package: str, layer: str) -> list[str]
             _IMPORT_PROBE,
             str(package_root),
             json.dumps(modules),
+            json.dumps(sorted(ALLOWED_THIRD_PARTY[layer] or ())),
         ],
         capture_output=True,
         text=True,
