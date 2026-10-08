@@ -15,6 +15,7 @@ from retail_analytics.adapters.postgres.database import (
     utc_now,
 )
 from retail_analytics.adapters.postgres.executives import PostgresExecutiveDirectory
+from retail_analytics.adapters.postgres.preferences import PostgresPreferenceStore
 from retail_analytics.adapters.postgres.run_events import PostgresRunEventStore
 from retail_analytics.adapters.postgres.runs import PostgresRunRepository
 from retail_analytics.adapters.postgres.sessions import PostgresSessionRepository
@@ -33,6 +34,7 @@ from retail_analytics.application.persistence import (
     SessionRepository,
     ToolExecutionRepository,
 )
+from retail_analytics.application.preferences import PreferenceStore
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 
 
@@ -46,6 +48,7 @@ class Persistence:
     run_events: RunEventStore
     executives: ExecutiveDirectory
     access_admin: AccessAdministration
+    preferences: PreferenceStore
 
     def close(self) -> None:
         self.engine.dispose()
@@ -67,6 +70,7 @@ def build_persistence(
         run_events=PostgresRunEventStore(db),
         executives=executives,
         access_admin=executives,
+        preferences=PostgresPreferenceStore(db),
     )
 
 

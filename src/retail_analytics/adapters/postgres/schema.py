@@ -148,3 +148,47 @@ artifact_versions = sa.Table(
     sa.Column("idempotency_key", sa.Text, nullable=False),
     _ts("created_at"),
 )
+
+user_preferences = sa.Table(
+    "user_preferences",
+    metadata,
+    sa.Column("preference_id", sa.Text, primary_key=True),
+    sa.Column("executive_id", sa.Text, nullable=False),
+    sa.Column("scope", sa.Text, nullable=False),
+    sa.Column("session_id", sa.Text),
+    sa.Column("slot", sa.Text, nullable=False),
+    sa.Column("value", sa.Text, nullable=False),
+    sa.Column("source", sa.Text, nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),
+    _ts("created_at"),
+    _ts("updated_at"),
+)
+
+preference_proposals = sa.Table(
+    "preference_proposals",
+    metadata,
+    sa.Column("proposal_id", sa.Text, primary_key=True),
+    sa.Column("executive_id", sa.Text, nullable=False),
+    sa.Column("session_id", sa.Text, nullable=False),
+    sa.Column("slot", sa.Text, nullable=False),
+    sa.Column("value", sa.Text, nullable=False),
+    sa.Column("observations", sa.Integer, nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    _ts("created_at"),
+    _ts("updated_at"),
+    _ts("expires_at", nullable=True),
+)
+
+preference_events = sa.Table(
+    "preference_events",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("executive_id", sa.Text, nullable=False),
+    sa.Column("session_id", sa.Text),
+    sa.Column("slot", sa.Text, nullable=False),
+    sa.Column("scope", sa.Text),
+    sa.Column("action", sa.Text, nullable=False),
+    sa.Column("source", sa.Text),
+    sa.Column("version", sa.Integer),
+    _ts("occurred_at"),
+)
