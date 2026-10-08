@@ -79,6 +79,27 @@ Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL 
 
 Docker-dependent tests carry the `docker` marker and are excluded from `./scripts/check.sh`. Run them with `python -m pytest -m docker`; they start their own uniquely named Compose project on free ports and remove it afterwards.
 
+### Local telemetry (MLflow, Prometheus, Grafana)
+
+The same `compose.yaml` adds MLflow 3.14 (sanitized agent traces), Prometheus 3.12 (metrics) and Grafana 12.4 (dashboards), image versions pinned. For local development only: every port is bound to `127.0.0.1`, passwords are throwaway defaults, and none of it is a hardened or authenticated production setup (production hosting needs its own authentication, network restrictions, retention and backup design). No project-specific retention is configured; backend defaults apply.
+
+```sh
+docker compose up -d --build --wait postgres mlflow prometheus grafana   # same project as above
+docker compose down                                                       # keeps volumes; -v deletes data
+```
+
+| What | Value |
+| --- | --- |
+| MLflow UI/API | `http://127.0.0.1:55500` (`COMPOSE_MLFLOW_PORT`); OTLP traces at `/v1/traces` |
+| Prometheus | `http://127.0.0.1:59090` (`COMPOSE_PROMETHEUS_PORT`); OTLP metrics at `/api/v1/otlp/v1/metrics` |
+| Grafana | `http://127.0.0.1:53000` (`COMPOSE_GRAFANA_PORT`); user `admin`, password `COMPOSE_GRAFANA_ADMIN_PASSWORD` (default `local-only-grafana`) |
+| MLflow backend | database and role `mlflow` on the shared PostgreSQL (`COMPOSE_MLFLOW_DB_PASSWORD`, default `local-only-mlflow`); created idempotently by the one-shot `mlflow-db-init` service, so it also works on an existing `postgres-data` volume |
+| Volumes | `mlflow-artifacts`, `prometheus-data`, `grafana-data` |
+
+MLflow uses its own database and role: the application and Temporal roles cannot connect to it, and it cannot connect to theirs. The Grafana Prometheus data source (uid `prometheus`) and the "Local telemetry overview" dashboard are provisioned from `docker/grafana/`. Prometheus scrapes only itself for now; add the application job in `docker/prometheus/prometheus.yml` when metrics are exposed. The MLflow image is built from `docker/mlflow/Dockerfile` (upstream image plus the pinned PostgreSQL driver).
+
+The `docker` tests in `tests/integration/test_telemetry_stack.py` push a synthetic metric (OTLP) and a sanitized sample trace, restart the services and check both are still readable, directly and through Grafana.
+
 ### Package layout and dependency rules
 
 ```text

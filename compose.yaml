@@ -1,4 +1,4 @@
-# Local persistence and Temporal for development and tests. Local-only defaults:
+# Local persistence, Temporal and telemetry (MLflow, Prometheus, Grafana) for development and tests. Local-only defaults:
 # every password below is a throwaway value for a loopback-bound stack.
 # Override ports/passwords with the COMPOSE_* variables shown (shell or .env).
 # Use a unique `docker compose -p <name>` per checkout/test run to isolate stacks.
@@ -7,6 +7,8 @@ name: retail-analytics-local
 x-postgres-image: &postgres-image postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
 x-temporal-server-image: &temporal-server-image temporalio/server:1.32.0@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae
 x-temporal-tools-image: &temporal-tools-image temporalio/admin-tools:1.32.0@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca
+x-prometheus-image: &prometheus-image prom/prometheus:v3.12.0@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
+x-grafana-image: &grafana-image grafana/grafana:12.4.12@sha256:83be3e511ede559bee80e2215bb1987cb1246075461cb961beb515b0341e7aea
 
 services:
   # One PostgreSQL server, three databases, three roles (see the init script):
@@ -92,5 +94,98 @@ services:
       - ./docker/temporal/ensure-namespace.sh:/schema/ensure-namespace.sh:ro
     restart: "no"
 
+  # One-shot: create the MLflow role + database (idempotent, works on existing volumes).
+  mlflow-db-init:
+    image: *postgres-image
+    entrypoint: ["sh", "/init/ensure-mlflow-db.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${COMPOSE_PG_ADMIN_PASSWORD:-local-only-admin}
+      MLFLOW_DB_PASSWORD: ${COMPOSE_MLFLOW_DB_PASSWORD:-local-only-mlflow}
+    volumes:
+      - ./docker/postgres/ensure-mlflow-db.sh:/init/ensure-mlflow-db.sh:ro
+    restart: "no"
+
+  # MLflow tracking server for sanitized agent traces. Backend store: its own
+  # `mlflow` database/role; artifacts are served by the server (volume mlflow-artifacts).
+  mlflow:
+    build:
+      context: ./docker/mlflow
+    image: retail-analytics-mlflow:3.14.0
+    depends_on:
+      mlflow-db-init:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_DB_PASSWORD: ${COMPOSE_MLFLOW_DB_PASSWORD:-local-only-mlflow}
+    command:
+      - sh
+      - -c
+      - >-
+        exec mlflow server --host 0.0.0.0 --port 5000
+        --backend-store-uri "postgresql://mlflow:$${MLFLOW_DB_PASSWORD}@postgres:5432/mlflow"
+        --artifacts-destination /mlflow/artifacts --serve-artifacts
+    ports:
+      - "127.0.0.1:${COMPOSE_MLFLOW_PORT:-55500}:5000"
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+
+  # Prometheus metrics store. Default retention; OTLP receiver lets tests and the
+  # application push metrics without an extra scrape endpoint.
+  prometheus:
+    image: *prometheus-image
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-otlp-receiver
+    ports:
+      - "127.0.0.1:${COMPOSE_PROMETHEUS_PORT:-59090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+
+  # Grafana dashboards. Datasource and dashboards are provisioned from ./docker/grafana.
+  grafana:
+    image: *grafana-image
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${COMPOSE_GRAFANA_ADMIN_PASSWORD:-local-only-grafana}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:${COMPOSE_GRAFANA_PORT:-53000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
 volumes:
   postgres-data:
+  mlflow-artifacts:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,27 @@
+{
+  "uid": "ra-local-telemetry",
+  "title": "Local telemetry overview",
+  "tags": ["retail-analytics", "local"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Scrape targets up",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 0},
+      "targets": [{"refId": "A", "expr": "sum(up)", "instant": true}]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Prometheus head series",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 6, "w": 16, "x": 8, "y": 0},
+      "targets": [{"refId": "A", "expr": "prometheus_tsdb_head_series"}]
+    }
+  ]
+}
