@@ -64,6 +64,7 @@ ignore = []
 "tests/**" = ["S101", "S105", "S603"]
 # Compiler tests deliberately build (often hostile) SQL text.
 "tests/unit/sql_compiler/**" = ["S101", "S608"]
+"tests/unit/privacy/**" = ["S101", "S608"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

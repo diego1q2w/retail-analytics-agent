@@ -94,14 +94,18 @@ class BackendSettings(BaseModel):
     auth_issuer: str = Field(default="retail-analytics-local", min_length=1)
     auth_audience: str = Field(default="retail-analytics-api", min_length=1)
     auth_signing_key: SecretStr | None = None
+    # Master key for opaque customer/order/item references. Unset: references
+    # are unavailable and queries needing them fail closed.
+    reference_key: SecretStr | None = None
 
     @model_validator(mode="after")
-    def _check_signing_key(self) -> Self:
-        key = self.auth_signing_key
-        if key is not None and len(key.get_secret_value().encode()) < 32:
-            raise ValueError(
-                BACKEND_ENV_PREFIX + "AUTH_SIGNING_KEY must be at least 32 bytes"
-            )
+    def _check_key_lengths(self) -> Self:
+        for name in ("auth_signing_key", "reference_key"):
+            key = getattr(self, name)
+            if key is not None and len(key.get_secret_value().encode()) < 32:
+                raise ValueError(
+                    BACKEND_ENV_PREFIX + name.upper() + " must be at least 32 bytes"
+                )
         return self
 
     @model_validator(mode="after")

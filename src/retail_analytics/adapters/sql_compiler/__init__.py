@@ -10,11 +10,21 @@ from retail_analytics.adapters.sql_compiler.compiler import (
     CompilerLimits,
     SqlglotQueryCompiler,
 )
+from retail_analytics.adapters.sql_compiler.derivations import (
+    KeyedDerivations,
+    ReferenceKey,
+    ReferenceKeyring,
+    ScopedSqlglotCompilers,
+)
 
 __all__ = [
     "SCOPE_PARAMETER",
     "CompilerLimits",
     "DerivationUnavailable",
+    "KeyedDerivations",
+    "ReferenceKey",
+    "ReferenceKeyring",
+    "ScopedSqlglotCompilers",
     "SqlglotQueryCompiler",
     "TrustedDerivations",
     "UnavailableDerivations",

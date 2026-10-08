@@ -56,6 +56,20 @@ class QueryParameter:
     array: bool = False
     # Set by the compiler for authorization parameters; never model-supplied.
     trusted: bool = False
+    # Key material: must reach the warehouse job only, never evidence, logs,
+    # traces or model context. The value is hidden from ``repr``.
+    secret: bool = False
+
+    def __post_init__(self) -> None:
+        if self.secret and not self.trusted:
+            raise ValueError("secret parameters must be trusted")
+
+    def __repr__(self) -> str:
+        shown = "<redacted>" if self.secret else repr(self.value)
+        return (
+            f"QueryParameter(name={self.name!r}, type={self.type.value}, "
+            f"value={shown}, array={self.array}, trusted={self.trusted})"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +117,15 @@ class CompiledQuery:
     @property
     def analysis_parameters(self) -> tuple[QueryParameter, ...]:
         return tuple(p for p in self.parameters if not p.trusted)
+
+    def __repr__(self) -> str:
+        # Never render executed SQL or parameter values in logs by accident.
+        return (
+            f"CompiledQuery(relations={sorted(self.relations)}, "
+            f"outputs={[o.name for o in self.outputs]}, "
+            f"catalog_version={self.catalog_version}, "
+            f"entitlement_version={self.entitlement_version})"
+        )
 
 
 class QueryRejected(Exception):
@@ -155,3 +178,14 @@ class QueryCompiler(Protocol):
     def compile(
         self, query: AnalysisQuery, *, catalog: CatalogView, scope: ProductScope
     ) -> CompiledQuery: ...
+
+
+class ScopedQueryCompilers(Protocol):
+    """Hands out the compiler for one executive's reference scope.
+
+    Opaque references are keyed per executive, so the compiler is selected
+    with the trusted executive identity (never a model argument) for every
+    attempt; references from another executive's results match nothing.
+    """
+
+    def for_executive(self, executive_id: str) -> QueryCompiler: ...
