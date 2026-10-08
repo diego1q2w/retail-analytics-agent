@@ -54,6 +54,22 @@ Copy `.env.example` to `.env` (ignored by Git). Process environment variables ov
 
 Errors name the variable and the problem, never the value. All settings are declared in `src/retail_analytics/bootstrap/config.py`; add new ones there and to `.env.example` (a test keeps them in sync). Only bootstrap reads configuration; inner layers receive typed values.
 
+### Evaluation runner
+
+`retail-analytics-eval` (or `python -m retail_analytics.bootstrap.evaluate`) runs a versioned JSON scenario manifest against a pluggable target and writes a versioned result file.
+
+```sh
+retail-analytics-eval run --manifest MANIFEST.json --target replay --observations OBS.json \
+  --out evaluation-results/run.json --version model=NAME --version dataset=SNAPSHOT [--baseline PREV.json]
+retail-analytics-eval compare BASELINE.json CURRENT.json
+retail-analytics-eval summary evaluation-results/run.json
+```
+
+- Targets: `replay` (recorded observations, deterministic, no agent needed) or `package.module:factory` returning an object with `target_id` and `run(ScenarioInput) -> TargetObservation` (`application/evaluation/ports.py`). Targets never see expectations.
+- Statuses: `passed`, `failed`, `errored`, `skipped` (not implemented or other mode), `blocked` (missing capability such as `--capability bigquery`, unavailable target or judge) and `scored` (judge/operational only). Exit codes: 0 passed, 1 failed, 3 incomplete; blocked and skipped cases never count as passing.
+- Results (`schema_version` 1, `application/evaluation/results.py`) keep deterministic checks, judge scores and operational measurements in separate sections, state every denominator (null ratio when zero), record manifest digest and model/config/prompt/persona/metric/policy/dataset/retrieval/corpus versions, and store no raw text: strings appear as digests and the writer refuses output that looks like PII or a credential. Identical inputs give byte-identical files and the same `verdict_digest`; `recorded_at` appears only with `--timestamp`.
+- Result files are local artifacts (`evaluation-results/` is ignored).
+
 ### Local services (PostgreSQL and Temporal)
 
 `compose.yaml` runs one PostgreSQL 17 server and Temporal 1.32 (image digests pinned), both bound to loopback only. Requires Docker with Compose v2. Passwords are throwaway local defaults; override with `COMPOSE_APP_DB_PASSWORD`, `COMPOSE_TEMPORAL_DB_PASSWORD`, `COMPOSE_PG_ADMIN_PASSWORD`.

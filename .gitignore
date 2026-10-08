@@ -15,3 +15,6 @@ traces/local/
 *.egg-info/
 build/
 dist/
+
+# Evaluation run outputs (results are local artifacts, not source)
+evaluation-results/

@@ -39,6 +39,7 @@ dev = [
 [project.scripts]
 analytics = "retail_analytics.bootstrap.cli:main"
 retail-analytics-check-credentials = "retail_analytics.bootstrap.check_credentials:main"
+retail-analytics-eval = "retail_analytics.bootstrap.evaluate:main"
 retail-analytics-api = "retail_analytics.bootstrap.api:main"
 retail-analytics-worker = "retail_analytics.bootstrap.worker:main"
 
