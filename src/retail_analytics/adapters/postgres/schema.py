@@ -192,3 +192,64 @@ preference_events = sa.Table(
     sa.Column("version", sa.Integer),
     _ts("occurred_at"),
 )
+
+golden_versions = sa.Table(
+    "golden_versions",
+    metadata,
+    sa.Column("example_id", sa.String(32), primary_key=True),
+    sa.Column("version", sa.Integer, primary_key=True),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column("origin", sa.Text, nullable=False),
+    sa.Column("author_id", sa.Text, nullable=False),
+    sa.Column("idempotency_key", sa.Text, nullable=False),
+    sa.Column("restricted_product_ids", ARRAY(sa.Text), nullable=False),
+    sa.Column("schema_version", sa.Text, nullable=False),
+    sa.Column("metric_refs", JSONB, nullable=False),
+    sa.Column("question", sa.Text),
+    sa.Column("sql_text", sa.Text),
+    sa.Column("method_summary", sa.Text),
+    sa.Column("report_artifact_id", sa.Text),
+    sa.Column("report_artifact_version", sa.Integer),
+    sa.Column("content_digest", sa.String(64)),
+    sa.Column("purge_artifact_id", sa.Text),
+    _ts("created_at"),
+    _ts("status_changed_at"),
+    sa.Column("reviewed_by", sa.Text),
+    _ts("reviewed_at", nullable=True),
+)
+
+golden_provenance = sa.Table(
+    "golden_provenance",
+    metadata,
+    sa.Column("example_id", sa.String(32), primary_key=True),
+    sa.Column("version", sa.Integer, primary_key=True),
+    sa.Column("source_kind", sa.Text, nullable=False),
+    sa.Column("source_id", sa.Text),
+    sa.Column("source_version", sa.Integer),
+)
+
+golden_review_events = sa.Table(
+    "golden_review_events",
+    metadata,
+    sa.Column("event_id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("example_id", sa.String(32), nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),
+    sa.Column("action", sa.Text, nullable=False),
+    sa.Column("actor_id", sa.Text, nullable=False),
+    sa.Column("from_status", sa.Text),
+    sa.Column("to_status", sa.Text, nullable=False),
+    sa.Column("rationale", sa.Text, nullable=False),
+    sa.Column("checks", JSONB),
+    _ts("at"),
+)
+
+golden_index_events = sa.Table(
+    "golden_index_events",
+    metadata,
+    sa.Column("sequence", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("example_id", sa.String(32), nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("reason", sa.Text, nullable=False),
+    _ts("at"),
+)
