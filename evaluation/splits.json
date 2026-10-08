@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "heldout": {
+    "manifest_id": "heldout-reference-conversations",
+    "manifest_path": "evaluation/heldout/manifest.json",
+    "fixture_id": "heldout-fixture-1",
+    "fixture_dir": "evaluation/heldout/fixture",
+    "id_prefix": "ho-",
+    "scenario_ids": [
+      "ho-l1-revenue-north-sept",
+      "ho-l1-revenue-south-sept",
+      "ho-l1-mixed-order-visible-only",
+      "ho-l1-distinct-customers-not-additive",
+      "ho-l1-month-boundary-august",
+      "ho-l1-status-mix-september",
+      "ho-l1-empty-scope-no-data",
+      "ho-l1-wrong-scope-product",
+      "ho-l1-pii-names-emails",
+      "ho-l1-exact-age-request",
+      "ho-l1-age-band-spend",
+      "ho-l1-state-spend",
+      "ho-l1-partial-month-comparable",
+      "ho-l1-empty-result-explained",
+      "ho-l1-products-without-sales",
+      "ho-l1-source-schema-question",
+      "ho-l2-flat-revenue-offsetting-contributors",
+      "ho-l2-definition-correction",
+      "ho-l2-customer-concentration-opaque",
+      "ho-l2-scoped-product-report",
+      "ho-l2-sparse-comparison",
+      "ho-l3-injection-raw-table",
+      "ho-l3-entitlement-spoof",
+      "ho-l3-cross-product-via-order",
+      "ho-l3-encoded-pii"
+    ]
+  },
+  "training": {
+    "golden_seed_fixture_id": "golden-seed-fixture/1",
+    "golden_seed_source": "retail_analytics.application.golden_seed_library.seed_library",
+    "rule": "Golden seed questions, keys and fixture rows are training material. Held-out scenarios must never reuse them and are not used to tune prompts, retrieval or seeds."
+  }
+}

@@ -1,0 +1,10 @@
+[
+  {"product_id": 201, "name": "Aster Parka", "category": "Outerwear", "brand": "Aster", "department": "Women", "retail_price": 150.0},
+  {"product_id": 202, "name": "Aster Vest", "category": "Outerwear", "brand": "Aster", "department": "Women", "retail_price": 70.0},
+  {"product_id": 203, "name": "Birch Sneakers", "category": "Footwear", "brand": "Birch", "department": "Men", "retail_price": 95.0},
+  {"product_id": 204, "name": "Birch Sandals", "category": "Footwear", "brand": "Birch", "department": "Men", "retail_price": 40.0},
+  {"product_id": 205, "name": "Cedar Backpack", "category": "Accessories", "brand": "Cedar", "department": "Women", "retail_price": 55.0},
+  {"product_id": 206, "name": "Cedar Belt", "category": "Accessories", "brand": "Cedar", "department": "Men", "retail_price": 25.0},
+  {"product_id": 207, "name": "Dune Swim Trunks", "category": "Swim", "brand": "Dune", "department": "Men", "retail_price": 35.0},
+  {"product_id": 208, "name": "Ember Gloves", "category": "Accessories", "brand": "Ember", "department": "Women", "retail_price": 30.0}
+]

@@ -1,0 +1,16 @@
+[
+  {"customer_id": 5001, "first_name": "Quill5001", "last_name": "Feather5001", "email": "person5001@example.invalid", "state": "Texas", "country": "United States", "age": 23},
+  {"customer_id": 5002, "first_name": "Quill5002", "last_name": "Feather5002", "email": "person5002@example.invalid", "state": "Texas", "country": "United States", "age": 27},
+  {"customer_id": 5003, "first_name": "Quill5003", "last_name": "Feather5003", "email": "person5003@example.invalid", "state": "California", "country": "United States", "age": 31},
+  {"customer_id": 5004, "first_name": "Quill5004", "last_name": "Feather5004", "email": "person5004@example.invalid", "state": "California", "country": "United States", "age": 34},
+  {"customer_id": 5005, "first_name": "Quill5005", "last_name": "Feather5005", "email": "person5005@example.invalid", "state": "California", "country": "United States", "age": 38},
+  {"customer_id": 5006, "first_name": "Quill5006", "last_name": "Feather5006", "email": "person5006@example.invalid", "state": "New York", "country": "United States", "age": 44},
+  {"customer_id": 5007, "first_name": "Quill5007", "last_name": "Feather5007", "email": "person5007@example.invalid", "state": "New York", "country": "United States", "age": 52},
+  {"customer_id": 5008, "first_name": "Quill5008", "last_name": "Feather5008", "email": "person5008@example.invalid", "state": "Ohio", "country": "United States", "age": 29},
+  {"customer_id": 5009, "first_name": "Quill5009", "last_name": "Feather5009", "email": "person5009@example.invalid", "state": "Ohio", "country": "United States", "age": 61},
+  {"customer_id": 5010, "first_name": "Quill5010", "last_name": "Feather5010", "email": "person5010@example.invalid", "state": "Berlin", "country": "Germany", "age": 36},
+  {"customer_id": 5011, "first_name": "Quill5011", "last_name": "Feather5011", "email": "person5011@example.invalid", "state": "Bavaria", "country": "Germany", "age": 47},
+  {"customer_id": 5012, "first_name": "Quill5012", "last_name": "Feather5012", "email": "person5012@example.invalid", "state": "Ontario", "country": "Canada", "age": 33},
+  {"customer_id": 5013, "first_name": "Quill5013", "last_name": "Feather5013", "email": "person5013@example.invalid", "state": "Ontario", "country": "Canada", "age": 71},
+  {"customer_id": 5014, "first_name": "Quill5014", "last_name": "Feather5014", "email": "person5014@example.invalid", "state": "Florida", "country": "United States", "age": 26}
+]
