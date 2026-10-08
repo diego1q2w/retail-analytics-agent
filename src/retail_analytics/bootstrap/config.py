@@ -71,6 +71,7 @@ class BackendSettings(BaseModel):
     bigquery_project: str | None = None
     bigquery_location: str = "US"
     gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-3-flash-preview"
     openai_api_key: SecretStr | None = None
 
     @model_validator(mode="after")

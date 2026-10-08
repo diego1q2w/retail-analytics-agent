@@ -15,6 +15,7 @@ dependencies = [
     "click==8.5.0",
     "fastapi==0.142.4",
     "google-cloud-bigquery==3.46.1",
+    "google-genai==2.29.0",
     "httpx==0.28.1",
     "psycopg[binary]==3.3.6",
     "pydantic-ai-slim[google,openai,temporal]==2.54.0",
@@ -37,6 +38,7 @@ dev = [
 
 [project.scripts]
 analytics = "retail_analytics.bootstrap.cli:main"
+retail-analytics-check-credentials = "retail_analytics.bootstrap.check_credentials:main"
 retail-analytics-api = "retail_analytics.bootstrap.api:main"
 retail-analytics-worker = "retail_analytics.bootstrap.worker:main"
 

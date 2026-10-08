@@ -39,6 +39,7 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 | --- | --- | --- |
 | `analytics` | `retail_analytics.bootstrap.cli` | CLI client; talks to the backend over HTTP only (`analytics status`) |
 | `retail-analytics-api` | `retail_analytics.bootstrap.api` | HTTP backend (`GET /healthz`) |
+| `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
 | `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal worker (no workflows registered yet) |
 
 Backend entry points accept `--check-config`: validate settings, print them with secrets shown only as `<set>`/`<unset>`, and exit. Invalid configuration exits with status 2.
@@ -48,6 +49,7 @@ Backend entry points accept `--check-config`: validate settings, print them with
 Copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; empty values count as unset. Backend settings use the `RETAIL_ANALYTICS_` prefix and the CLI uses `ANALYTICS_CLI_`. Unknown prefixed variables are rejected by name to catch typos.
 
 - `RETAIL_ANALYTICS_MODE=fixture` (default) runs offline with no credentials.
+- `RETAIL_ANALYTICS_GEMINI_MODEL` is the default model name used by the credential check.
 - `RETAIL_ANALYTICS_MODE=live` requires the database URL, Temporal address, BigQuery project and Gemini API key; all missing settings are reported together.
 
 Errors name the variable and the problem, never the value. All settings are declared in `src/retail_analytics/bootstrap/config.py`; add new ones there and to `.env.example` (a test keeps them in sync). Only bootstrap reads configuration; inner layers receive typed values.
