@@ -139,6 +139,10 @@ The model sees a reviewed logical catalog (`domain/logical_catalog.py`, versione
 
 `tests/live/test_schema_metadata.py` checks the catalog against live table metadata when a project is configured.
 
+### Golden retrieval
+
+`bootstrap.retrieval.build_retrieval` returns a `GoldenRetriever`: eligibility prefilter on index entries (product scope, schema/metric applicability) before any scoring, then BM25 and vector channels fused by reciprocal rank (k=60), at most 3 examples, none when no channel clears its threshold. Delivery goes only through `GoldenKnowledgeReader.deliver`, so stale index entries (retired, suspended, erased, changed) are refused and the next-ranked candidate is used. The index is in-process and rebuilt from `KnowledgeIndexSource` when the invalidation feed moves; vectors are cached by content digest. pgvector is not used: the pinned `postgres:17.11-alpine` image does not ship it and the corpus is tens of examples, so exact brute-force cosine is enough. Embeddings sit behind the `TextEmbedder` port: `hashing` (offline, deterministic, lexical only; the fixture default) or `gemini` (`gemini-embedding-2`, free-tier retries with backoff). Settings: `RETAIL_ANALYTICS_EMBEDDING_*` and `RETAIL_ANALYTICS_RETRIEVAL_*`. Thresholds are placeholders until T36 measures precision/recall.
+
 ### Restricted SQL compiler
 
 The model never submits SQL for execution. It writes analytical SQL over the logical relations, and `SqlglotQueryCompiler` (`adapters/sql_compiler/`, behind the `QueryCompiler` port in `application/query_compiler.py`) compiles it against the executive's current `CatalogView` and `ProductScope`. Any query the compiler cannot fully understand is rejected.

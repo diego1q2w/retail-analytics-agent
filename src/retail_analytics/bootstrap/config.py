@@ -15,7 +15,7 @@ import os
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from dotenv import dotenv_values
 from pydantic import (
@@ -82,6 +82,14 @@ class BackendSettings(BaseModel):
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-3-flash-preview"
     openai_api_key: SecretStr | None = None
+    # Golden retrieval: "hashing" is the offline deterministic embedder.
+    embedding_provider: Literal["hashing", "gemini"] = "hashing"
+    embedding_model: str = "gemini-embedding-2"
+    embedding_dimensions: int = Field(default=768, ge=128, le=3072)
+    retrieval_max_results: int = Field(default=3, ge=1, le=3)
+    retrieval_channel_candidates: int = Field(default=10, ge=3, le=100)
+    retrieval_min_similarity: float = Field(default=0.55, ge=-1.0, le=1.0)
+    retrieval_min_lexical_coverage: float = Field(default=0.5, ge=0.0, le=1.0)
     # Local (simulated) token authentication; see README "Authentication".
     auth_issuer: str = Field(default="retail-analytics-local", min_length=1)
     auth_audience: str = Field(default="retail-analytics-api", min_length=1)
