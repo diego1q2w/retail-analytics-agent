@@ -55,7 +55,11 @@ class GeminiEmbedder:
             try:
                 response = await self._client.aio.models.embed_content(
                     model=self._model,
-                    contents=list(contents),
+                    # One Content per text: a bare list of strings is treated as
+                    # parts of a single input and yields a single embedding.
+                    contents=[
+                        types.Content(parts=[types.Part(text=t)]) for t in contents
+                    ],
                     config=types.EmbedContentConfig(
                         output_dimensionality=self._dimensions
                     ),
