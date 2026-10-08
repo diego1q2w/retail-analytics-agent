@@ -126,6 +126,10 @@ Report bodies (Markdown now; PNG/JPEG/PDF reserved) are stored as immutable file
 
 A save writes and fsyncs a temporary file, links it into place without overwriting, then commits the metadata row, so a crash never publishes a partial reference. Saves take an idempotency key (for example the operation ID); a retry returns the original version. Reads check ownership (not-found and not-owned are the same `AccessDenied`) and verify the checksum. `ArtifactMaintenance.reconcile()` removes old temporary files and unreferenced blobs (failed metadata commits) and reports metadata whose file is missing; `purge()` deletes an artifact's metadata, then its files.
 
+### Golden seed library
+
+Ten project-authored, reviewed example trios (question, SQL, report) live in `retail_analytics.application.golden_seed_library`. After the demo executives exist, `python -m retail_analytics.bootstrap.seed_knowledge` loads them through the normal submit and review lifecycle (author `demo-a`, reviewer `demo-b`) and is safe to rerun. See [docs/golden-seeds.md](docs/golden-seeds.md) for the corpus, validation and the manual review checklist.
+
 ### Schema discovery and metadata caching
 
 The model sees a reviewed logical catalog (`domain/logical_catalog.py`, versioned), never raw warehouse metadata. Each logical field is an allowlisted mapping to named source columns; a source column that no reviewed field maps (for example a newly added email-like column) stays unpublished. Direct identifiers cannot back any field, raw keys only become opaque references and exact age only an age band; the catalog rejects such definitions at construction.
