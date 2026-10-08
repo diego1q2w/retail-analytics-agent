@@ -45,6 +45,28 @@ def _budget(row: sa.Row[tuple[object, ...]]) -> RunBudget:
     )
 
 
+def set_clarification_clock(
+    connection: sa.Connection, run_id: str, *, paused: bool, at: datetime
+) -> None:
+    """Couple the active clock to a run transition in the caller's transaction."""
+    row = connection.execute(
+        sa.select(run_budgets).where(run_budgets.c.run_id == run_id).with_for_update()
+    ).one_or_none()
+    if row is None:
+        return
+    current = _budget(row)
+    updated = current.pause(at=at) if paused else current.resume(at=at)
+    connection.execute(
+        sa.update(run_budgets)
+        .where(run_budgets.c.run_id == run_id)
+        .values(
+            active_seconds_used=updated.usage.active_seconds_used,
+            active_since=updated.usage.active_since,
+            updated_at=at,
+        )
+    )
+
+
 def _charge(row: sa.Row[tuple[object, ...]]) -> Charge:
     m = row._mapping
     return Charge(

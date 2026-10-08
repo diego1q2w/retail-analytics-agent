@@ -58,10 +58,10 @@ def test_live_mode_without_settings_exits_with_config_error() -> None:
     assert "RETAIL_ANALYTICS_DATABASE_URL" in result.output
 
 
-def test_worker_exits_cleanly_without_registered_workflows() -> None:
+def test_worker_requires_temporal_configuration() -> None:
     result = CliRunner().invoke(worker.main, [])
-    assert result.exit_code == 0
-    assert "no workflows registered" in result.output
+    assert result.exit_code == 2
+    assert "RETAIL_ANALYTICS_TEMPORAL_ADDRESS" in result.output
 
 
 def test_cli_status_against_backend() -> None:

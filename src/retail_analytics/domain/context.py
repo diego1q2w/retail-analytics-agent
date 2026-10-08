@@ -19,6 +19,7 @@ caller's *current* authority:
   possibly repeating it.
 - A topic reset excludes everything before it from context (it deletes
   nothing).
+- Assistant text without a run (no provenance to judge it by) is withheld.
 
 Information already shown to the user cannot be unseen; these rules only
 stop it from flowing back into new model work.
@@ -137,6 +138,10 @@ class HistoryRules:
     def treatment(self, message: Message) -> HistoryTreatment:
         if self.reset_at is not None and message.created_at < self.reset_at:
             return HistoryTreatment.BEFORE_RESET
+        if message.role is MessageRole.ASSISTANT and message.run_id is None:
+            # Generated text without run provenance cannot be judged against
+            # current authority, so it fails closed.
+            return HistoryTreatment.WITHHELD_ACCESS_CHANGED
         linked = [
             self.standings[e]
             for e in self.run_evidence.get(message.run_id or "", frozenset())

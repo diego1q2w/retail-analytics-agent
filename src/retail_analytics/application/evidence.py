@@ -487,6 +487,32 @@ class EvidenceService:
         )
         return SessionEvidence(tuple(standings), run_links)
 
+    async def link_to_run(
+        self, ctx: ExecutionContext, evidence_ids: Sequence[str]
+    ) -> tuple[str, ...]:
+        """Record that ``ctx``'s run used these records (put them in model
+        context or cited them), as provenance for the run's messages.
+
+        Only the caller's own records in the same session are linked; others
+        are skipped as if missing. Returns the linked IDs. Linking does not
+        authorize use: readers still judge each record by current authority.
+        """
+        _require_analysis(ctx)
+        authority = self._authority(ctx)
+        linked: list[str] = []
+        for evidence_id in dict.fromkeys(evidence_ids):
+            stored = await self._repository.get(evidence_id)
+            if stored is None or (
+                stored.evidence.executive_id,
+                stored.evidence.session_id,
+            ) != (authority.executive_id, authority.session_id):
+                continue
+            await self._repository.link_run(
+                ctx.correlation.run_id, evidence_id, EvidenceUse.REUSED
+            )
+            linked.append(evidence_id)
+        return tuple(linked)
+
     async def pin_for(
         self, executive_id: str, evidence_ids: Sequence[str], holder: PinHolder
     ) -> None:

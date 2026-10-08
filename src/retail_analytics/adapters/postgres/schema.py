@@ -366,3 +366,40 @@ budget_charges = sa.Table(
     _ts("created_at"),
     _ts("settled_at", nullable=True),
 )
+
+run_principals = sa.Table(
+    "run_principals",
+    metadata,
+    sa.Column("run_id", sa.Text, primary_key=True),
+    sa.Column("executive_id", sa.Text, nullable=False),
+    sa.Column("scopes", ARRAY(sa.Text), nullable=False),
+    _ts("recorded_at"),
+)
+
+run_inputs = sa.Table(
+    "run_inputs",
+    metadata,
+    sa.Column("input_id", sa.Text, primary_key=True),
+    sa.Column("position", sa.BigInteger, sa.Identity()),
+    sa.Column("session_id", sa.Text, nullable=False),
+    sa.Column("run_id", sa.Text),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("content", sa.Text, nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column("message_id", sa.Text),
+    sa.Column("question_id", sa.Text),
+    sa.Column("promoted_run_id", sa.Text),
+    _ts("created_at"),
+    _ts("applied_at", nullable=True),
+)
+
+run_questions = sa.Table(
+    "run_questions",
+    metadata,
+    sa.Column("question_id", sa.Text, primary_key=True),
+    sa.Column("run_id", sa.Text, nullable=False),
+    sa.Column("message_id", sa.Text, nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    _ts("asked_at"),
+    _ts("closed_at", nullable=True),
+)

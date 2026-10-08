@@ -9,6 +9,7 @@ unique index on active runs backs this up. Different sessions never contend.
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy import exc
@@ -64,6 +65,37 @@ def lock_run(connection: sa.Connection, run_id: str) -> Run:
     if row is None:
         raise RecordNotFound("run", run_id)
     return run_from_row(row)
+
+
+def transition_locked(
+    connection: sa.Connection, run_id: str, to: RunStatus, *, at: datetime
+) -> Run:
+    """Apply a run transition inside the caller's transaction (row locked)."""
+    run = lock_run(connection, run_id)
+    updated = run.transition(to, at=at)
+    if updated is None:
+        return run
+    connection.execute(
+        sa.update(runs)
+        .where(runs.c.run_id == run_id)
+        .values(
+            status=updated.status.value,
+            updated_at=updated.updated_at,
+            completed_at=updated.completed_at,
+        )
+    )
+    if updated.status.is_terminal:
+        # Retention runs from the later of last interaction and completion.
+        connection.execute(
+            sa.update(sessions)
+            .where(sessions.c.session_id == run.session_id)
+            .values(
+                last_activity_at=sa.func.greatest(
+                    sessions.c.last_activity_at, updated.updated_at
+                )
+            )
+        )
+    return updated
 
 
 class PostgresRunRepository:
@@ -184,31 +216,7 @@ class PostgresRunRepository:
         return await self._db.transaction(self._transition, run_id, to)
 
     def _transition(self, connection: sa.Connection, run_id: str, to: RunStatus) -> Run:
-        run = lock_run(connection, run_id)
-        updated = run.transition(to, at=self._db.clock())
-        if updated is None:
-            return run
-        connection.execute(
-            sa.update(runs)
-            .where(runs.c.run_id == run_id)
-            .values(
-                status=updated.status.value,
-                updated_at=updated.updated_at,
-                completed_at=updated.completed_at,
-            )
-        )
-        if updated.status.is_terminal:
-            # Retention runs from the later of last interaction and completion.
-            connection.execute(
-                sa.update(sessions)
-                .where(sessions.c.session_id == run.session_id)
-                .values(
-                    last_activity_at=sa.func.greatest(
-                        sessions.c.last_activity_at, updated.updated_at
-                    )
-                )
-            )
-        return updated
+        return transition_locked(connection, run_id, to, at=self._db.clock())
 
     async def attach_workflow(self, run_id: str, workflow: WorkflowRef) -> Run:
         return await self._db.transaction(self._attach, run_id, workflow)

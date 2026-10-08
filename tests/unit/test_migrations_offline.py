@@ -106,3 +106,19 @@ def test_run_budget_schema_upgrades_and_downgrades_offline() -> None:
     sql = buffer.getvalue()
     assert "DROP TABLE budget_charges" in sql
     assert "DROP TABLE run_budgets" in sql
+
+
+def test_investigation_input_schema_upgrades_and_downgrades_offline() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0011:0012", sql=True)
+    sql = buffer.getvalue()
+    for table in ("run_principals", "run_inputs", "run_questions"):
+        assert f"CREATE TABLE {table}" in sql
+    assert "(kind = 'queued') = (run_id IS NULL)" in sql
+    assert "CREATE UNIQUE INDEX ux_run_questions_one_open" in sql
+
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0012:0011", sql=True)
+    sql = buffer.getvalue()
+    for table in ("run_principals", "run_inputs", "run_questions"):
+        assert f"DROP TABLE {table}" in sql

@@ -100,7 +100,7 @@ from retail_analytics.domain.executions import (
 )
 from retail_analytics.domain.operations import SideEffect, ToolErrorCode
 
-QUERY_CAPABILITY = "run_query"
+QUERY_CAPABILITY = "execute_analysis"
 QUERY_CAPABILITY_VERSION = 1
 
 _S = ToolExecutionStatus
