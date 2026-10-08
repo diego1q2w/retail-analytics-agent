@@ -355,7 +355,7 @@ async def test_clarification_retry_repairs_budget_pause(
             raise RuntimeError("controlled crash after WAITING commit")
 
         monkeypatch.setattr(runtime._budgets, "pause_for_clarification", crash)
-        draft = QuestionDraft(run_id, 1, "Which sales period should I use?")
+        draft = QuestionDraft(run_id, 1, "Which sales period for jane@example.com?")
         with pytest.raises(RuntimeError, match="controlled crash"):
             await runtime.ask(draft)
         monkeypatch.setattr(runtime._budgets, "pause_for_clarification", original)
@@ -364,6 +364,16 @@ async def test_clarification_retry_repairs_budget_pause(
         assert budget and budget.usage.active_since is None
         attachment = await env.services.control.attach(env.principal, run_id=run_id)
         assert attachment.open_question_id is not None
+        assert (await runtime.ask(draft)).result is StepResult.ASKED
+        events = await runtime._events.replay(run_id, limit=100)
+        questions = [event.input_request for event in events if event.input_request]
+        assert len(questions) == 1
+        assert "jane@example.com" not in questions[0].question
+        await env.db.access_admin.set_active(env.principal.executive_id, False)
+        denied = await runtime.ask(draft)
+        assert denied.result is StepResult.STOPPED
+        assert denied.stop_reason is StopReason.ACCESS
+        assert await runtime._events.replay(run_id, limit=100) == events
     finally:
         env.db.close()
 

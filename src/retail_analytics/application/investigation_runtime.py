@@ -406,27 +406,23 @@ class InvestigationRuntime:
         """Pause for a clarification; waiting costs no model calls or time."""
         question_id = question_id_for(draft.run_id, draft.sequence)
         open_question = await self._inputs.open_question(draft.run_id)
-        if open_question is not None and open_question.question_id == question_id:
-            # Repair the gap after committing WAITING but before pausing the
-            # budget; a retry must finish the durable state change.
-            await self._budgets.pause_for_clarification(draft.run_id)
-            run = await self._runs.get_run(draft.run_id)
-            if run is not None:
-                await self._publish_once(
-                    run,
-                    EventKind.INPUT_REQUIRED,
-                    "Waiting for your answer.",
-                    input_request=InputRequest(
-                        question_id=question_id,
-                        question=draft.question[:MAX_QUESTION_CHARS],
-                    ),
-                )
-            return StepOutcome(StepResult.ASKED, question_id=question_id)
+        recovering = (
+            open_question is not None and open_question.question_id == question_id
+        )
         try:
-            principal, run = await self._running(draft.run_id)
+            if recovering:
+                principal = await self._principals.get(draft.run_id)
+                run = await self._runs.get_run(draft.run_id)
+                if principal is None or run is None:
+                    raise RunStopped(StopReason.ACCESS)
+                if run.status is not RunStatus.WAITING_FOR_INPUT:
+                    raise RunStopped(StopReason.CANCELLED)
+                await self._context_for(principal, draft.run_id)
+            else:
+                principal, run = await self._running(draft.run_id)
         except RunStopped as stopped:
             return StepOutcome(StepResult.STOPPED, stop_reason=stopped.reason)
-        if await self._inputs.pending(draft.run_id):
+        if not recovering and await self._inputs.pending(draft.run_id):
             return StepOutcome(StepResult.SUPERSEDED)
         try:
             (released,) = await self._gate.check(
@@ -444,18 +440,19 @@ class InvestigationRuntime:
                 message=withheld.message,
                 correctable=withheld.correctable,
             )
-        waiting = await self._inputs.wait_for_input(
-            ClarificationQuestion(
-                question_id=question_id,
-                run_id=draft.run_id,
-                message_id=message_id_for(question_id),
-                status=QuestionStatus.OPEN,
-                asked_at=self._clock(),
-            ),
-            content=released.text,
-        )
-        if not waiting:
-            return StepOutcome(StepResult.SUPERSEDED)
+        if not recovering:
+            waiting = await self._inputs.wait_for_input(
+                ClarificationQuestion(
+                    question_id=question_id,
+                    run_id=draft.run_id,
+                    message_id=message_id_for(question_id),
+                    status=QuestionStatus.OPEN,
+                    asked_at=self._clock(),
+                ),
+                content=released.text,
+            )
+            if not waiting:
+                return StepOutcome(StepResult.SUPERSEDED)
         await self._budgets.pause_for_clarification(draft.run_id)
         await self._publish_once(
             run,
