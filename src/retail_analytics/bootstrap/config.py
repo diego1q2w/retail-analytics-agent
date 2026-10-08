@@ -63,6 +63,13 @@ class BackendSettings(BaseModel):
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8080, ge=1, le=65535)
     artifact_dir: Path = Path("data/local/artifacts")
+    # Per-artifact byte limits enforced before anything is stored.
+    artifact_max_markdown_bytes: int = Field(
+        default=1024 * 1024, ge=1024, le=16 * 1024 * 1024
+    )
+    artifact_max_binary_bytes: int = Field(
+        default=10 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024
+    )
 
     database_url: SecretStr | None = None
     temporal_address: str | None = None

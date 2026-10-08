@@ -134,3 +134,17 @@ product_entitlements = sa.Table(
     sa.Column("product_id", sa.Text, primary_key=True),
     _ts("granted_at"),
 )
+
+artifact_versions = sa.Table(
+    "artifact_versions",
+    metadata,
+    sa.Column("artifact_id", sa.Text, primary_key=True),
+    sa.Column("version", sa.Integer, primary_key=True),
+    sa.Column("owner_id", sa.Text, nullable=False),
+    sa.Column("media_type", sa.Text, nullable=False),
+    sa.Column("sha256", sa.String(64), nullable=False),
+    sa.Column("size_bytes", sa.BigInteger, nullable=False),
+    sa.Column("storage_key", sa.Text, nullable=False),
+    sa.Column("idempotency_key", sa.Text, nullable=False),
+    _ts("created_at"),
+)

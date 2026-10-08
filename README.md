@@ -120,6 +120,12 @@ retail-analytics-dev-access token demo-a --minutes 60   # prints a token to stdo
 
 **Production identity (design only, not deployed).** A company identity provider issues the tokens (asymmetric signatures published as JWKS). A verifier for those keys replaces `LocalJwtAuthority` behind the same `TokenVerifier` port (`retail_analytics.application.authentication`). Executives are provisioned from the directory into `executives` by issuer and subject, and entitlements are still assigned server-side. The authorization path after verification does not change. No identity provider has been chosen or configured.
 
+### Artifact storage
+
+Report bodies (Markdown now; PNG/JPEG/PDF reserved) are stored as immutable files, not in PostgreSQL. `ArtifactService` (`application/artifacts.py`) is the interface other features use: `save`, `read`, `describe`, `versions`. Files live under `RETAIL_ANALYTICS_ARTIFACT_DIR` (default `data/local/artifacts`, gitignored; mount a Docker volume there) as `blobs/<artifact_id>/<sha256>`; table `artifact_versions` holds owner, version, media type, checksum, size and key. Limits: `RETAIL_ANALYTICS_ARTIFACT_MAX_MARKDOWN_BYTES` (1 MiB) and `..._MAX_BINARY_BYTES` (10 MiB); failures are `ArtifactError` with a code (`too_large`, `unsupported_media_type`, `invalid_content`, ...).
+
+A save writes and fsyncs a temporary file, links it into place without overwriting, then commits the metadata row, so a crash never publishes a partial reference. Saves take an idempotency key (for example the operation ID); a retry returns the original version. Reads check ownership (not-found and not-owned are the same `AccessDenied`) and verify the checksum. `ArtifactMaintenance.reconcile()` removes old temporary files and unreferenced blobs (failed metadata commits) and reports metadata whose file is missing; `purge()` deletes an artifact's metadata, then its files.
+
 ### Local telemetry (MLflow, Prometheus, Grafana)
 
 The same `compose.yaml` adds MLflow 3.14 (sanitized agent traces), Prometheus 3.12 (metrics) and Grafana 12.4 (dashboards), image versions pinned. For local development only: every port is bound to `127.0.0.1`, passwords are throwaway defaults, and none of it is a hardened or authenticated production setup (production hosting needs its own authentication, network restrictions, retention and backup design). No project-specific retention is configured; backend defaults apply.
