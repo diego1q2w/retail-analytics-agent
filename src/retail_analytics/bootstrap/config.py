@@ -77,6 +77,8 @@ class BackendSettings(BaseModel):
     temporal_task_queue: str = "retail-analytics"
     bigquery_project: str | None = None
     bigquery_location: str = "US"
+    # How long source schema metadata is trusted before it is re-read.
+    schema_refresh_seconds: int = Field(default=3600, ge=60, le=86400)
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-3-flash-preview"
     openai_api_key: SecretStr | None = None

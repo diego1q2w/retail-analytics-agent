@@ -126,6 +126,19 @@ Report bodies (Markdown now; PNG/JPEG/PDF reserved) are stored as immutable file
 
 A save writes and fsyncs a temporary file, links it into place without overwriting, then commits the metadata row, so a crash never publishes a partial reference. Saves take an idempotency key (for example the operation ID); a retry returns the original version. Reads check ownership (not-found and not-owned are the same `AccessDenied`) and verify the checksum. `ArtifactMaintenance.reconcile()` removes old temporary files and unreferenced blobs (failed metadata commits) and reports metadata whose file is missing; `purge()` deletes an artifact's metadata, then its files.
 
+### Schema discovery and metadata caching
+
+The model sees a reviewed logical catalog (`domain/logical_catalog.py`, versioned), never raw warehouse metadata. Each logical field is an allowlisted mapping to named source columns; a source column that no reviewed field maps (for example a newly added email-like column) stays unpublished. Direct identifiers cannot back any field, raw keys only become opaque references and exact age only an age band; the catalog rejects such definitions at construction.
+
+`list_relations` and `describe_relation` (`capabilities/discovery.py`) render the same `CatalogView` that SQL validation consumes (`DiscoveryService.view_for(context)` in `application/discovery.py`), so shown fields and types are the usable ones.
+
+- **Source schema cache.** One shared cache of column names and types (metadata only, no rows). It refreshes after `RETAIL_ANALYTICS_SCHEMA_REFRESH_SECONDS` (default 3600: the public dataset's schema changes rarely, and metadata reads are free) and on demand through `invalidate()` after a schema-mismatch error.
+- **Per-executive filtering is never cached.** Each call builds the view from the freshly resolved `ExecutionContext`; no permission or an empty product scope gives an empty view, so entitlement changes apply immediately despite a warm cache. Results carry the catalog and entitlement versions.
+- **Drift.** A missing column or table, or an incompatible type, disables the affected logical fields (the whole relation if the field is essential, such as a key) and any joins that need them. Other fields keep working. Errors name logical relations only, never warehouse tables or columns.
+- **Outage.** If a refresh fails, the last validated snapshot is served (flagged stale) for up to 24 hours, retrying at most every 30 seconds; after that discovery fails closed with a temporary-failure error.
+
+`tests/live/test_schema_metadata.py` checks the catalog against live table metadata when a project is configured.
+
 ### Local telemetry (MLflow, Prometheus, Grafana)
 
 The same `compose.yaml` adds MLflow 3.14 (sanitized agent traces), Prometheus 3.12 (metrics) and Grafana 12.4 (dashboards), image versions pinned. For local development only: every port is bound to `127.0.0.1`, passwords are throwaway defaults, and none of it is a hardened or authenticated production setup (production hosting needs its own authentication, network restrictions, retention and backup design). No project-specific retention is configured; backend defaults apply.

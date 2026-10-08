@@ -53,6 +53,12 @@ def _bigquery_error(exc: Exception, project: str) -> AccessError:
     )
 
 
+def create_bigquery_client(project: str, location: str) -> bigquery.Client:
+    """Application-default-credentials client; shared by every BigQuery adapter."""
+    credentials, _ = default_credentials(scopes=list(BIGQUERY_SCOPES))
+    return bigquery.Client(project=project, credentials=credentials, location=location)
+
+
 class BigQueryWarehouseAccess:
     """Implements ``WarehouseAccess`` with a lazily created BigQuery client."""
 
@@ -65,12 +71,7 @@ class BigQueryWarehouseAccess:
 
     def _get_client(self) -> bigquery.Client:
         if self._client is None:
-            credentials, _ = default_credentials(scopes=list(BIGQUERY_SCOPES))
-            self._client = bigquery.Client(
-                project=self._project,
-                credentials=credentials,
-                location=self._location,
-            )
+            self._client = create_bigquery_client(self._project, self._location)
         return self._client
 
     def credentials_ready(self) -> None:
