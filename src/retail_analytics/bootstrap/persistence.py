@@ -14,6 +14,7 @@ from retail_analytics.adapters.postgres.database import (
     new_event_id,
     utc_now,
 )
+from retail_analytics.adapters.postgres.evidence import PostgresEvidenceStore
 from retail_analytics.adapters.postgres.executives import PostgresExecutiveDirectory
 from retail_analytics.adapters.postgres.preferences import PostgresPreferenceStore
 from retail_analytics.adapters.postgres.run_events import PostgresRunEventStore
@@ -49,6 +50,8 @@ class Persistence:
     executives: ExecutiveDirectory
     access_admin: AccessAdministration
     preferences: PreferenceStore
+    # Evidence records, pins and the preference FindingInvalidator in one store.
+    evidence: PostgresEvidenceStore
 
     def close(self) -> None:
         self.engine.dispose()
@@ -71,6 +74,7 @@ def build_persistence(
         executives=executives,
         access_admin=executives,
         preferences=PostgresPreferenceStore(db),
+        evidence=PostgresEvidenceStore(db),
     )
 
 

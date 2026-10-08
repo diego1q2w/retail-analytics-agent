@@ -1,0 +1,170 @@
+"""In-memory evidence store obeying the same contract as the PostgreSQL one."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
+
+from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.evidence import (
+    DEFAULT_CANDIDATE_LIMIT,
+    NewEvidence,
+    RunEvidenceLink,
+    StoredEvidence,
+)
+from retail_analytics.application.persistence import IdempotencyConflict
+from retail_analytics.domain.evidence import Evidence, EvidenceUse, PinHolder
+
+
+@dataclass
+class Clock:
+    now: datetime = datetime(2026, 10, 8, 12, tzinfo=UTC)
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, delta: timedelta) -> None:
+        self.now += delta
+
+
+@dataclass
+class Ids:
+    prefix: str = "evd"
+    count: int = 0
+
+    def __call__(self) -> str:
+        self.count += 1
+        return f"{self.prefix}{self.count}"
+
+
+@dataclass
+class FakeEvidenceStore:
+    clock: Callable[[], datetime] = field(default_factory=Clock)
+    records: dict[str, Evidence] = field(default_factory=dict)
+    invalidated: set[str] = field(default_factory=set)
+    links: list[RunEvidenceLink] = field(default_factory=list)
+    pins: set[tuple[str, PinHolder]] = field(default_factory=set)
+
+    async def record(self, new: NewEvidence) -> Evidence:
+        for existing in self.records.values():
+            if existing.operation_id == new.operation_id:
+                if (existing.content_digest, existing.executive_id) != (
+                    new.content_digest,
+                    new.executive_id,
+                ):
+                    raise IdempotencyConflict("evidence", new.operation_id)
+                return existing
+        lineage, version = new.evidence_id, 1
+        if new.refreshes is not None:
+            previous = self.records.get(new.refreshes)
+            if previous is None or (previous.executive_id, previous.session_id) != (
+                new.executive_id,
+                new.session_id,
+            ):
+                raise AccessDenied("evidence", new.refreshes)
+            lineage = previous.lineage_id
+            version = 1 + max(
+                e.version for e in self.records.values() if e.lineage_id == lineage
+            )
+        for input_id in new.content.derived_from:
+            source = self.records.get(input_id)
+            if source is None or source.executive_id != new.executive_id:
+                raise AccessDenied("evidence", new.evidence_id)
+        record = Evidence(
+            evidence_id=new.evidence_id,
+            lineage_id=lineage,
+            version=version,
+            executive_id=new.executive_id,
+            session_id=new.session_id,
+            run_id=new.run_id,
+            operation_id=new.operation_id,
+            authority=new.authority,
+            content=new.content,
+            computed_at=new.computed_at,
+            content_digest=new.content_digest,
+        )
+        self.records[record.evidence_id] = record
+        await self.link_run(new.run_id, record.evidence_id, EvidenceUse.PRODUCED)
+        return record
+
+    def _stored(self, record: Evidence) -> StoredEvidence:
+        return StoredEvidence(record, record.evidence_id in self.invalidated)
+
+    async def get(self, evidence_id: str) -> StoredEvidence | None:
+        record = self.records.get(evidence_id)
+        return None if record is None else self._stored(record)
+
+    async def candidates(
+        self,
+        executive_id: str,
+        session_id: str,
+        *,
+        subject_key: str | None = None,
+        limit: int = DEFAULT_CANDIDATE_LIMIT,
+    ) -> Sequence[StoredEvidence]:
+        found = [
+            e
+            for e in self.records.values()
+            if (e.executive_id, e.session_id) == (executive_id, session_id)
+            and (subject_key is None or e.content.subject_key == subject_key)
+        ]
+        found.sort(key=lambda e: (e.computed_at, e.version), reverse=True)
+        return [self._stored(e) for e in found[:limit]]
+
+    async def link_run(self, run_id: str, evidence_id: str, use: EvidenceUse) -> None:
+        if any((x.run_id, x.evidence_id) == (run_id, evidence_id) for x in self.links):
+            return
+        self.links.append(RunEvidenceLink(run_id, evidence_id, use, self.clock()))
+
+    async def for_run(self, run_id: str) -> Sequence[RunEvidenceLink]:
+        return [x for x in self.links if x.run_id == run_id]
+
+    async def invalidate_dependent_findings(
+        self, executive_id: str, session_id: str | None, slot: str
+    ) -> None:
+        affected = {
+            e.evidence_id
+            for e in self.records.values()
+            if e.executive_id == executive_id
+            and (session_id is None or e.session_id == session_id)
+            and slot in e.content.analytical_slots
+        }
+        while True:
+            more = {
+                e.evidence_id
+                for e in self.records.values()
+                if set(e.content.derived_from) & affected
+            } - affected
+            if not more:
+                break
+            affected |= more
+        self.invalidated |= affected
+
+    async def pin(
+        self, executive_id: str, evidence_ids: Sequence[str], holder: PinHolder
+    ) -> None:
+        for evidence_id in evidence_ids:
+            record = self.records.get(evidence_id)
+            if record is None or record.executive_id != executive_id:
+                raise AccessDenied("evidence", evidence_id)
+        self.pins |= {(evidence_id, holder) for evidence_id in evidence_ids}
+
+    async def unpin(self, holder: PinHolder) -> int:
+        removed = {p for p in self.pins if p[1] == holder}
+        self.pins -= removed
+        return len(removed)
+
+    async def holders(self, evidence_id: str) -> tuple[PinHolder, ...]:
+        return tuple(sorted((h for e, h in self.pins if e == evidence_id), key=str))
+
+    async def pinned(self, holder: PinHolder) -> tuple[str, ...]:
+        return tuple(sorted(e for e, h in self.pins if h == holder))
+
+    def tamper(self, evidence_id: str, **changes: object) -> None:
+        """Simulate an out-of-band change to stored content (tests only)."""
+        record = self.records[evidence_id]
+        self.records[evidence_id] = replace(
+            record,
+            content=replace(record.content, **changes),  # type: ignore[arg-type]
+        )

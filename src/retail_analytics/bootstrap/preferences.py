@@ -23,5 +23,6 @@ def build_preferences(
         access.resolver,
         access.guard,
         catalog or default_catalog(),
-        invalidator,
+        # Changing an analytical preference invalidates dependent evidence.
+        invalidator or persistence.evidence,
     )

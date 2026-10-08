@@ -253,3 +253,67 @@ golden_index_events = sa.Table(
     sa.Column("reason", sa.Text, nullable=False),
     _ts("at"),
 )
+
+evidence = sa.Table(
+    "evidence",
+    metadata,
+    sa.Column("evidence_id", sa.Text, primary_key=True),
+    sa.Column("lineage_id", sa.Text, nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),
+    sa.Column("executive_id", sa.Text, nullable=False),
+    sa.Column("session_id", sa.Text, nullable=False),
+    sa.Column("run_id", sa.Text, nullable=False),
+    sa.Column("operation_id", sa.Text, nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("subject_key", sa.Text, nullable=False),
+    sa.Column("authorization_version", sa.Integer, nullable=False),
+    sa.Column("scope_digest", sa.String(64), nullable=False),
+    sa.Column("catalog_version", sa.Integer, nullable=False),
+    sa.Column("policy_version", sa.Integer, nullable=False),
+    sa.Column("preference_fingerprint", sa.Text, nullable=False),
+    sa.Column("analysis", JSONB, nullable=False),
+    sa.Column("provenance", JSONB, nullable=False),
+    sa.Column("payload", JSONB, nullable=False),
+    sa.Column("grain", ARRAY(sa.Text), nullable=False),
+    sa.Column("analytical_slots", ARRAY(sa.Text), nullable=False),
+    sa.Column("truncated", sa.Boolean, nullable=False),
+    sa.Column("content_digest", sa.String(64), nullable=False),
+    _ts("computed_at"),
+    _ts("recorded_at"),
+)
+
+evidence_dependencies = sa.Table(
+    "evidence_dependencies",
+    metadata,
+    sa.Column("evidence_id", sa.Text, primary_key=True),
+    sa.Column("position", sa.Integer, primary_key=True),
+    sa.Column("depends_on", sa.Text, nullable=False),
+)
+
+run_evidence = sa.Table(
+    "run_evidence",
+    metadata,
+    sa.Column("run_id", sa.Text, primary_key=True),
+    sa.Column("evidence_id", sa.Text, primary_key=True),
+    sa.Column("use", sa.Text, nullable=False),
+    _ts("linked_at"),
+)
+
+evidence_invalidations = sa.Table(
+    "evidence_invalidations",
+    metadata,
+    sa.Column("id", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("evidence_id", sa.Text, nullable=False),
+    sa.Column("reason", sa.Text, nullable=False),
+    sa.Column("slot", sa.Text),
+    _ts("invalidated_at"),
+)
+
+evidence_pins = sa.Table(
+    "evidence_pins",
+    metadata,
+    sa.Column("evidence_id", sa.Text, primary_key=True),
+    sa.Column("holder_kind", sa.Text, primary_key=True),
+    sa.Column("holder_id", sa.Text, primary_key=True),
+    _ts("pinned_at"),
+)
