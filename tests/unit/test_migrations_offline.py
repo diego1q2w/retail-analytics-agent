@@ -78,3 +78,15 @@ def test_query_job_submissions_schema_upgrades_and_downgrades_offline() -> None:
     sql = buffer.getvalue()
     assert "DELETE FROM query_executions WHERE submission > 1" in sql
     assert "DROP COLUMN submission" in sql
+
+
+def test_topic_resets_schema_upgrades_and_downgrades_offline() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0009:0010", sql=True)
+    sql = buffer.getvalue()
+    assert "CREATE TABLE topic_resets" in sql
+    assert "REFERENCES sessions (session_id) ON DELETE CASCADE" in sql
+
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0010:0009", sql=True)
+    assert "DROP TABLE topic_resets" in buffer.getvalue()

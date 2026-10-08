@@ -19,7 +19,7 @@ beyond the investigation but never authorize reading them.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -33,6 +33,7 @@ from retail_analytics.application.tools.context import (
     OperationContext,
 )
 from retail_analytics.domain.access import Permission
+from retail_analytics.domain.context import EvidenceStanding
 from retail_analytics.domain.evidence import (
     AnalysisStamp,
     AuthorityStamp,
@@ -213,6 +214,19 @@ class ReuseOutcome:
     reused: ReusedEvidence | None
     considered: tuple[tuple[str, ReuseBlock], ...] = ()
     refresh_of: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionEvidence:
+    """Session evidence with its current standing, newest computation first."""
+
+    standings: tuple[EvidenceStanding, ...]
+    # Evidence each requested run produced or reused.
+    run_links: Mapping[str, frozenset[str]]
+
+    @property
+    def usable(self) -> tuple[Evidence, ...]:
+        return tuple(s.evidence for s in self.standings if s.usable)
 
 
 def query_subject_key(compiled: CompiledQuery) -> str:
@@ -424,6 +438,54 @@ class EvidenceService:
             )
             is None
         )
+
+    async def session_standing(
+        self,
+        ctx: ExecutionContext,
+        *,
+        run_ids: Sequence[str] = (),
+        limit: int = DEFAULT_CANDIDATE_LIMIT,
+    ) -> SessionEvidence:
+        """Every recent session record judged against current authority.
+
+        Unlike ``usable_in_session`` this also returns what is now withheld
+        (and why), plus the evidence each of ``run_ids`` produced or reused,
+        so context assembly can tell which earlier messages may carry
+        restricted figures. Withheld records are for that judgement only and
+        must never be shown. Records linked to a run but outside ``limit``
+        are loaded individually; any that cannot be loaded are omitted, and
+        callers treat a linked ID without a standing as withheld.
+        """
+        _require_analysis(ctx)
+        authority = self._authority(ctx)
+        stored = list(
+            await self._repository.candidates(
+                authority.executive_id, authority.session_id, limit=limit
+            )
+        )
+        known = {s.evidence.evidence_id for s in stored}
+        run_links: dict[str, frozenset[str]] = {}
+        for run_id in dict.fromkeys(run_ids):
+            links = await self._repository.for_run(run_id)
+            run_links[run_id] = frozenset(link.evidence_id for link in links)
+            for evidence_id in sorted(run_links[run_id] - known):
+                found = await self._repository.get(evidence_id)
+                if found is not None:
+                    stored.append(found)
+                    known.add(evidence_id)
+        standings = [
+            EvidenceStanding(
+                s.evidence,
+                self._policy.authority_block(
+                    s.evidence, authority, invalidated=s.invalidated
+                ),
+            )
+            for s in stored
+        ]
+        standings.sort(
+            key=lambda s: (s.evidence.computed_at, s.evidence.version), reverse=True
+        )
+        return SessionEvidence(tuple(standings), run_links)
 
     async def pin_for(
         self, executive_id: str, evidence_ids: Sequence[str], holder: PinHolder

@@ -328,3 +328,11 @@ golden_embeddings = sa.Table(
     sa.Column("vector", ARRAY(sa.Float(53)), nullable=False),
     _ts("created_at"),
 )
+
+topic_resets = sa.Table(
+    "topic_resets",
+    metadata,
+    sa.Column("reset_id", sa.Text, primary_key=True),
+    sa.Column("session_id", sa.Text, nullable=False),
+    _ts("reset_at"),
+)
