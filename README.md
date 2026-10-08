@@ -10,6 +10,46 @@ Setup for live services, public architecture documentation and evaluation result
 
 Do not commit credentials, raw query results or private conversation data.
 
+## Quick start
+
+On a new machine with Docker (Compose v2) and Python 3.12 (or [uv](https://docs.astral.sh/uv/)) installed:
+
+```sh
+./scripts/bootstrap.sh
+```
+
+That one command is idempotent and does everything needed for a working, seeded local environment in fixture mode (offline, no credentials):
+
+1. creates `.venv` and installs the pinned dependencies if no virtualenv is active;
+2. creates `.env` from `.env.example`, or only adds the keys an existing `.env` lacks. It never overwrites or reorders a value, generates local-only secrets (`RETAIL_ANALYTICS_AUTH_SIGNING_KEY`, `RETAIL_ANALYTICS_REFERENCE_KEY`, and the database passwords for a new Compose volume) with `secrets`, and fills the connection defaults. It prints `<generated>`, `<kept>`, `<default>` or `<missing: action>` per key, never a value;
+3. checks Docker, starts PostgreSQL and Temporal and waits until they are healthy;
+4. runs `alembic upgrade head`;
+5. provisions the demo executives and seeds the Golden knowledge library;
+6. validates the configuration and, when BigQuery and Gemini are configured, checks that access.
+
+External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `RETAIL_ANALYTICS_REFERENCE_KEY`: rotating it invalidates every existing customer reference.
+
+Options: `--telemetry` also starts MLflow, Prometheus and Grafana; `--env-file FILE` works on another environment file (the Compose and database commands then use its values; the repository's `.env` is untouched); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
+
+### How to add a bootstrap step
+
+Everything bootstrap does is one ordered tuple, `STEPS` in `src/retail_analytics/bootstrap/local_setup.py`. A later feature (an API, persona seeds, an embeddings backfill) adds its own step there instead of writing a separate script:
+
+```python
+def step_personas(ctx: SetupContext) -> StepResult:
+    ctx.python("-m", "retail_analytics.bootstrap.seed_personas", show=True)
+    return StepResult("done", "personas seeded")
+
+
+STEPS = (
+    ...,
+    BootstrapStep("personas", "seed personas", step_personas),
+    ...,
+)  # after what it needs
+```
+
+Rules: the step must be idempotent (a second run changes nothing); it runs the project's own command with the environment file's values (`ctx.python`, `ctx.compose`, `ctx.run`; output is scrubbed of secret values); it raises `StepFailed` with a message that has no secrets; set `required=False` for a check that should only warn, and `enabled=` for opt-in steps. Put the step after the steps it depends on (migrations before seeds). A new setting goes into `.env.example` with a safe local default (read dynamically, so existing `.env` files gain it on the next run); a secret that is safe to generate locally is added to `GENERATED_SECRETS` in `bootstrap/local_env.py`; a credential it cannot generate goes in `EXTERNAL_CREDENTIALS` with the action to take. Cover it in `tests/unit/test_local_bootstrap.py`, and add an assertion to the Docker test `tests/integration/test_local_bootstrap.py` if the step provisions state.
+
 ## Development
 
 Requires Python 3.12 (`requires-python = ">=3.12,<3.13"`, also in `.python-version`). [uv](https://docs.astral.sh/uv/) is recommended for creating the environment and regenerating the lock file; plain `pip` installs work too. Run commands from the repository root.
@@ -47,7 +87,7 @@ Backend entry points accept `--check-config`: validate settings, print them with
 
 ### Configuration
 
-Copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; empty values count as unset. Backend settings use the `RETAIL_ANALYTICS_` prefix and the CLI uses `ANALYTICS_CLI_`. Unknown prefixed variables are rejected by name to catch typos.
+`./scripts/bootstrap.sh` creates `.env` for you (see Quick start); to do it by hand, copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; empty values count as unset. Backend settings use the `RETAIL_ANALYTICS_` prefix and the CLI uses `ANALYTICS_CLI_`. Unknown prefixed variables are rejected by name to catch typos.
 
 - `RETAIL_ANALYTICS_MODE=fixture` (default) runs offline with no credentials.
 - `RETAIL_ANALYTICS_GEMINI_MODEL` is the default model name used by the credential check.
