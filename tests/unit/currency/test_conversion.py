@@ -376,3 +376,42 @@ async def test_bootstrap_default_refuses_until_the_source_currency_is_verified()
         )
     assert caught.value.reason is Refusal.SOURCE_CURRENCY_UNKNOWN
     assert rates.calls == []
+
+
+async def test_declared_source_currency_is_disclosed_as_not_verified() -> None:
+    from retail_analytics.application.currency_conversion import (
+        DeclaredSourceCurrency,
+    )
+    from retail_analytics.bootstrap.config import BackendSettings
+    from retail_analytics.bootstrap.currency import build_currency_conversion
+
+    statement = "source currency declared by operator, not verified from data"
+    env = Env()
+    service = build_currency_conversion(
+        BackendSettings(source_currency_declared="USD"),
+        env.service,
+        FakePreferenceStore(),
+        rates=FixtureRateProvider(RATES),
+    )
+    declared = await DeclaredSourceCurrency("USD").source_currency(context())
+    assert declared.declared and declared.code == "USD"
+    assert statement in declared.label()
+    compiled, released = compiled_and_released()
+    source = await env.service.record_query(
+        operation(context(), "op-q"), compiled, released, basis()
+    )
+    result = await service.convert(
+        operation(context(), "op-c"),
+        ConversionRequest(source.evidence_id, ("spend",), "EUR", RateBasis.CURRENT),
+    )
+    notes = dict(result.evidence.content.provenance.notes)
+    assert notes["source_currency"] == "USD"
+    assert notes["source_currency_basis"] == statement
+    assert "verified dataset metadata" not in notes.values()
+    assert statement in result.disclosure
+
+
+async def test_verified_source_has_no_declared_statement() -> None:
+    h = Harness()
+    result = await h.convert(await h.evidence())
+    assert "declared" not in result.disclosure

@@ -309,3 +309,11 @@ def test_loader_pointer_to_a_missing_file_is_an_error(
 def test_default_loading_without_the_pointer_is_unchanged(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text(f"{P}API_PORT=9393\n")
     assert config.load_backend_settings().api_port == 9393
+
+
+def test_declared_source_currency_defaults_to_usd_without_overwriting() -> None:
+    key = P + "SOURCE_CURRENCY_DECLARED"
+    fresh = local_env.parse_values(local_env.reconcile(TEMPLATE, None).text)
+    assert fresh[key] == "USD"
+    kept = local_env.reconcile(TEMPLATE, f"{key}=EUR\n")
+    assert local_env.parse_values(kept.text)[key] == "EUR"

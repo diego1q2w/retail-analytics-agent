@@ -19,6 +19,7 @@ environment: bootstrap passes the typed values they need.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
@@ -31,6 +32,7 @@ from pydantic import (
     Field,
     SecretStr,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -100,6 +102,9 @@ class BackendSettings(BaseModel):
     embedding_dimensions: int = Field(default=768, ge=128, le=3072)
     # Exchange rates (ECB reference rates through Frankfurter; no API key).
     exchange_rate_base_url: str = "https://api.frankfurter.dev/v2"
+    # Operator-declared currency of the dataset's amounts (ISO 4217). Declared,
+    # never verified or inferred; unset means unknown and conversions refuse.
+    source_currency_declared: str | None = None
     retrieval_max_results: int = Field(default=3, ge=1, le=3)
     retrieval_channel_candidates: int = Field(default=10, ge=3, le=100)
     retrieval_min_similarity: float = Field(default=0.55, ge=-1.0, le=1.0)
@@ -111,6 +116,13 @@ class BackendSettings(BaseModel):
     # Master key for opaque customer/order/item references. Unset: references
     # are unavailable and queries needing them fail closed.
     reference_key: SecretStr | None = None
+
+    @field_validator("source_currency_declared")
+    @classmethod
+    def _check_declared_currency(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[A-Z]{3}", value):
+            raise ValueError("must be a three-letter uppercase ISO 4217 code")
+        return value
 
     @model_validator(mode="after")
     def _check_key_lengths(self) -> Self:

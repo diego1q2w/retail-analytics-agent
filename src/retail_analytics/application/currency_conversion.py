@@ -27,7 +27,7 @@ from retail_analytics.application.tools.context import (
     ExecutionContext,
     OperationContext,
 )
-from retail_analytics.domain.currency import SourceCurrency
+from retail_analytics.domain.currency import DECLARED_STATEMENT, SourceCurrency
 from retail_analytics.domain.evidence import (
     Evidence,
     EvidenceCell,
@@ -84,6 +84,16 @@ class UnverifiedSourceCurrency:
         return SourceCurrency.unknown()
 
 
+class DeclaredSourceCurrency:
+    """The operator's configured currency: declared, never verified or inferred."""
+
+    def __init__(self, code: str) -> None:
+        self._currency = SourceCurrency.declared_by_operator(code)
+
+    async def source_currency(self, ctx: ExecutionContext) -> SourceCurrency:
+        return self._currency
+
+
 class StoredDisplayCurrency:
     """Reads the display currency from saved preferences for a trusted context."""
 
@@ -135,14 +145,18 @@ class ConversionResult:
     source_currency: str
     converted_columns: tuple[str, ...]
     basis: RateBasis
+    source_declared: bool = False
 
     @property
     def disclosure(self) -> str:
-        return (
+        text = (
             f"Converted from {self.source_currency} to {self.rate.quote} using "
             f"the {self.basis.value} rate. {self.rate.describe()}. "
             "Original amounts are kept."
         )
+        if self.source_declared:
+            text += f" Note: {DECLARED_STATEMENT}."
+        return text
 
 
 class CurrencyConversionService:
@@ -183,7 +197,7 @@ class CurrencyConversionService:
         indexes = _amount_columns(source_evidence, request.columns)
         basis, on = self._basis(request, source_evidence)
         rate = await self._rate(source.code, target, on)
-        content = _derived_content(source_evidence, indexes, rate, basis, source.code)
+        content = _derived_content(source_evidence, indexes, rate, basis, source)
         try:
             recorded = await self._evidence.record(ctx, content)
         except EvidenceRejected as rejected:
@@ -203,6 +217,7 @@ class CurrencyConversionService:
                 ]
             ),
             basis,
+            source.declared,
         )
 
     async def _target(
@@ -336,7 +351,7 @@ def _derived_content(
     indexes: tuple[int, ...],
     rate: ExchangeRate,
     basis: RateBasis,
-    source_currency: str,
+    currency: SourceCurrency,
 ) -> EvidenceContent:
     table = source.content.table
     names = tuple(converted_name(table.columns[i].name, rate.quote) for i in indexes)
@@ -357,8 +372,11 @@ def _derived_content(
         rows.append(row + tuple(extra))
     notes = (
         ("kind", "currency_conversion"),
-        ("source_currency", source_currency),
-        ("source_currency_basis", "verified dataset metadata"),
+        ("source_currency", currency.code or ""),
+        (
+            "source_currency_basis",
+            DECLARED_STATEMENT if currency.declared else "verified dataset metadata",
+        ),
         ("display_currency", rate.quote),
         ("rate", str(rate.rate)),
         ("rate_source", rate.source),

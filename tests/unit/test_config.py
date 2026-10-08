@@ -152,3 +152,21 @@ def test_evidence_freshness_out_of_range_is_rejected(value: str) -> None:
     with pytest.raises(ConfigError) as caught:
         load_backend_settings(environ=env, env_file=None)
     assert "RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS" in str(caught.value)
+
+
+def test_declared_source_currency_is_optional_and_validated() -> None:
+    assert (
+        load_backend_settings(environ={}, env_file=None).source_currency_declared
+        is None
+    )
+    ok = load_backend_settings(
+        environ={"RETAIL_ANALYTICS_SOURCE_CURRENCY_DECLARED": "USD"}, env_file=None
+    )
+    assert ok.source_currency_declared == "USD"
+    for bad in ("usd", "US", "DOLLAR"):
+        with pytest.raises(ConfigError) as caught:
+            load_backend_settings(
+                environ={"RETAIL_ANALYTICS_SOURCE_CURRENCY_DECLARED": bad},
+                env_file=None,
+            )
+        assert "RETAIL_ANALYTICS_SOURCE_CURRENCY_DECLARED" in str(caught.value)
