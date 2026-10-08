@@ -29,11 +29,18 @@ from typing import Literal
 import click
 
 from retail_analytics.bootstrap import local_env
+from retail_analytics.bootstrap.config import (
+    BACKEND_ENV_PREFIX,
+    CLI_ENV_PREFIX,
+    ENV_FILE_VARIABLE,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PROJECT = "retail-analytics-local"  # the `name:` in compose.yaml
 SERVICES_TIMEOUT = 900
 STEP_TIMEOUT = 300
+
+_CONFIG_PREFIXES = (BACKEND_ENV_PREFIX, CLI_ENV_PREFIX)
 
 Echo = Callable[[str], None]
 
@@ -65,8 +72,19 @@ class SetupContext:
         self.values = local_env.parse_values(text)
 
     def child_env(self) -> dict[str, str]:
-        env = dict(os.environ)
+        """Environment for child commands, isolated from stray configuration.
+
+        Parent-shell ``RETAIL_ANALYTICS_*`` / ``ANALYTICS_CLI_*`` variables are
+        dropped, the environment file's non-empty values are added, and
+        ``RETAIL_ANALYTICS_ENV_FILE`` points the typed loader at that file so
+        the repository ``.env`` is never read. Other variables (PATH, DOCKER_*,
+        COMPOSE_*) pass through.
+        """
+        env = {
+            k: v for k, v in os.environ.items() if not k.startswith(_CONFIG_PREFIXES)
+        }
         env.update({k: v for k, v in self.values.items() if v != ""})
+        env[ENV_FILE_VARIABLE] = str(self.env_file)
         return env
 
     def run(

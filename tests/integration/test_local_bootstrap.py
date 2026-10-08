@@ -1,9 +1,9 @@
 """One-command bootstrap against an isolated Compose project and a temp env file.
 
 Never touches the repository's own ``.env``: the run uses ``--env-file`` in a
-temporary directory, a unique ``ra-test-*`` Compose project and free ports. Run
-it from a checkout that has no ``.env`` of its own (children also read the
-repository ``.env`` for keys the temp file leaves empty).
+temporary directory, a unique ``ra-test-*`` Compose project and free ports.
+Children read only that file (``RETAIL_ANALYTICS_ENV_FILE``), never the
+repository ``.env``.
 """
 
 from __future__ import annotations

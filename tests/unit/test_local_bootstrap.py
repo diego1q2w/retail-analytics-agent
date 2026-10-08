@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from retail_analytics.bootstrap import local_env, local_setup
+from retail_analytics.bootstrap import config, local_env, local_setup
 from retail_analytics.bootstrap.local_setup import (
     BootstrapStep,
     SetupContext,
@@ -230,3 +230,81 @@ def test_list_steps() -> None:
     assert result.exit_code == 0
     assert "golden-seeds" in result.output
     assert sys.executable  # keep import of sys meaningful for future steps
+
+
+# --- isolation: --env-file never reads the repository .env ------------------
+
+_PRINT_LOCATION = (
+    "from retail_analytics.bootstrap.config import load_backend_settings;"
+    "print(load_backend_settings().bigquery_location)"
+)
+
+
+def _isolation_ctx(tmp_path: Path, env_text: str) -> SetupContext:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".env").write_text(
+        f"{P}BIGQUERY_LOCATION=SENTINEL-FROM-REPO-ENV\n", encoding="utf-8"
+    )
+    env_file = tmp_path / "isolated.env"
+    env_file.write_text(env_text, encoding="utf-8")
+    ctx = SetupContext(
+        root=root, env_file=env_file, project="p", echo=lambda _line: None
+    )
+    ctx.refresh_values()
+    return ctx
+
+
+def test_child_commands_never_read_the_repository_env(tmp_path: Path) -> None:
+    ctx = _isolation_ctx(tmp_path, f"{P}BIGQUERY_LOCATION=\n")
+    out = ctx.python("-c", _PRINT_LOCATION)
+    assert "SENTINEL" not in out
+    assert out == "US"  # the default, not the repository value
+
+
+def test_child_commands_use_the_env_file_values(tmp_path: Path) -> None:
+    ctx = _isolation_ctx(tmp_path, f"{P}BIGQUERY_LOCATION=EU\n")
+    assert ctx.python("-c", _PRINT_LOCATION) == "EU"
+
+
+def test_child_env_drops_stray_parent_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(P + "BIGQUERY_LOCATION", "SENTINEL-FROM-SHELL")
+    monkeypatch.setenv("ANALYTICS_CLI_API_URL", "http://stray.invalid")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "kept")
+    ctx = _isolation_ctx(tmp_path, f"{P}BIGQUERY_LOCATION=\n")
+    env = ctx.child_env()
+    assert P + "BIGQUERY_LOCATION" not in env
+    assert "ANALYTICS_CLI_API_URL" not in env
+    assert env["COMPOSE_PROJECT_NAME"] == "kept"
+    assert env[config.ENV_FILE_VARIABLE] == str(ctx.env_file)
+    assert ctx.python("-c", _PRINT_LOCATION) == "US"
+
+
+def test_loader_pointer_replaces_the_default_dotenv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text(f"{P}BIGQUERY_LOCATION=SENTINEL\n")
+    pointed = tmp_path / "other.env"
+    pointed.write_text(f"{P}API_PORT=9191\n")
+    monkeypatch.setenv(config.ENV_FILE_VARIABLE, str(pointed))
+    settings = config.load_backend_settings()
+    assert settings.api_port == 9191
+    assert settings.bigquery_location == "US"
+    # A process variable still overrides the pointed file.
+    monkeypatch.setenv(P + "API_PORT", "9292")
+    assert config.load_backend_settings().api_port == 9292
+
+
+def test_loader_pointer_to_a_missing_file_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(config.ENV_FILE_VARIABLE, str(tmp_path / "missing.env"))
+    with pytest.raises(config.ConfigError, match="ENV_FILE"):
+        config.load_backend_settings()
+
+
+def test_default_loading_without_the_pointer_is_unchanged(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text(f"{P}API_PORT=9393\n")
+    assert config.load_backend_settings().api_port == 9393

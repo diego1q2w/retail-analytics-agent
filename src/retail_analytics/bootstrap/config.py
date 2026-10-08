@@ -4,6 +4,13 @@ Backend settings use the ``RETAIL_ANALYTICS_`` prefix; CLI client settings use
 ``ANALYTICS_CLI_``. Values come from an optional dotenv file overlaid by the
 process environment. Empty values count as unset.
 
+The dotenv file is ``.env`` in the working directory unless
+``RETAIL_ANALYTICS_ENV_FILE`` (in the process environment) names another file;
+then that file is the only one read, and it must exist. Local bootstrap sets it
+for every child command so an isolated ``--env-file`` never falls back to the
+repository ``.env``. Precedence, highest first: process environment, the dotenv
+file, defaults.
+
 Validation errors name the offending variable and the problem, never the value,
 so secrets cannot leak through error output. Inner layers never read the
 environment: bootstrap passes the typed values they need.
@@ -30,6 +37,9 @@ from pydantic import (
 BACKEND_ENV_PREFIX = "RETAIL_ANALYTICS_"
 CLI_ENV_PREFIX = "ANALYTICS_CLI_"
 DEFAULT_ENV_FILE = Path(".env")
+# Names the one dotenv file to read instead of ``.env`` in the working directory.
+# It is a loader pointer, not a setting: it is never validated as one.
+ENV_FILE_VARIABLE = BACKEND_ENV_PREFIX + "ENV_FILE"
 
 
 class ConfigError(Exception):
@@ -184,15 +194,21 @@ def _collect(
     prefix: str, environ: Mapping[str, str] | None, env_file: Path | None
 ) -> dict[str, str]:
     merged: dict[str, str] = {}
+    process = os.environ if environ is None else environ
+    pointed = process.get(ENV_FILE_VARIABLE, "")
+    if pointed != "" and env_file == DEFAULT_ENV_FILE:
+        env_file = Path(pointed)
+        if not env_file.is_file():
+            raise ConfigError([f"{ENV_FILE_VARIABLE}: file does not exist"])
     if env_file is not None and env_file.is_file():
         merged.update(
             {k: v for k, v in dotenv_values(env_file).items() if v is not None}
         )
-    merged.update(os.environ if environ is None else environ)
+    merged.update(process)
     return {
         key.removeprefix(prefix).lower(): value
         for key, value in merged.items()
-        if key.startswith(prefix) and value != ""
+        if key.startswith(prefix) and key != ENV_FILE_VARIABLE and value != ""
     }
 
 

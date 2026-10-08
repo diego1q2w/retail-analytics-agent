@@ -29,7 +29,7 @@ That one command is idempotent and does everything needed for a working, seeded 
 
 External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `RETAIL_ANALYTICS_REFERENCE_KEY`: rotating it invalidates every existing customer reference.
 
-Options: `--telemetry` also starts MLflow, Prometheus and Grafana; `--env-file FILE` works on another environment file (the Compose and database commands then use its values; the repository's `.env` is untouched); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
+Options: `--telemetry` also starts MLflow, Prometheus and Grafana; `--env-file FILE` works on another environment file (the Compose and every child command then use only its values; the repository's `.env` is never read or changed); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
 
 ### How to add a bootstrap step
 
@@ -87,7 +87,7 @@ Backend entry points accept `--check-config`: validate settings, print them with
 
 ### Configuration
 
-`./scripts/bootstrap.sh` creates `.env` for you (see Quick start); to do it by hand, copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; empty values count as unset. Backend settings use the `RETAIL_ANALYTICS_` prefix and the CLI uses `ANALYTICS_CLI_`. Unknown prefixed variables are rejected by name to catch typos.
+`./scripts/bootstrap.sh` creates `.env` for you (see Quick start); to do it by hand, copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; `RETAIL_ANALYTICS_ENV_FILE=/path/file` makes the loader read that one file instead of `.env` (it must exist; it is a pointer, not a setting). Bootstrap sets it for every child command and drops stray `RETAIL_ANALYTICS_*`/`ANALYTICS_CLI_*` variables from your shell, so child commands see exactly: the env file's non-empty values, then everything else unprefixed (PATH, `COMPOSE_*`, `DOCKER_*`); empty values count as unset. Backend settings use the `RETAIL_ANALYTICS_` prefix and the CLI uses `ANALYTICS_CLI_`. Unknown prefixed variables are rejected by name to catch typos.
 
 - `RETAIL_ANALYTICS_MODE=fixture` (default) runs offline with no credentials.
 - `RETAIL_ANALYTICS_GEMINI_MODEL` is the default model name used by the credential check.
