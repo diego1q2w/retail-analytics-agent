@@ -139,6 +139,21 @@ The model sees a reviewed logical catalog (`domain/logical_catalog.py`, versione
 
 `tests/live/test_schema_metadata.py` checks the catalog against live table metadata when a project is configured.
 
+### Restricted SQL compiler
+
+The model never submits SQL for execution. It writes analytical SQL over the logical relations, and `SqlglotQueryCompiler` (`adapters/sql_compiler/`, behind the `QueryCompiler` port in `application/query_compiler.py`) compiles it against the executive's current `CatalogView` and `ProductScope`. Any query the compiler cannot fully understand is rejected.
+
+- **Grammar.** Exactly one `SELECT`. Every SQLGlot node type and populated argument must be on an explicit allowlist (`grammar.py`). Writes, scripts, exports, set operations, window functions, `UNNEST`, system variables, unknown or user-defined functions and wildcard projections are rejected. `COUNT(*)` is allowed. Comments are stripped.
+- **Resolution.** Sources are resolved by lexical scope, so a CTE or subquery named `customers` shadows the relation rather than binding to it. Every leaf must be a relation in the view, and every column must resolve to a published field or a derived output. Only an `ORDER BY` output alias may remain unqualified, which closes the unresolved-`HAVING` gap that SQLGlot qualification alone leaves open. The grammar is checked again after qualification (for example, a bare table alias that becomes a whole-row reference is rejected). Correlated subqueries, unused CTEs and duplicate output names are rejected.
+- **Joins.** Only joins the catalog declares: a single equality from a relation already in the query to a new relation, `INNER` or `LEFT`, each relation at most once per query level. Joins through derived queries are rejected.
+- **Binding.** Each logical relation is replaced by a trusted projection of only the referenced fields. The product scope (`@_policy_product_ids`) is applied at every physical read, before the model's query aggregates anything. Orders count only permitted items, and customers are reached only through permitted items. An empty scope is rejected outright. Opaque references and age bands come from a `TrustedDerivations` implementation; until one is configured, fields that need them fail closed.
+- **Values and cost.** Literals and `@name` analysis values become typed BigQuery parameters. Names starting with `_policy_` or `_value_` are reserved. The compiled query carries `maximum_bytes_billed` (default 1 GiB) for the executor to apply.
+- **Postconditions.** Every remaining table must be a trusted physical source. Every parameter must be accounted for. The emitted SQL must reparse to a single `SELECT`.
+
+Rejections are `QueryRejected` errors with a `ToolErrorCode`, a reason and a safe message. An unknown field and a forbidden field produce the same error.
+
+Tests in `tests/unit/sql_compiler/` include allowed queries checked against a DuckDB result oracle, about 200 adversarial queries, and Hypothesis properties: changing hidden data does not change authorized results, and arbitrary input either fails safely or compiles to scoped SQL. `tests/live/test_sql_compiler_dry_run.py` dry-runs every allowed query in BigQuery, which costs nothing, when a project is configured.
+
 ### Local telemetry (MLflow, Prometheus, Grafana)
 
 The same `compose.yaml` adds MLflow 3.14 (sanitized agent traces), Prometheus 3.12 (metrics) and Grafana 12.4 (dashboards), image versions pinned. For local development only: every port is bound to `127.0.0.1`, passwords are throwaway defaults, and none of it is a hardened or authenticated production setup (production hosting needs its own authentication, network restrictions, retention and backup design). No project-specific retention is configured; backend defaults apply.
