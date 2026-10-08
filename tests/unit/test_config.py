@@ -132,3 +132,23 @@ def test_auth_signing_key_is_secret_and_must_be_long_enough() -> None:
         )
     assert "AUTH_SIGNING_KEY must be at least 32 bytes" in str(caught.value)
     assert "short-secret" not in str(caught.value)
+
+
+def test_evidence_freshness_default_and_override() -> None:
+    assert (
+        load_backend_settings(
+            environ={}, env_file=None
+        ).evidence_current_freshness_seconds
+        == 900
+    )
+    env = {"RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS": "120"}
+    settings = load_backend_settings(environ=env, env_file=None)
+    assert settings.evidence_current_freshness_seconds == 120
+
+
+@pytest.mark.parametrize("value", ["0", "-5", "59", "86401", "soon"])
+def test_evidence_freshness_out_of_range_is_rejected(value: str) -> None:
+    env = {"RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS": value}
+    with pytest.raises(ConfigError) as caught:
+        load_backend_settings(environ=env, env_file=None)
+    assert "RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS" in str(caught.value)

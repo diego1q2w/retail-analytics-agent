@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from retail_analytics.adapters.postgres.database import Clock, utc_now
 from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.persistence import Persistence
 from retail_analytics.domain.evidence import DEFAULT_CURRENT_FRESHNESS, ReusePolicy
 
@@ -18,10 +19,21 @@ def new_evidence_id() -> str:
 def build_evidence(
     persistence: Persistence,
     *,
-    current_freshness: timedelta = DEFAULT_CURRENT_FRESHNESS,
+    settings: BackendSettings | None = None,
+    current_freshness: timedelta | None = None,
     clock: Clock = utc_now,
 ) -> EvidenceService:
-    """``current_freshness`` bounds automatic reuse for current-data questions."""
+    """Bound automatic reuse for current-data questions.
+
+    Precedence: explicit ``current_freshness`` (tests), then
+    ``settings.evidence_current_freshness_seconds``, then the design default.
+    """
+    if current_freshness is None:
+        current_freshness = (
+            timedelta(seconds=settings.evidence_current_freshness_seconds)
+            if settings is not None
+            else DEFAULT_CURRENT_FRESHNESS
+        )
     return EvidenceService(
         persistence.evidence,
         persistence.evidence,

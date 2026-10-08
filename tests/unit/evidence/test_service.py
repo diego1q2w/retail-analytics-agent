@@ -400,3 +400,58 @@ async def test_subject_key_depends_on_query_and_values() -> None:
     # Keys are per logical question, not per executive's secret reference key.
     other, _ = compiled_and_released(EXEC_B, SCOPE_B)
     assert query_subject_key(other) == query_subject_key(a)
+
+
+def _service_from_settings(env: Env, seconds: int | None) -> Any:
+    from types import SimpleNamespace
+
+    from retail_analytics.bootstrap.config import load_backend_settings
+    from retail_analytics.bootstrap.evidence import build_evidence
+
+    raw = (
+        {}
+        if seconds is None
+        else {"RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS": str(seconds)}
+    )
+    return build_evidence(
+        SimpleNamespace(evidence=env.store),  # type: ignore[arg-type]
+        settings=load_backend_settings(environ=raw, env_file=None),
+        clock=env.clock,
+    )
+
+
+@pytest.mark.parametrize(
+    ("seconds", "age", "reused"),
+    [
+        (None, timedelta(minutes=14), True),
+        (None, timedelta(minutes=16), False),
+        (120, timedelta(minutes=3), False),
+        (3600, timedelta(minutes=30), True),
+    ],
+)
+async def test_configured_freshness_limit_changes_reuse(
+    seconds: int | None, age: timedelta, reused: bool
+) -> None:
+    env = Env()
+    compiled, _, _ = await _recorded(env)
+    service = _service_from_settings(env, seconds)
+    env.clock.advance(age)
+    outcome = await service.find_reusable(context(run="run-2"), _request(compiled))
+    assert (outcome.reused is not None) is reused
+
+
+async def test_explicit_constructor_value_overrides_settings() -> None:
+    from types import SimpleNamespace
+
+    from retail_analytics.bootstrap.evidence import build_evidence
+
+    env = Env()
+    compiled, _, _ = await _recorded(env)
+    service = build_evidence(
+        SimpleNamespace(evidence=env.store),  # type: ignore[arg-type]
+        current_freshness=timedelta(minutes=1),
+        clock=env.clock,
+    )
+    env.clock.advance(timedelta(minutes=2))
+    outcome = await service.find_reusable(context(run="run-2"), _request(compiled))
+    assert outcome.reused is None
