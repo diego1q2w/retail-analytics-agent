@@ -259,6 +259,11 @@ def step_golden_seeds(ctx: SetupContext) -> StepResult:
     return StepResult("done", "Golden knowledge seeded")
 
 
+def step_golden_embeddings(ctx: SetupContext) -> StepResult:
+    ctx.python("-m", "retail_analytics.bootstrap.warm_embeddings", show=True)
+    return StepResult("done", "Golden embeddings stored")
+
+
 def step_check_config(ctx: SetupContext) -> StepResult:
     ctx.python("-m", "retail_analytics.bootstrap.api", "--check-config")
     return StepResult("done", "configuration is valid")
@@ -302,6 +307,12 @@ STEPS: tuple[BootstrapStep, ...] = (
     BootstrapStep("executives", "provision the demo executives", step_executives),
     BootstrapStep(
         "golden-seeds", "seed the Golden knowledge library", step_golden_seeds
+    ),
+    BootstrapStep(
+        "golden-embeddings",
+        "store Golden embeddings in postgres",
+        step_golden_embeddings,
+        required=False,
     ),
     BootstrapStep("check-config", "validate the configuration", step_check_config),
     BootstrapStep(

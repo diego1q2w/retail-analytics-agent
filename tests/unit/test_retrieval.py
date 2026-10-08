@@ -328,3 +328,53 @@ def test_bootstrap_builds_fixture_retriever_and_rejects_gemini_without_key() -> 
     )
     with pytest.raises(ConfigError):
         build_embedder(gemini)
+
+
+class MemoryEmbeddingStore:
+    def __init__(self) -> None:
+        self.rows: dict[tuple[str, str, int], list[float]] = {}
+
+    async def load(self, digests, model_id, dimensions):  # type: ignore[no-untyped-def]
+        return {
+            d: self.rows[(d, model_id, dimensions)]
+            for d in digests
+            if (d, model_id, dimensions) in self.rows
+        }
+
+    async def save(self, vectors, model_id, dimensions):  # type: ignore[no-untyped-def]
+        for digest, vector in vectors.items():
+            self.rows.setdefault((digest, model_id, dimensions), list(vector))
+
+
+@pytest.mark.asyncio
+async def test_stored_vectors_survive_a_restart_without_provider_calls(
+    harness: Harness,
+) -> None:
+    store = MemoryEmbeddingStore()
+    await seed(harness, "revenue", "returns")
+    first = CountingEmbedder()
+    index = GoldenIndex(harness.index_source, first, store)
+    await index.sync()
+    assert first.embedded == 2 and len(store.rows) == 2
+
+    restarted = CountingEmbedder()
+    again = GoldenIndex(harness.index_source, restarted, store)
+    await again.sync()
+    assert restarted.embedded == 0 and again.size == 2
+
+
+@pytest.mark.asyncio
+async def test_other_model_or_dimensions_get_their_own_rows(
+    harness: Harness,
+) -> None:
+    store = MemoryEmbeddingStore()
+    await seed(harness, "revenue")
+    await GoldenIndex(harness.index_source, CountingEmbedder(), store).sync()
+    other = CountingEmbedder()
+    other._dimensions = 64
+    await GoldenIndex(harness.index_source, other, store).sync()
+    assert other.embedded == 1
+    assert {(m, d) for _, m, d in store.rows} == {
+        ("hashing-v1-256", 256),
+        ("hashing-v1-64", 64),
+    }

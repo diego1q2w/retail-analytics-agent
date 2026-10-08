@@ -201,6 +201,7 @@ def test_registered_steps_are_unique_and_ordered_sensibly() -> None:
     order = ["environment", "docker", "services", "migrate", "executives"]
     assert [n for n in names if n in order] == order
     assert names.index("golden-seeds") > names.index("executives")
+    assert names.index("golden-embeddings") > names.index("golden-seeds")
     assert names.index("migrate") > names.index("services")
 
 

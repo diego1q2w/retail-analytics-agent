@@ -37,6 +37,10 @@ class GeminiEmbedder:
         self._batch_size = batch_size
 
     @property
+    def dimensions(self) -> int:
+        return self._dimensions
+
+    @property
     def model_id(self) -> str:
         return f"{self._model}-{self._dimensions}"
 

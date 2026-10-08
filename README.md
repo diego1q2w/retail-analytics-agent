@@ -169,7 +169,7 @@ A save writes and fsyncs a temporary file, links it into place without overwriti
 
 ### Golden seed library
 
-Ten project-authored, reviewed example trios (question, SQL, report) live in `retail_analytics.application.golden_seed_library`. After the demo executives exist, `python -m retail_analytics.bootstrap.seed_knowledge` loads them through the normal submit and review lifecycle (author `demo-a`, reviewer `demo-b`) and is safe to rerun. See [docs/golden-seeds.md](docs/golden-seeds.md) for the corpus, validation and the manual review checklist.
+Ten project-authored, reviewed example trios (question, SQL, report) live in `retail_analytics.application.golden_seed_library`. After the demo executives exist, `python -m retail_analytics.bootstrap.seed_knowledge` loads them through the normal submit and review lifecycle (author `demo-a`, reviewer `demo-b`) and is safe to rerun. Retrieval embeddings are stored in PostgreSQL (`golden_embeddings`, keyed by content digest, model and dimensions; vectors only, deleted when an example is erased); `python -m retail_analytics.bootstrap.warm_embeddings` fills them (a bootstrap step) so restarts make no provider calls. See [docs/golden-seeds.md](docs/golden-seeds.md) for the corpus, validation and the manual review checklist.
 
 ### Schema discovery and metadata caching
 

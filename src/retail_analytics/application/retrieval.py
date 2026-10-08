@@ -18,7 +18,7 @@ The index is derived data: it holds the question plus reviewed method summary
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -49,9 +49,29 @@ class TextEmbedder(Protocol):
     @property
     def model_id(self) -> str: ...
 
+    @property
+    def dimensions(self) -> int: ...
+
     async def embed_documents(self, texts: Sequence[str]) -> list[list[float]]: ...
 
     async def embed_query(self, text: str) -> list[float]: ...
+
+
+class EmbeddingStore(Protocol):
+    """Durable vector cache keyed by (content digest, model id, dimensions).
+
+    Holds vectors only: no text, identifiers or access policy.
+    """
+
+    async def load(
+        self, digests: Sequence[str], model_id: str, dimensions: int
+    ) -> dict[str, list[float]]: ...
+
+    async def save(
+        self, vectors: Mapping[str, Sequence[float]], model_id: str, dimensions: int
+    ) -> None:
+        """Idempotent: an existing key is left unchanged."""
+        ...
 
 
 class RetrievalUnavailable(Exception):
@@ -97,9 +117,15 @@ class GoldenIndex:
     changed content.
     """
 
-    def __init__(self, source: KnowledgeIndexSource, embedder: TextEmbedder) -> None:
+    def __init__(
+        self,
+        source: KnowledgeIndexSource,
+        embedder: TextEmbedder,
+        store: EmbeddingStore | None = None,
+    ) -> None:
         self._source = source
         self._embedder = embedder
+        self._store = store
         self._sequence = -1
         self._entries: dict[ExampleRef, _Entry] = {}
         self._vectors: dict[tuple[str, str], tuple[float, ...]] = {}
@@ -145,10 +171,25 @@ class GoldenIndex:
         missing = [
             d for d in documents if (d.content_digest, model) not in self._vectors
         ]
+        if missing and self._store is not None:
+            stored = await self._load(
+                sorted({d.content_digest for d in missing}), model
+            )
+            for digest, vector in stored.items():
+                self._vectors[(digest, model)] = tuple(vector)
+            missing = [
+                d for d in missing if (d.content_digest, model) not in self._vectors
+            ]
         if missing:
-            vectors = await self._embed([_text(d) for d in missing])
-            for doc, vector in zip(missing, vectors, strict=True):
+            # Equal digests mean equal content: embed each digest once.
+            unique = list({d.content_digest: d for d in missing}.values())
+            vectors = await self._embed([_text(d) for d in unique])
+            for doc, vector in zip(unique, vectors, strict=True):
                 self._vectors[(doc.content_digest, model)] = tuple(vector)
+            await self._persist(
+                {d.content_digest: v for d, v in zip(unique, vectors, strict=True)},
+                model,
+            )
         live = {(d.content_digest, model) for d in documents}
         self._vectors = {k: v for k, v in self._vectors.items() if k in live}
         self._entries = {
@@ -157,6 +198,25 @@ class GoldenIndex:
             )
             for d in documents
         }
+
+    async def _load(self, digests: list[str], model: str) -> dict[str, list[float]]:
+        assert self._store is not None  # noqa: S101
+        dimensions = self._embedder.dimensions
+        try:
+            found = await self._store.load(digests, model, dimensions)
+        except Exception as error:
+            raise RetrievalUnavailable("embedding store unavailable") from error
+        return {d: v for d, v in found.items() if len(v) == dimensions}
+
+    async def _persist(
+        self, vectors: Mapping[str, Sequence[float]], model: str
+    ) -> None:
+        if self._store is None:
+            return
+        try:
+            await self._store.save(vectors, model, self._embedder.dimensions)
+        except Exception as error:
+            raise RetrievalUnavailable("embedding store unavailable") from error
 
     async def _embed(self, texts: list[str]) -> list[list[float]]:
         try:

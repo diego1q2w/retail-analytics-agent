@@ -45,5 +45,9 @@ def build_retrieval(
     embedder: TextEmbedder | None = None,
 ) -> GoldenRetriever:
     """Pass ``embedder`` to override the configured provider (tests)."""
-    index = GoldenIndex(knowledge.index_source, embedder or build_embedder(settings))
+    index = GoldenIndex(
+        knowledge.index_source,
+        embedder or build_embedder(settings),
+        knowledge.embeddings,
+    )
     return GoldenRetriever(index, knowledge.reader, retrieval_config(settings))

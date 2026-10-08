@@ -21,6 +21,10 @@ class HashingEmbedder:
         self._dimensions = dimensions
 
     @property
+    def dimensions(self) -> int:
+        return self._dimensions
+
+    @property
     def model_id(self) -> str:
         return f"hashing-v1-{self._dimensions}"
 

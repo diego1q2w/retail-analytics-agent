@@ -187,3 +187,60 @@ async def test_database_holds_no_content_after_erasure_and_enforces_one_publishe
                 "where example_id = %s and version = 2",
                 (a.example_id,),
             )
+
+
+async def test_embeddings_persist_across_restart_and_are_erased_with_the_example(
+    stack: Stack, db: Persistence, harness: Harness
+) -> None:
+    from retail_analytics.adapters.postgres.database import Database
+    from retail_analytics.adapters.postgres.embeddings import PostgresEmbeddingStore
+    from retail_analytics.application.retrieval import GoldenIndex
+    from tests.unit.test_retrieval import CORPUS, CountingEmbedder, _draft
+
+    store = PostgresEmbeddingStore(Database(db.engine))
+    v = await publish(harness, await submit(harness, _draft("revenue")))
+    other = await publish(harness, await submit(harness, _draft("returns")))
+    first = CountingEmbedder()
+    await GoldenIndex(harness.index_source, first, store).sync()
+    assert first.embedded >= 2
+
+    restarted = CountingEmbedder()
+    index = GoldenIndex(harness.index_source, restarted, store)
+    await index.sync()
+    assert restarted.embedded == 0 and index.size >= 2
+
+    smaller = CountingEmbedder()
+    smaller._dimensions = 64
+    await GoldenIndex(harness.index_source, smaller, store).sync()
+    assert smaller.embedded >= 2  # new model/dimension key, not a reuse
+
+    def count(digest: str) -> int:
+        with psycopg.connect(stack.app_dsn) as conn:
+            row = conn.execute(
+                "select count(*) from golden_embeddings where content_digest = %s",
+                (digest,),
+            ).fetchone()
+            assert row is not None
+            return int(row[0])
+
+    digest = v.content_digest
+    assert digest is not None and other.content_digest is not None
+    assert count(digest) == 2 and count(other.content_digest) == 2
+    await harness.service.erase(
+        harness.as_("reviewer"), v.ref, reason=ErasureReason.PRIVACY_REQUEST
+    )
+    assert count(digest) == 0
+    assert count(other.content_digest) == 2
+    assert CORPUS["revenue"][0]  # corpus text never stored in the table
+    with psycopg.connect(stack.app_dsn) as conn:
+        cols = conn.execute(
+            "select column_name from information_schema.columns "
+            "where table_name = 'golden_embeddings'"
+        ).fetchall()
+    assert {c[0] for c in cols} == {
+        "content_digest",
+        "model_id",
+        "dimensions",
+        "vector",
+        "created_at",
+    }

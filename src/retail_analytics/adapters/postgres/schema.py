@@ -318,3 +318,13 @@ evidence_pins = sa.Table(
     sa.Column("holder_id", sa.Text, primary_key=True),
     _ts("pinned_at"),
 )
+
+golden_embeddings = sa.Table(
+    "golden_embeddings",
+    metadata,
+    sa.Column("content_digest", sa.String(64), primary_key=True),
+    sa.Column("model_id", sa.Text, primary_key=True),
+    sa.Column("dimensions", sa.Integer, primary_key=True),
+    sa.Column("vector", ARRAY(sa.Float(53)), nullable=False),
+    _ts("created_at"),
+)

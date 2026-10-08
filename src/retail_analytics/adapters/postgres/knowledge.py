@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
 from retail_analytics.adapters.postgres.database import Database
+from retail_analytics.adapters.postgres.schema import golden_embeddings as ge
 from retail_analytics.adapters.postgres.schema import (
     golden_index_events as ie,
 )
@@ -397,6 +398,18 @@ class PostgresKnowledgeRepository:
             .where(gv.c.example_id == ref.example_id, gv.c.version == ref.version)
             .values(**values)
         )
+        if erase:
+            # Embeddings are keyed by content digest only; drop every vector
+            # whose content no remaining version holds (shared content stays).
+            connection.execute(
+                sa.delete(ge).where(
+                    ge.c.content_digest.not_in(
+                        sa.select(gv.c.content_digest).where(
+                            gv.c.content_digest.is_not(None)
+                        )
+                    )
+                )
+            )
 
     @staticmethod
     def _by_source(
