@@ -30,3 +30,21 @@ def test_baseline_sql_is_idempotent_for_the_sentinel_row() -> None:
     sql = buffer.getvalue()
     assert "CREATE TABLE app_meta" in sql
     assert "ON CONFLICT (key) DO NOTHING" in sql
+
+
+def test_operations_schema_enforces_single_active_run_and_append_only_history() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0001:0002", sql=True)
+    sql = buffer.getvalue()
+    assert "CREATE UNIQUE INDEX ux_runs_one_active_per_session" in sql
+    assert "WHERE status IN ('running', 'waiting_for_input', 'cancelling')" in sql
+    for table in ("execution_events", "run_events"):
+        assert f"CREATE TRIGGER {table}_append_only BEFORE UPDATE" in sql
+
+
+def test_operations_schema_downgrades_offline() -> None:
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0002:0001", sql=True)
+    sql = buffer.getvalue()
+    assert "DROP TABLE run_events" in sql
+    assert "DROP TABLE sessions" in sql

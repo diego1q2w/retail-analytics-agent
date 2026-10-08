@@ -91,7 +91,9 @@ docker compose down                                # keeps the volume; add -v to
 
 Temporal and the application never share a database or role: each role is the only one allowed to connect to its own databases, so the application cannot read Temporal's internal tables. Use `docker compose -p <name>` (and different ports) for a second isolated stack. Roles and databases are created on first start of an empty volume; the Temporal schema is applied by the one-shot `temporal-schema` service on every start.
 
-Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL comes from `RETAIL_ANALYTICS_DATABASE_URL` or `.env`). The baseline revision only creates `app_meta`; add new revisions with `alembic revision -m "..."` chained after the current head.
+Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL comes from `RETAIL_ANALYTICS_DATABASE_URL` or `.env`). The baseline revision creates `app_meta`; revision `0002` adds sessions, messages, runs, tool executions (with BigQuery job detail) and the append-only execution and run event histories. Add new revisions with `alembic revision -m "..."` chained after the current head; a test keeps the history a single linear chain.
+
+Application state is reached through the narrow ports in `retail_analytics.application.persistence`, implemented with SQLAlchemy Core in `retail_analytics.adapters.postgres` and wired by `retail_analytics.bootstrap.persistence`. Retried writes are idempotent on application-generated keys (the operation ID for tool executions, the submission key for runs); reusing a key for different content raises a typed conflict. A session has at most one active run, enforced by a row lock and a partial unique index. Run events carry a gap-free per-run sequence for replay after a client's last received event ID.
 
 Docker-dependent tests carry the `docker` marker and are excluded from `./scripts/check.sh`. Run them with `python -m pytest -m docker`; they start their own uniquely named Compose project on free ports and remove it afterwards.
 
