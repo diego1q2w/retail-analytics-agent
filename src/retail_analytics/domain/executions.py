@@ -8,6 +8,8 @@ across retries and resumption, and doubles as the idempotency key.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -48,13 +50,16 @@ _TERMINAL = frozenset(
 _S = ToolExecutionStatus
 _ENDINGS = frozenset({_S.SUCCEEDED, _S.FAILED, _S.CANCEL_REQUESTED, _S.CANCELLED})
 _TRANSITIONS: dict[ToolExecutionStatus, frozenset[ToolExecutionStatus]] = {
-    _S.PREPARED: frozenset({_S.SUBMITTING, _S.RUNNING}) | _ENDINGS,
+    # RETRYING from PREPARED records a transient failure before submission
+    # (for example a dry run or catalog read), when no external effect exists.
+    _S.PREPARED: frozenset({_S.SUBMITTING, _S.RUNNING, _S.RETRYING}) | _ENDINGS,
     _S.SUBMITTING: frozenset({_S.RUNNING, _S.OUTCOME_UNKNOWN, _S.RETRYING}) | _ENDINGS,
     _S.RUNNING: frozenset({_S.OUTCOME_UNKNOWN, _S.RETRYING}) | _ENDINGS,
     # Reconciliation either finds the effect (running/finished) or proves there
     # is none, after which the operation may be submitted again.
     _S.OUTCOME_UNKNOWN: frozenset({_S.SUBMITTING, _S.RUNNING, _S.RETRYING}) | _ENDINGS,
-    _S.RETRYING: frozenset({_S.SUBMITTING, _S.RUNNING}) | _ENDINGS,
+    # A later attempt may fail transiently again before submitting anything.
+    _S.RETRYING: frozenset({_S.SUBMITTING, _S.RUNNING, _S.RETRYING}) | _ENDINGS,
     _S.CANCEL_REQUESTED: frozenset(
         {_S.OUTCOME_UNKNOWN, _S.SUCCEEDED, _S.FAILED, _S.CANCELLED}
     ),
@@ -148,3 +153,28 @@ class QueryJob:
     query_ref: str
     authorization_version: int
     catalog_version: str
+    # 1 for the first job of the operation; a new submission (and job ID) is
+    # only made once the previous job is known to have ended without a result.
+    submission: int = 1
+
+    def __post_init__(self) -> None:
+        if self.submission < 1:
+            raise ValueError("submission starts at 1")
+
+
+_JOB_NAMESPACE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+def query_job_id(namespace: str, operation_id: str, submission: int) -> str:
+    """Deterministic warehouse job ID of one submission of an operation.
+
+    Resubmitting the same submission reuses the same ID, so the warehouse
+    rejects a duplicate instead of running the query twice. The operation ID
+    is hashed: job IDs are visible to every project principal.
+    """
+    if not _JOB_NAMESPACE.match(namespace):
+        raise ValueError("invalid job namespace")
+    if submission < 1:
+        raise ValueError("submission starts at 1")
+    digest = hashlib.sha256(operation_id.encode()).hexdigest()[:40]
+    return f"{namespace}_{digest}_{submission}"

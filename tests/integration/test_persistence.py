@@ -416,6 +416,37 @@ async def test_query_job_reference_is_recorded_once(db: Persistence) -> None:
 
 
 @pytest.mark.asyncio
+async def test_query_job_submissions_follow_each_other(db: Persistence) -> None:
+    _, started = await _session_with_run(db)
+    op = (await db.tool_executions.begin(_operation(started.run.run_id))).execution
+    first = QueryJob(
+        operation_id=op.operation_id,
+        job_id=_id("job"),
+        project="analytics-project",
+        location="US",
+        query_fingerprint="fp-1",
+        query_ref="protected/ref-1",
+        authorization_version=3,
+        catalog_version="cat-1",
+    )
+    second = replace(first, job_id=_id("job"), query_fingerprint="fp-2", submission=2)
+
+    with pytest.raises(IdempotencyConflict):
+        await db.query_jobs.register_job(second)  # must follow submission 1
+    assert await db.query_jobs.register_job(first) == first
+    assert await db.query_jobs.register_job(second) == second
+    assert await db.query_jobs.register_job(second) == second
+    assert await db.query_jobs.get_job(op.operation_id) == second
+    assert list(await db.query_jobs.jobs(op.operation_id)) == [first, second]
+    with pytest.raises(IdempotencyConflict):
+        await db.query_jobs.register_job(replace(second, query_fingerprint="fp-x"))
+    with pytest.raises(IdempotencyConflict):
+        await db.query_jobs.register_job(
+            replace(second, submission=3, job_id=first.job_id)
+        )
+
+
+@pytest.mark.asyncio
 async def test_state_and_events_survive_database_and_process_restart(
     stack: Stack, db: Persistence
 ) -> None:

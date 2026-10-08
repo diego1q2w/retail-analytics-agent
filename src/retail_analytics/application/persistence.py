@@ -168,10 +168,22 @@ class ToolExecutionRepository(Protocol):
 
 class QueryJobRepository(Protocol):
     async def register_job(self, job: QueryJob) -> QueryJob:
-        """Record the job reference before submission; idempotent per operation."""
+        """Record a job reference before it is submitted.
+
+        Idempotent per (operation, submission): the same content returns the
+        record, different content raises ``IdempotencyConflict``, as does a
+        submission that does not directly follow the latest one or a job ID
+        already used elsewhere.
+        """
         ...
 
-    async def get_job(self, operation_id: str) -> QueryJob | None: ...
+    async def get_job(self, operation_id: str) -> QueryJob | None:
+        """The operation's latest submission, if any."""
+        ...
+
+    async def jobs(self, operation_id: str) -> Sequence[QueryJob]:
+        """Every submission of the operation, in order."""
+        ...
 
 
 class RunEventStore(Protocol):

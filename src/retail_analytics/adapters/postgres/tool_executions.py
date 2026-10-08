@@ -82,6 +82,7 @@ def _job(row: sa.Row[tuple[object, ...]]) -> QueryJob:
         query_ref=m["query_ref"],
         authorization_version=m["authorization_version"],
         catalog_version=m["catalog_version"],
+        submission=m["submission"],
     )
 
 
@@ -258,6 +259,12 @@ class PostgresToolExecutionRepository:
 
 
 class PostgresQueryJobRepository:
+    """Job references per operation, one per submission, never overwritten.
+
+    A new submission must follow the latest one (1, 2, ...); registering an
+    existing submission again with identical content returns it.
+    """
+
     def __init__(self, db: Database) -> None:
         self._db = db
 
@@ -265,43 +272,78 @@ class PostgresQueryJobRepository:
         return await self._db.transaction(self._register, job)
 
     def _register(self, connection: sa.Connection, job: QueryJob) -> QueryJob:
-        if _find_execution(connection, job.operation_id) is None:
+        operation = connection.execute(
+            sa.select(tool_executions.c.operation_id)
+            .where(tool_executions.c.operation_id == job.operation_id)
+            .with_for_update()
+        ).one_or_none()
+        if operation is None:
             raise RecordNotFound("operation", job.operation_id)
-        try:
-            row = connection.execute(
-                insert(query_executions)
-                .values(
-                    operation_id=job.operation_id,
-                    job_id=job.job_id,
-                    project=job.project,
-                    location=job.location,
-                    query_fingerprint=job.query_fingerprint,
-                    query_ref=job.query_ref,
-                    authorization_version=job.authorization_version,
-                    catalog_version=job.catalog_version,
-                    registered_at=self._db.clock(),
-                )
-                .on_conflict_do_nothing(index_elements=["operation_id"])
-                .returning(*query_executions.c)
-            ).one_or_none()
-        except exc.IntegrityError:
-            # The job ID already belongs to another operation.
-            raise IdempotencyConflict("query job", job.job_id) from None
-        if row is not None:
-            return _job(row)
-        existing = self._get(connection, job.operation_id)
-        if existing != job:
+        existing = self._submission(connection, job.operation_id, job.submission)
+        if existing is not None:
+            if existing != job:
+                raise IdempotencyConflict("query job", job.operation_id)
+            return existing
+        latest = self._get(connection, job.operation_id)
+        expected = 1 if latest is None else latest.submission + 1
+        if job.submission != expected:
             raise IdempotencyConflict("query job", job.operation_id)
-        return job
+        try:
+            with connection.begin_nested():
+                row = connection.execute(
+                    sa.insert(query_executions)
+                    .values(
+                        operation_id=job.operation_id,
+                        submission=job.submission,
+                        job_id=job.job_id,
+                        project=job.project,
+                        location=job.location,
+                        query_fingerprint=job.query_fingerprint,
+                        query_ref=job.query_ref,
+                        authorization_version=job.authorization_version,
+                        catalog_version=job.catalog_version,
+                        registered_at=self._db.clock(),
+                    )
+                    .returning(*query_executions.c)
+                ).one()
+        except exc.IntegrityError:
+            # The job ID already belongs to another operation or submission.
+            raise IdempotencyConflict("query job", job.job_id) from None
+        return _job(row)
 
     async def get_job(self, operation_id: str) -> QueryJob | None:
         return await self._db.transaction(self._get, operation_id)
 
+    async def jobs(self, operation_id: str) -> Sequence[QueryJob]:
+        return await self._db.transaction(self._jobs, operation_id)
+
     @staticmethod
     def _get(connection: sa.Connection, operation_id: str) -> QueryJob | None:
         row = connection.execute(
+            sa.select(query_executions)
+            .where(query_executions.c.operation_id == operation_id)
+            .order_by(query_executions.c.submission.desc())
+            .limit(1)
+        ).one_or_none()
+        return None if row is None else _job(row)
+
+    @staticmethod
+    def _submission(
+        connection: sa.Connection, operation_id: str, submission: int
+    ) -> QueryJob | None:
+        row = connection.execute(
             sa.select(query_executions).where(
-                query_executions.c.operation_id == operation_id
+                query_executions.c.operation_id == operation_id,
+                query_executions.c.submission == submission,
             )
         ).one_or_none()
         return None if row is None else _job(row)
+
+    @staticmethod
+    def _jobs(connection: sa.Connection, operation_id: str) -> list[QueryJob]:
+        rows = connection.execute(
+            sa.select(query_executions)
+            .where(query_executions.c.operation_id == operation_id)
+            .order_by(query_executions.c.submission)
+        ).all()
+        return [_job(row) for row in rows]

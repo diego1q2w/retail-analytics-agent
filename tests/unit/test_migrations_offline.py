@@ -63,3 +63,18 @@ def test_access_schema_constrains_roles_and_product_ids() -> None:
     buffer = StringIO()
     command.downgrade(_config(buffer), "0003:0002", sql=True)
     assert "DROP TABLE product_entitlements" in buffer.getvalue()
+
+
+def test_query_job_submissions_schema_upgrades_and_downgrades_offline() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0007:0008", sql=True)
+    sql = buffer.getvalue()
+    assert "ADD COLUMN submission INTEGER DEFAULT '1' NOT NULL" in sql
+    assert "PRIMARY KEY (operation_id, submission)" in sql
+    assert "CHECK (submission >= 1)" in sql
+
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0008:0007", sql=True)
+    sql = buffer.getvalue()
+    assert "DELETE FROM query_executions WHERE submission > 1" in sql
+    assert "DROP COLUMN submission" in sql

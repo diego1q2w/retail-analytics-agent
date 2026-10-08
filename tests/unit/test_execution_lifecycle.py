@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from retail_analytics.domain.errors import InvalidTransition
-from retail_analytics.domain.executions import ToolExecution, ToolExecutionStatus
+from retail_analytics.domain.executions import (
+    ToolExecution,
+    ToolExecutionStatus,
+    query_job_id,
+)
 from retail_analytics.domain.operations import SideEffect, ToolErrorCode
 from retail_analytics.domain.runs import Run, RunStatus
 
@@ -136,3 +141,29 @@ def test_failure_requires_and_records_an_error_code() -> None:
     assert failed is not None
     assert failed.error_code is ToolErrorCode.BUDGET_EXCEEDED
     assert failed.error_detail == "query budget exhausted"
+
+
+def test_transient_failure_before_submission_is_recorded_as_retrying() -> None:
+    retrying = _op().transition(
+        S.RETRYING, attempt=1, at=T1, error_code=ToolErrorCode.TEMPORARY_FAILURE
+    )
+    assert retrying is not None
+    again = retrying.transition(
+        S.RETRYING, attempt=2, at=T1, error_code=ToolErrorCode.TEMPORARY_FAILURE
+    )
+    assert again is not None and again.attempt_count == 2
+    assert again.transition(S.RETRYING, attempt=2, at=T1) is None
+
+
+def test_query_job_ids_are_deterministic_per_operation_and_submission() -> None:
+    first = query_job_id("ra", "op-1", 1)
+    assert first == query_job_id("ra", "op-1", 1)
+    assert first != query_job_id("ra", "op-1", 2)
+    assert first != query_job_id("ra", "op-2", 1)
+    assert first != query_job_id("other", "op-1", 1)
+    assert "op-1" not in first
+    assert re.fullmatch(r"ra_[0-9a-f]{40}_1", first)
+    with pytest.raises(ValueError):
+        query_job_id("Bad-Namespace", "op-1", 1)
+    with pytest.raises(ValueError):
+        query_job_id("ra", "op-1", 0)

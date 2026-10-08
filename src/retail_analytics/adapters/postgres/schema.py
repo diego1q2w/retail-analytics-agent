@@ -77,6 +77,7 @@ query_executions = sa.Table(
     "query_executions",
     metadata,
     sa.Column("operation_id", sa.Text, primary_key=True),
+    sa.Column("submission", sa.Integer, primary_key=True),
     sa.Column("job_id", sa.Text, nullable=False),
     sa.Column("project", sa.Text, nullable=False),
     sa.Column("location", sa.Text, nullable=False),
