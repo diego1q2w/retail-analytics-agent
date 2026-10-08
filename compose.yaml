@@ -1,0 +1,96 @@
+# Local persistence and Temporal for development and tests. Local-only defaults:
+# every password below is a throwaway value for a loopback-bound stack.
+# Override ports/passwords with the COMPOSE_* variables shown (shell or .env).
+# Use a unique `docker compose -p <name>` per checkout/test run to isolate stacks.
+name: retail-analytics-local
+
+x-postgres-image: &postgres-image postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+x-temporal-server-image: &temporal-server-image temporalio/server:1.32.0@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae
+x-temporal-tools-image: &temporal-tools-image temporalio/admin-tools:1.32.0@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca
+
+services:
+  # One PostgreSQL server, three databases, three roles (see the init script):
+  #   retail_app  -> database retail_app (application state)
+  #   temporal    -> databases temporal + temporal_visibility (Temporal internals)
+  #   db_admin    -> superuser for administration only; the application never uses it
+  postgres:
+    image: *postgres-image
+    environment:
+      POSTGRES_USER: db_admin
+      POSTGRES_PASSWORD: ${COMPOSE_PG_ADMIN_PASSWORD:-local-only-admin}
+      POSTGRES_DB: postgres
+      RETAIL_APP_PASSWORD: ${COMPOSE_APP_DB_PASSWORD:-local-only-app}
+      TEMPORAL_DB_PASSWORD: ${COMPOSE_TEMPORAL_DB_PASSWORD:-local-only-temporal}
+    ports:
+      - "127.0.0.1:${COMPOSE_POSTGRES_PORT:-55442}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP, not the socket: the throwaway server used for first-time init is socket-only.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U db_admin -d retail_app && pg_isready -h 127.0.0.1 -U db_admin -d temporal"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  # Temporal server (frontend, history, matching, worker in one process) on the
+  # `temporal` database. Its schema is applied by temporal-schema below.
+  temporal:
+    image: *temporal-server-image
+    entrypoint: ["sh", "/etc/temporal/start-server.sh"]
+    depends_on:
+      temporal-schema:
+        condition: service_completed_successfully
+    environment:
+      TEMPORAL_DB_HOST: postgres
+      TEMPORAL_DB_NAME: temporal
+      TEMPORAL_VISIBILITY_DB_NAME: temporal_visibility
+      TEMPORAL_DB_USER: temporal
+      TEMPORAL_DB_PASSWORD: ${COMPOSE_TEMPORAL_DB_PASSWORD:-local-only-temporal}
+    ports:
+      - "127.0.0.1:${COMPOSE_TEMPORAL_PORT:-57233}:7233"
+    volumes:
+      - ./docker/temporal/config.yaml:/etc/temporal/config.template.yaml:ro
+      - ./docker/temporal/start-server.sh:/etc/temporal/start-server.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z $(hostname) 7233"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+
+  # One-shot: create/upgrade Temporal's own schema as the temporal role.
+  # Safe to rerun; temporal-sql-tool only applies versions not yet applied.
+  temporal-schema:
+    image: *temporal-tools-image
+    entrypoint: ["sh", "/schema/apply-schema.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TEMPORAL_DB_HOST: postgres
+      TEMPORAL_DB_USER: temporal
+      TEMPORAL_DB_PASSWORD: ${COMPOSE_TEMPORAL_DB_PASSWORD:-local-only-temporal}
+    volumes:
+      - ./docker/temporal/apply-schema.sh:/schema/apply-schema.sh:ro
+    restart: "no"
+
+  # One-shot: wait for the frontend and register the application namespace with
+  # 7-day retention of closed workflow histories. Idempotent.
+  temporal-namespace:
+    image: *temporal-tools-image
+    entrypoint: ["sh", "/schema/ensure-namespace.sh"]
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${COMPOSE_TEMPORAL_NAMESPACE:-default}
+      TEMPORAL_RETENTION: ${COMPOSE_TEMPORAL_RETENTION:-168h}
+    volumes:
+      - ./docker/temporal/ensure-namespace.sh:/schema/ensure-namespace.sh:ro
+    restart: "no"
+
+volumes:
+  postgres-data:

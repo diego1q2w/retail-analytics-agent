@@ -1,0 +1,90 @@
+# Temporal server config template for the local stack. start-server.sh substitutes
+# the ${VAR} placeholders from the environment set in compose.yaml (no secrets here).
+log:
+  stdout: true
+  level: info
+
+persistence:
+  defaultStore: default
+  visibilityStore: visibility
+  numHistoryShards: 4
+  datastores:
+    default:
+      sql:
+        pluginName: postgres12
+        databaseName: ${TEMPORAL_DB_NAME}
+        connectAddr: ${TEMPORAL_DB_HOST}:5432
+        connectProtocol: tcp
+        user: ${TEMPORAL_DB_USER}
+        password: ${TEMPORAL_DB_PASSWORD}
+        maxConns: 20
+        maxIdleConns: 20
+        maxConnLifetime: 1h
+    visibility:
+      sql:
+        pluginName: postgres12
+        databaseName: ${TEMPORAL_VISIBILITY_DB_NAME}
+        connectAddr: ${TEMPORAL_DB_HOST}:5432
+        connectProtocol: tcp
+        user: ${TEMPORAL_DB_USER}
+        password: ${TEMPORAL_DB_PASSWORD}
+        maxConns: 10
+        maxIdleConns: 10
+        maxConnLifetime: 1h
+
+global:
+  membership:
+    maxJoinDuration: 30s
+    broadcastAddress: ${BIND_ON_IP}
+
+services:
+  frontend:
+    rpc:
+      grpcPort: 7233
+      membershipPort: 6933
+      bindOnIP: ${BIND_ON_IP}
+      httpPort: 7243
+  matching:
+    rpc:
+      grpcPort: 7235
+      membershipPort: 6935
+      bindOnIP: ${BIND_ON_IP}
+  history:
+    rpc:
+      grpcPort: 7234
+      membershipPort: 6934
+      bindOnIP: ${BIND_ON_IP}
+  worker:
+    rpc:
+      grpcPort: 7239
+      membershipPort: 6939
+      bindOnIP: ${BIND_ON_IP}
+
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: active
+  currentClusterName: active
+  clusterInformation:
+    active:
+      enabled: true
+      initialFailoverVersion: 1
+      rpcName: frontend
+      rpcAddress: localhost:7233
+      httpAddress: localhost:7243
+
+dcRedirectionPolicy:
+  policy: noop
+
+archival:
+  history:
+    state: disabled
+  visibility:
+    state: disabled
+
+namespaceDefaults:
+  archival:
+    history:
+      state: disabled
+    visibility:
+      state: disabled

@@ -54,6 +54,31 @@ Copy `.env.example` to `.env` (ignored by Git). Process environment variables ov
 
 Errors name the variable and the problem, never the value. All settings are declared in `src/retail_analytics/bootstrap/config.py`; add new ones there and to `.env.example` (a test keeps them in sync). Only bootstrap reads configuration; inner layers receive typed values.
 
+### Local services (PostgreSQL and Temporal)
+
+`compose.yaml` runs one PostgreSQL 17 server and Temporal 1.32 (image digests pinned), both bound to loopback only. Requires Docker with Compose v2. Passwords are throwaway local defaults; override with `COMPOSE_APP_DB_PASSWORD`, `COMPOSE_TEMPORAL_DB_PASSWORD`, `COMPOSE_PG_ADMIN_PASSWORD`.
+
+```sh
+docker compose up -d --wait postgres temporal      # project retail-analytics-local
+docker compose run --rm temporal-namespace         # create the namespace (7-day closed-history retention)
+export RETAIL_ANALYTICS_DATABASE_URL=postgresql+psycopg://retail_app:local-only-app@127.0.0.1:55442/retail_app
+alembic upgrade head                               # application schema; safe to rerun
+docker compose down                                # keeps the volume; add -v to delete data
+```
+
+| What | Value |
+| --- | --- |
+| PostgreSQL | `127.0.0.1:55442` (`COMPOSE_POSTGRES_PORT`) |
+| Temporal frontend | `127.0.0.1:57233` (`COMPOSE_TEMPORAL_PORT`), namespace `default` (`COMPOSE_TEMPORAL_NAMESPACE`) |
+| Roles / databases | `retail_app` owns `retail_app`; `temporal` owns `temporal` and `temporal_visibility`; `db_admin` is the superuser for administration only |
+| Volume | `postgres-data` |
+
+Temporal and the application never share a database or role: each role is the only one allowed to connect to its own databases, so the application cannot read Temporal's internal tables. Use `docker compose -p <name>` (and different ports) for a second isolated stack. Roles and databases are created on first start of an empty volume; the Temporal schema is applied by the one-shot `temporal-schema` service on every start.
+
+Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL comes from `RETAIL_ANALYTICS_DATABASE_URL` or `.env`). The baseline revision only creates `app_meta`; add new revisions with `alembic revision -m "..."` chained after the current head.
+
+Docker-dependent tests carry the `docker` marker and are excluded from `./scripts/check.sh`. Run them with `python -m pytest -m docker`; they start their own uniquely named Compose project on free ports and remove it afterwards.
+
 ### Package layout and dependency rules
 
 ```text

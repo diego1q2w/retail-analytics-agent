@@ -79,7 +79,8 @@ warn_required_dynamic_aliases = true
 testpaths = ["tests"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m \"not docker\""
 markers = [
+    "docker: needs a local Docker daemon (Compose stack); excluded by default, run with -m docker",
     "live: needs real external credentials (BigQuery, model providers); skipped when absent",
 ]
