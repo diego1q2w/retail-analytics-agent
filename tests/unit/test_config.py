@@ -113,3 +113,22 @@ def test_env_example_matches_settings() -> None:
         if line and not line.startswith("#")
     }
     assert set(backend.redacted_summary()) <= documented
+
+
+def test_auth_signing_key_is_secret_and_must_be_long_enough() -> None:
+    key = "s" * 40
+    settings = load_backend_settings(
+        environ={"RETAIL_ANALYTICS_AUTH_SIGNING_KEY": key}, env_file=None
+    )
+    assert settings.auth_issuer == "retail-analytics-local"
+    assert settings.auth_audience == "retail-analytics-api"
+    assert key not in repr(settings)
+    assert settings.redacted_summary()["RETAIL_ANALYTICS_AUTH_SIGNING_KEY"] == "<set>"
+
+    with pytest.raises(ConfigError) as caught:
+        load_backend_settings(
+            environ={"RETAIL_ANALYTICS_AUTH_SIGNING_KEY": "short-secret"},
+            env_file=None,
+        )
+    assert "AUTH_SIGNING_KEY must be at least 32 bytes" in str(caught.value)
+    assert "short-secret" not in str(caught.value)

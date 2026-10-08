@@ -14,12 +14,17 @@ from retail_analytics.adapters.postgres.database import (
     new_event_id,
     utc_now,
 )
+from retail_analytics.adapters.postgres.executives import PostgresExecutiveDirectory
 from retail_analytics.adapters.postgres.run_events import PostgresRunEventStore
 from retail_analytics.adapters.postgres.runs import PostgresRunRepository
 from retail_analytics.adapters.postgres.sessions import PostgresSessionRepository
 from retail_analytics.adapters.postgres.tool_executions import (
     PostgresQueryJobRepository,
     PostgresToolExecutionRepository,
+)
+from retail_analytics.application.authorization import (
+    AccessAdministration,
+    ExecutiveDirectory,
 )
 from retail_analytics.application.persistence import (
     QueryJobRepository,
@@ -39,6 +44,8 @@ class Persistence:
     tool_executions: ToolExecutionRepository
     query_jobs: QueryJobRepository
     run_events: RunEventStore
+    executives: ExecutiveDirectory
+    access_admin: AccessAdministration
 
     def close(self) -> None:
         self.engine.dispose()
@@ -50,6 +57,7 @@ def build_persistence(
     """Create the engine (lazily connecting) and the repositories sharing it."""
     engine = create_database_engine(database_url)
     db = Database(engine, clock=clock, new_id=new_id)
+    executives = PostgresExecutiveDirectory(db)
     return Persistence(
         engine=engine,
         sessions=PostgresSessionRepository(db),
@@ -57,6 +65,8 @@ def build_persistence(
         tool_executions=PostgresToolExecutionRepository(db),
         query_jobs=PostgresQueryJobRepository(db),
         run_events=PostgresRunEventStore(db),
+        executives=executives,
+        access_admin=executives,
     )
 
 

@@ -41,6 +41,7 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 | `retail-analytics-api` | `retail_analytics.bootstrap.api` | HTTP backend (`GET /healthz`) |
 | `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
 | `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal worker (no workflows registered yet) |
+| `retail-analytics-dev-access` | `retail_analytics.bootstrap.dev_access` | Development only: provision the two synthetic executives and issue local tokens; see [Authentication and entitlements](#authentication-and-entitlements) |
 
 Backend entry points accept `--check-config`: validate settings, print them with secrets shown only as `<set>`/`<unset>`, and exit. Invalid configuration exits with status 2.
 
@@ -91,11 +92,33 @@ docker compose down                                # keeps the volume; add -v to
 
 Temporal and the application never share a database or role: each role is the only one allowed to connect to its own databases, so the application cannot read Temporal's internal tables. Use `docker compose -p <name>` (and different ports) for a second isolated stack. Roles and databases are created on first start of an empty volume; the Temporal schema is applied by the one-shot `temporal-schema` service on every start.
 
-Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL comes from `RETAIL_ANALYTICS_DATABASE_URL` or `.env`). The baseline revision creates `app_meta`; revision `0002` adds sessions, messages, runs, tool executions (with BigQuery job detail) and the append-only execution and run event histories. Add new revisions with `alembic revision -m "..."` chained after the current head; a test keeps the history a single linear chain.
+Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL comes from `RETAIL_ANALYTICS_DATABASE_URL` or `.env`). The baseline revision creates `app_meta`; revision `0002` adds sessions, messages, runs, tool executions (with BigQuery job detail) and the append-only execution and run event histories; revision `0003` adds executives and product entitlements. Add new revisions with `alembic revision -m "..."` chained after the current head; a test keeps the history a single linear chain.
 
 Application state is reached through the narrow ports in `retail_analytics.application.persistence`, implemented with SQLAlchemy Core in `retail_analytics.adapters.postgres` and wired by `retail_analytics.bootstrap.persistence`. Retried writes are idempotent on application-generated keys (the operation ID for tool executions, the submission key for runs); reusing a key for different content raises a typed conflict. A session has at most one active run, enforced by a row lock and a partial unique index. Run events carry a gap-free per-run sequence for replay after a client's last received event ID.
 
 Docker-dependent tests carry the `docker` marker and are excluded from `./scripts/check.sh`. Run them with `python -m pytest -m docker`; they start their own uniquely named Compose project on free ports and remove it afterwards.
+
+### Authentication and entitlements
+
+Assistant users are executives, distinct from the customers in the dataset. Three things are kept apart:
+
+- **Identity**: a validated bearer token (JWT) names the caller by issuer and subject, mapped to one active row in `executives`.
+- **Operation permissions**: server-assigned roles grant permissions (`executive`: `analysis:read`, `reports:read_own`, `reports:delete_own`; `editor`: `persona:edit`; `reviewer`: `knowledge:review`; `admin`: `access:admin`). The token's `scope` claim can only narrow them: effective permissions are the intersection, so a token cannot add a permission the server did not grant. `admin` manages access and grants no product data.
+- **Product entitlements**: the complete set of product IDs whose data an executive may see, stored in `product_entitlements`. No rows means no product data, never unrestricted access.
+
+Every change to an executive's roles, products or active status increments `authorization_version` in the same transaction. Tools never receive identity or entitlements as arguments: `AccessResolver.context_for_run(principal, run_id)` (`retail_analytics.application.authorization`) checks that the run and its session belong to the caller, reloads current authority, and returns the `ExecutionContext` whose `ProductScope` carries the products and version. Call it again for every attempt, including inside retried activities, so an entitlement change applies to the next tool check. `OwnershipGuard` loads sessions, runs and operations only for their owner, and `require_owner` applies the same rule to other owned records. A record owned by someone else is indistinguishable from a missing one.
+
+**Local (simulated) authentication.** Tokens are HS256 JWTs signed with `RETAIL_ANALYTICS_AUTH_SIGNING_KEY` (at least 32 bytes; held only by the backend and the developer) for `RETAIL_ANALYTICS_AUTH_ISSUER` and `RETAIL_ANALYTICS_AUTH_AUDIENCE`. Verification accepts only HS256 and requires `iss`, `aud`, `sub`, `iat` and `exp`. It allows 30 seconds of clock skew and a lifetime of at most 24 hours. Forged, tampered, unsigned, expired, future-dated, wrong-issuer and wrong-audience tokens all fail with one uniform error that never includes the token. There is no setting or route that skips authentication, in either mode.
+
+```sh
+export RETAIL_ANALYTICS_AUTH_SIGNING_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+retail-analytics-dev-access provision          # needs RETAIL_ANALYTICS_DATABASE_URL and migrations at head
+retail-analytics-dev-access token demo-a --minutes 60   # prints a token to stdout only
+```
+
+`provision` is idempotent. It creates `exec-demo-a` (roles executive and editor; product IDs 1–15989, the dataset's "Women" department) and `exec-demo-b` (roles executive and reviewer; product IDs 15990–29120, "Men"), so their data never overlaps. The split was checked against `thelook_ecommerce.products` on 2026-10-08. `token` issues a token whose scopes are the executive's current permissions. These identities are synthetic and for development only.
+
+**Production identity (design only, not deployed).** A company identity provider issues the tokens (asymmetric signatures published as JWKS). A verifier for those keys replaces `LocalJwtAuthority` behind the same `TokenVerifier` port (`retail_analytics.application.authentication`). Executives are provisioned from the directory into `executives` by issuer and subject, and entitlements are still assigned server-side. The authorization path after verification does not change. No identity provider has been chosen or configured.
 
 ### Local telemetry (MLflow, Prometheus, Grafana)
 
@@ -166,4 +189,5 @@ Rerun it after changing any pin and commit both files. On a merge conflict in `r
 - **Alembic with SQLAlchemy and psycopg 3** for PostgreSQL migrations: versioned, reviewable migrations with upgrade/downgrade and offline SQL generation. Domain records stay independent of SQLAlchemy.
 - **python-dotenv with Pydantic models** for configuration: an explicit loader whose validation errors never include secret values.
 - **Pydantic AI, the Temporal Python SDK, SQLGlot and google-cloud-bigquery** for the agent, durable execution, SQL compilation and BigQuery access.
+- **PyJWT** for token signing and validation: small, maintained, explicit algorithm allow-lists and required-claim checks; the same library verifies identity-provider keys (JWKS) later.
 - **Ruff, mypy (strict) and pytest** for checks.

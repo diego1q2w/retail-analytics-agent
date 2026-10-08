@@ -12,15 +12,16 @@ from click.testing import CliRunner
 from fastapi.testclient import TestClient
 
 from retail_analytics import __version__
-from retail_analytics.bootstrap import api, cli, worker
+from retail_analytics.bootstrap import api, cli, dev_access, worker
 from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.domain.access import Role
 from retail_analytics.interfaces.cli.app import cli as cli_group
 
 
 def test_console_scripts_import_in_fresh_interpreter() -> None:
     code = (
         "import retail_analytics.bootstrap.api, retail_analytics.bootstrap.worker,"
-        " retail_analytics.bootstrap.cli"
+        " retail_analytics.bootstrap.cli, retail_analytics.bootstrap.dev_access"
     )
     subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=120)
 
@@ -99,3 +100,27 @@ def test_cli_version_and_default_settings() -> None:
     assert result.exit_code == 0
     assert __version__ in result.output
     assert callable(cli.client_factory())
+
+
+def test_dev_access_commands_need_explicit_configuration() -> None:
+    token = CliRunner().invoke(dev_access.main, ["token", "demo-a"], env={})
+    assert token.exit_code == 2
+    assert "RETAIL_ANALYTICS_AUTH_SIGNING_KEY" in token.output
+
+    provision = CliRunner().invoke(dev_access.main, ["provision"], env={})
+    assert provision.exit_code == 2
+    assert "RETAIL_ANALYTICS_DATABASE_URL" in provision.output
+
+    unknown = CliRunner().invoke(
+        dev_access.main,
+        ["token", "someone-else"],
+        env={"RETAIL_ANALYTICS_AUTH_SIGNING_KEY": "k" * 40},
+    )
+    assert unknown.exit_code == 2
+
+
+def test_demo_executives_have_disjoint_products_and_no_admin() -> None:
+    a, b = dev_access.DEMO_EXECUTIVES
+    assert a.product_ids and b.product_ids
+    assert not a.product_ids & b.product_ids
+    assert all(Role.ADMIN not in demo.roles for demo in (a, b))

@@ -20,6 +20,7 @@ dependencies = [
     "psycopg[binary]==3.3.6",
     "pydantic-ai-slim[google,openai,temporal]==2.54.0",
     "pydantic==2.13.5",
+    "pyjwt==2.15.1",
     "python-dotenv==1.2.4",
     "sqlalchemy==2.1.4",
     "sqlglot==30.21.0",
@@ -39,6 +40,7 @@ dev = [
 [project.scripts]
 analytics = "retail_analytics.bootstrap.cli:main"
 retail-analytics-check-credentials = "retail_analytics.bootstrap.check_credentials:main"
+retail-analytics-dev-access = "retail_analytics.bootstrap.dev_access:main"
 retail-analytics-eval = "retail_analytics.bootstrap.evaluate:main"
 retail-analytics-api = "retail_analytics.bootstrap.api:main"
 retail-analytics-worker = "retail_analytics.bootstrap.worker:main"

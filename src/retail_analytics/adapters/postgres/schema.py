@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 metadata = sa.MetaData()
 
@@ -111,4 +111,26 @@ run_events = sa.Table(
     sa.Column("kind", sa.Text, nullable=False),
     sa.Column("payload", JSONB, nullable=False),
     _ts("occurred_at"),
+)
+
+executives = sa.Table(
+    "executives",
+    metadata,
+    sa.Column("executive_id", sa.Text, primary_key=True),
+    sa.Column("issuer", sa.Text, nullable=False),
+    sa.Column("subject", sa.Text, nullable=False),
+    sa.Column("label", sa.String(120), nullable=False),
+    sa.Column("roles", ARRAY(sa.Text), nullable=False),
+    sa.Column("active", sa.Boolean, nullable=False),
+    sa.Column("authorization_version", sa.Integer, nullable=False),
+    _ts("created_at"),
+    _ts("updated_at"),
+)
+
+product_entitlements = sa.Table(
+    "product_entitlements",
+    metadata,
+    sa.Column("executive_id", sa.Text, primary_key=True),
+    sa.Column("product_id", sa.Text, primary_key=True),
+    _ts("granted_at"),
 )

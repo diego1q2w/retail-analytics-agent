@@ -48,3 +48,18 @@ def test_operations_schema_downgrades_offline() -> None:
     sql = buffer.getvalue()
     assert "DROP TABLE run_events" in sql
     assert "DROP TABLE sessions" in sql
+
+
+def test_access_schema_constrains_roles_and_product_ids() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0002:0003", sql=True)
+    sql = buffer.getvalue()
+    assert "CREATE TABLE executives" in sql
+    assert "CONSTRAINT uq_executives_identity UNIQUE (issuer, subject)" in sql
+    assert "roles <@ ARRAY['executive', 'editor', 'reviewer', 'admin']" in sql
+    assert "CREATE TABLE product_entitlements" in sql
+    assert "PRIMARY KEY (executive_id, product_id)" in sql
+
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0003:0002", sql=True)
+    assert "DROP TABLE product_entitlements" in buffer.getvalue()
