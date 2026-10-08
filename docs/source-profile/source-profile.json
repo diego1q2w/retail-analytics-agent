@@ -1,0 +1,528 @@
+{
+  "analyses": {
+    "completed_sales_by_age_band": {
+      "bytes_billed": 31457280,
+      "bytes_processed": 11253720,
+      "cache_hit": false,
+      "catalog_version": 1,
+      "dry_run_bytes": 11253720,
+      "job_id": "ra_t34_d6e24067ab68470aa315a02818617031",
+      "location": "US",
+      "logical_sql": "SELECT `c`.`age_band` AS `age_band`, COUNT(DISTINCT `s`.`customer_ref`) AS `customers`, SUM(`s`.`sale_amount`) AS `completed_item_sales` FROM `sales_items` AS `s` JOIN `customers` AS `c` ON `s`.`customer_ref` = `c`.`customer_ref` WHERE `s`.`item_status` = @_value_2 AND `s`.`ordered_date` >= @start AND `s`.`ordered_date` < @end GROUP BY `age_band` ORDER BY `age_band`",
+      "masked_cells": 0,
+      "maximum_bytes_billed": 1073741824,
+      "product_scope": "products 1-15989 (demo executive A)",
+      "relations": [
+        "customers",
+        "sales_items"
+      ],
+      "rows": [
+        {
+          "age_band": "10-14",
+          "completed_item_sales": 19314.050045728683,
+          "customers": 218
+        },
+        {
+          "age_band": "15-19",
+          "completed_item_sales": 33196.28003740311,
+          "customers": 387
+        },
+        {
+          "age_band": "20-24",
+          "completed_item_sales": 32650.420025229454,
+          "customers": 387
+        },
+        {
+          "age_band": "25-29",
+          "completed_item_sales": 29150.950065374374,
+          "customers": 338
+        },
+        {
+          "age_band": "30-34",
+          "completed_item_sales": 32719.400044202805,
+          "customers": 388
+        },
+        {
+          "age_band": "35-39",
+          "completed_item_sales": 32280.78002500534,
+          "customers": 378
+        },
+        {
+          "age_band": "40-44",
+          "completed_item_sales": 26607.140017271042,
+          "customers": 353
+        },
+        {
+          "age_band": "45-49",
+          "completed_item_sales": 38195.79006099701,
+          "customers": 384
+        },
+        {
+          "age_band": "50-54",
+          "completed_item_sales": 37761.760038375854,
+          "customers": 389
+        },
+        {
+          "age_band": "55-59",
+          "completed_item_sales": 33317.56999707222,
+          "customers": 358
+        },
+        {
+          "age_band": "60-64",
+          "completed_item_sales": 31160.620104193687,
+          "customers": 362
+        },
+        {
+          "age_band": "65-69",
+          "completed_item_sales": 32335.9400100708,
+          "customers": 368
+        },
+        {
+          "age_band": "70-74",
+          "completed_item_sales": 6692.650007486343,
+          "customers": 72
+        }
+      ],
+      "statement_fingerprint": "7accbaba2b692069d23145697a1ea132",
+      "truncated": false,
+      "window_end_exclusive": "2026-10-01",
+      "window_start": "2026-01-01"
+    },
+    "completed_sales_by_category": {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "cache_hit": true,
+      "catalog_version": 1,
+      "dry_run_bytes": 8798585,
+      "job_id": "ra_t34_67f459d8e2a048bfbdbecbd28ccc4101",
+      "location": "US",
+      "logical_sql": "SELECT `p`.`category` AS `category`, SUM(`s`.`sale_amount`) AS `completed_item_sales`, COUNT(*) AS `completed_items` FROM `sales_items` AS `s` JOIN `products` AS `p` ON `s`.`product_id` = `p`.`product_id` WHERE `s`.`item_status` = @_value_2 AND `s`.`ordered_date` >= @start AND `s`.`ordered_date` < @end GROUP BY `category` ORDER BY `completed_item_sales` DESC, `category` LIMIT 5",
+      "masked_cells": 0,
+      "maximum_bytes_billed": 1073741824,
+      "product_scope": "products 1-15989 (demo executive A)",
+      "relations": [
+        "products",
+        "sales_items"
+      ],
+      "rows": [
+        {
+          "category": "Dresses",
+          "completed_item_sales": 39186.46006298065,
+          "completed_items": 443
+        },
+        {
+          "category": "Outerwear & Coats",
+          "completed_item_sales": 35991.53999328613,
+          "completed_items": 254
+        },
+        {
+          "category": "Jeans",
+          "completed_item_sales": 35684.090114593506,
+          "completed_items": 395
+        },
+        {
+          "category": "Intimates",
+          "completed_item_sales": 34147.00003147125,
+          "completed_items": 1013
+        },
+        {
+          "category": "Swim",
+          "completed_item_sales": 26194.870020866394,
+          "completed_items": 380
+        }
+      ],
+      "statement_fingerprint": "b1723a7310a100ee12cbb425a02e7e30",
+      "truncated": false,
+      "window_end_exclusive": "2026-10-01",
+      "window_start": "2026-01-01"
+    },
+    "physical_cross_check": {
+      "age_band_customers_match": true,
+      "age_band_sales_matches": true,
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "row": {
+        "completed_item_sales": 385383.3504784107,
+        "completed_items": 6775,
+        "customers": 4382
+      }
+    }
+  },
+  "currency": {
+    "conclusion": "UNKNOWN",
+    "established_by_source_metadata": false
+  },
+  "dataset": "bigquery-public-data.thelook_ecommerce",
+  "generated_at": "2026-10-08T16:51:36Z",
+  "location": "US",
+  "mapping_check": {
+    "catalog_version": 1,
+    "issues": [],
+    "source_tables": [
+      "order_items",
+      "orders",
+      "products",
+      "users"
+    ]
+  },
+  "method": "aggregate queries only; no row-level or personal values stored",
+  "profile": {
+    "items_vs_orders": {
+      "item_date_differs_from_order_date": 81401,
+      "items": 181162,
+      "items_without_order": 0,
+      "status_mismatch": 0,
+      "user_mismatch": 0
+    },
+    "items_vs_products": {
+      "items": 181162,
+      "items_without_product": 0
+    },
+    "items_vs_users": {
+      "items": 181162,
+      "items_without_user": 0
+    },
+    "order_items": {
+      "distinct_id": 181162,
+      "distinct_orders": 124987,
+      "distinct_products": 29048,
+      "distinct_users": 80131,
+      "item_created_in_future": 1499,
+      "item_created_max": "2026-10-11 23:58:52.640285+00",
+      "item_created_min": "2019-01-12 13:22:54+00",
+      "negative_sale_price": 0,
+      "null_created_at": 0,
+      "null_id": 0,
+      "null_order_id": 0,
+      "null_product_id": 0,
+      "null_sale_price": 0,
+      "null_status": 0,
+      "null_user_id": 0,
+      "rows_total": 181162,
+      "sale_price_max": 999.0,
+      "sale_price_min": 0.0199999995529651,
+      "sale_price_sum": 10807122.581057478,
+      "zero_sale_price": 0
+    },
+    "order_items_status": [
+      {
+        "items": 26917,
+        "null_price": 0,
+        "status": "Cancelled"
+      },
+      {
+        "items": 45283,
+        "null_price": 0,
+        "status": "Complete"
+      },
+      {
+        "items": 36363,
+        "null_price": 0,
+        "status": "Processing"
+      },
+      {
+        "items": 18080,
+        "null_price": 0,
+        "status": "Returned"
+      },
+      {
+        "items": 54519,
+        "null_price": 0,
+        "status": "Shipped"
+      }
+    ],
+    "orders": {
+      "distinct_order_id": 124987,
+      "distinct_users": 80131,
+      "null_created_at": 0,
+      "null_order_id": 0,
+      "null_status": 0,
+      "null_user_id": 0,
+      "num_of_item_max": 4,
+      "num_of_item_min": 1,
+      "order_created_in_future": 0,
+      "order_created_max": "2026-10-08 00:39:26.922376+00",
+      "order_created_min": "2019-01-09 15:50:38+00",
+      "rows_total": 124987
+    },
+    "orders_by_year": [
+      {
+        "last_day": "2019-12-31",
+        "months_present": 12,
+        "orders": 1033,
+        "year": 2019
+      },
+      {
+        "last_day": "2020-12-31",
+        "months_present": 12,
+        "orders": 3430,
+        "year": 2020
+      },
+      {
+        "last_day": "2021-12-31",
+        "months_present": 12,
+        "orders": 6036,
+        "year": 2021
+      },
+      {
+        "last_day": "2022-12-31",
+        "months_present": 12,
+        "orders": 9436,
+        "year": 2022
+      },
+      {
+        "last_day": "2023-12-31",
+        "months_present": 12,
+        "orders": 13750,
+        "year": 2023
+      },
+      {
+        "last_day": "2024-12-31",
+        "months_present": 12,
+        "orders": 19617,
+        "year": 2024
+      },
+      {
+        "last_day": "2025-12-31",
+        "months_present": 12,
+        "orders": 28784,
+        "year": 2025
+      },
+      {
+        "last_day": "2026-10-08",
+        "months_present": 10,
+        "orders": 42901,
+        "year": 2026
+      }
+    ],
+    "orders_status": [
+      {
+        "orders": 18607,
+        "status": "Cancelled"
+      },
+      {
+        "orders": 31259,
+        "status": "Complete"
+      },
+      {
+        "orders": 24991,
+        "status": "Processing"
+      },
+      {
+        "orders": 12421,
+        "status": "Returned"
+      },
+      {
+        "orders": 37709,
+        "status": "Shipped"
+      }
+    ],
+    "orders_vs_items": {
+      "max_items_per_order": 4,
+      "num_of_item_differs_from_item_rows": 0,
+      "orders": 124987,
+      "orders_without_items": 0
+    },
+    "orders_vs_users": {
+      "orders": 124987,
+      "orders_without_user": 0
+    },
+    "products": {
+      "distinct_brands": 2756,
+      "distinct_categories": 26,
+      "distinct_id": 29120,
+      "id_max": 29120,
+      "id_min": 1,
+      "null_brand": 24,
+      "null_category": 0,
+      "null_department": 0,
+      "null_name": 2,
+      "null_retail_price": 0,
+      "retail_price_max": 999.0,
+      "retail_price_min": 0.0199999995529651,
+      "rows_total": 29120
+    },
+    "products_by_department": [
+      {
+        "department": "Men",
+        "id_max": 29120,
+        "id_min": 15990,
+        "products": 13131
+      },
+      {
+        "department": "Women",
+        "id_max": 15989,
+        "id_min": 1,
+        "products": 15989
+      }
+    ],
+    "users": {
+      "age_max": 70,
+      "age_min": 12,
+      "distinct_countries": 16,
+      "distinct_id": 100000,
+      "distinct_states": 227,
+      "id_max": 100000,
+      "id_min": 1,
+      "null_age": 0,
+      "null_country": 0,
+      "null_state": 0,
+      "rows_total": 100000
+    }
+  },
+  "query_costs": [
+    {
+      "bytes_billed": 11534336,
+      "bytes_processed": 10552520,
+      "name": "order_items"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "order_items_status"
+    },
+    {
+      "bytes_billed": 10485760,
+      "bytes_processed": 5280334,
+      "name": "orders"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "orders_status"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "orders_by_year"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "items_vs_orders"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "items_vs_products"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "items_vs_users"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "orders_vs_users"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "orders_vs_items"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "products"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "products_by_department"
+    },
+    {
+      "bytes_billed": 0,
+      "bytes_processed": 0,
+      "name": "users"
+    }
+  ],
+  "report_version": 1,
+  "tables": {
+    "order_items": {
+      "columns": {
+        "created_at": "TIMESTAMP/NULLABLE",
+        "delivered_at": "TIMESTAMP/NULLABLE",
+        "id": "INTEGER/NULLABLE",
+        "inventory_item_id": "INTEGER/NULLABLE",
+        "order_id": "INTEGER/NULLABLE",
+        "product_id": "INTEGER/NULLABLE",
+        "returned_at": "TIMESTAMP/NULLABLE",
+        "sale_price": "FLOAT/NULLABLE",
+        "shipped_at": "TIMESTAMP/NULLABLE",
+        "status": "STRING/NULLABLE",
+        "user_id": "INTEGER/NULLABLE"
+      },
+      "currency_mentioned_in_descriptions": false,
+      "currency_named_columns": [],
+      "has_column_descriptions": false,
+      "has_table_description": true,
+      "labels": {},
+      "num_rows": 181162
+    },
+    "orders": {
+      "columns": {
+        "created_at": "TIMESTAMP/NULLABLE",
+        "delivered_at": "TIMESTAMP/NULLABLE",
+        "gender": "STRING/NULLABLE",
+        "num_of_item": "INTEGER/NULLABLE",
+        "order_id": "INTEGER/NULLABLE",
+        "returned_at": "TIMESTAMP/NULLABLE",
+        "shipped_at": "TIMESTAMP/NULLABLE",
+        "status": "STRING/NULLABLE",
+        "user_id": "INTEGER/NULLABLE"
+      },
+      "currency_mentioned_in_descriptions": false,
+      "currency_named_columns": [],
+      "has_column_descriptions": false,
+      "has_table_description": true,
+      "labels": {},
+      "num_rows": 124987
+    },
+    "products": {
+      "columns": {
+        "brand": "STRING/NULLABLE",
+        "category": "STRING/NULLABLE",
+        "cost": "FLOAT/NULLABLE",
+        "department": "STRING/NULLABLE",
+        "distribution_center_id": "INTEGER/NULLABLE",
+        "id": "INTEGER/NULLABLE",
+        "name": "STRING/NULLABLE",
+        "retail_price": "FLOAT/NULLABLE",
+        "sku": "STRING/NULLABLE"
+      },
+      "currency_mentioned_in_descriptions": false,
+      "currency_named_columns": [],
+      "has_column_descriptions": false,
+      "has_table_description": true,
+      "labels": {},
+      "num_rows": 29120
+    },
+    "users": {
+      "columns": {
+        "age": "INTEGER/NULLABLE",
+        "city": "STRING/NULLABLE",
+        "country": "STRING/NULLABLE",
+        "created_at": "TIMESTAMP/NULLABLE",
+        "email": "STRING/NULLABLE",
+        "first_name": "STRING/NULLABLE",
+        "gender": "STRING/NULLABLE",
+        "id": "INTEGER/NULLABLE",
+        "last_name": "STRING/NULLABLE",
+        "latitude": "FLOAT/NULLABLE",
+        "longitude": "FLOAT/NULLABLE",
+        "postal_code": "STRING/NULLABLE",
+        "state": "STRING/NULLABLE",
+        "street_address": "STRING/NULLABLE",
+        "traffic_source": "STRING/NULLABLE",
+        "user_geom": "GEOGRAPHY/NULLABLE"
+      },
+      "currency_mentioned_in_descriptions": false,
+      "currency_named_columns": [],
+      "has_column_descriptions": false,
+      "has_table_description": true,
+      "labels": {},
+      "num_rows": 100000
+    }
+  }
+}

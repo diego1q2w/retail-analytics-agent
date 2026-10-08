@@ -96,6 +96,10 @@ Backend entry points accept `--check-config`: validate settings, print them with
 
 Errors name the variable and the problem, never the value. All settings are declared in `src/retail_analytics/bootstrap/config.py`; add new ones there and to `.env.example` (a test keeps them in sync). Only bootstrap reads configuration; inner layers receive typed values.
 
+### Source data profile
+
+`python -m retail_analytics.bootstrap.profile_source` (needs a BigQuery project and application default credentials) profiles the four public source tables with bounded aggregate queries only, checks the catalog mappings against live metadata, runs two compiled analyses through the real job adapter and privacy boundary, and writes `docs/source-profile/source-profile.{json,md}`. The report holds counts and ranges, never personal values; the source metadata names no currency, so the currency stays unknown.
+
 ### Evaluation runner
 
 `retail-analytics-eval` (or `python -m retail_analytics.bootstrap.evaluate`) runs a versioned JSON scenario manifest against a pluggable target and writes a versioned result file.
