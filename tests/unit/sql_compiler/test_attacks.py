@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from retail_analytics.adapters.sql_compiler import compiler as compiler_module
 from retail_analytics.application.query_compiler import QueryRejected
 from retail_analytics.domain.operations import ToolErrorCode
 from tests.unit.sql_compiler.support import ALICE, compile_sql
@@ -343,3 +344,41 @@ def test_wildcard_rejection_is_reformulable() -> None:
     error = _rejected("SELECT * FROM products")
     assert error.reason == "wildcard_projection"
     assert error.correctable
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT 0E FROM customers", "SELECT 1e FROM customers"]
+)
+def test_malformed_numeric_literal_is_rejected_not_crashed(sql: str) -> None:
+    with pytest.raises(QueryRejected) as rejected:
+        compile_sql(sql)
+    assert rejected.value.correctable
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        AttributeError("'NoneType' object has no attribute 'name'"),
+        ValueError("x"),
+        TypeError("x"),
+        KeyError("x"),
+        IndexError("x"),
+        RecursionError(),
+    ],
+)
+@pytest.mark.parametrize("target", ["sqlglot.parse", "qualify"])
+def test_arbitrary_parser_exceptions_become_rejections(
+    monkeypatch: pytest.MonkeyPatch, error: Exception, target: str
+) -> None:
+    def boom(*args: object, **kwargs: object) -> None:
+        raise error
+
+    if target == "sqlglot.parse":
+        monkeypatch.setattr("sqlglot.parse", boom)
+    else:
+        monkeypatch.setattr(compiler_module, "qualify", boom)
+    with pytest.raises(QueryRejected) as rejected:
+        compile_sql("SELECT sale_amount FROM sales_items")
+    assert rejected.value.code is ToolErrorCode.INVALID_QUERY
+    assert rejected.value.correctable
+    assert type(error).__name__ not in rejected.value.message

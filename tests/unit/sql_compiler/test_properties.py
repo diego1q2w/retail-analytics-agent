@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlglot
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from sqlglot import exp
 
@@ -255,6 +255,10 @@ def test_token_soup_is_rejected_or_safely_compiled(tokens: list[str]) -> None:
     _assert_safe(compiled)
 
 
+# '0E' is an unparseable numeric literal: sqlglot accepts it, then raises ValueError
+# from Literal.to_py during the grammar check (found by Hypothesis, T08-F1).
+@example(name="0E")
+@example(name="1e")
 @given(name=st.text(min_size=1, max_size=20))
 @settings(max_examples=200, deadline=None)
 def test_arbitrary_identifiers_resolve_only_to_published_fields(name: str) -> None:

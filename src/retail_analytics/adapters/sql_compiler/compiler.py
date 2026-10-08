@@ -35,7 +35,7 @@ from decimal import Decimal
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.errors import ErrorLevel, OptimizeError, SqlglotError
+from sqlglot.errors import ErrorLevel, OptimizeError
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import Scope, traverse_scope
 
@@ -114,7 +114,9 @@ class SqlglotQueryCompiler:
             return self._compile(tree, values, catalog, product_ids)
         except QueryRejected:
             raise
-        except (SqlglotError, RecursionError):
+        except Exception:
+            # Fail closed: an unexpected parser/optimizer exception on model SQL is a
+            # rejection, never a crash and never an accepted query.
             raise reject(
                 ToolErrorCode.INVALID_QUERY,
                 "unresolvable_query",
@@ -128,7 +130,7 @@ class SqlglotQueryCompiler:
             )
         try:
             statements = sqlglot.parse(sql, read=_DIALECT, error_level=ErrorLevel.RAISE)
-        except (SqlglotError, RecursionError):
+        except Exception:
             raise reject(
                 ToolErrorCode.INVALID_QUERY,
                 "syntax_error",
