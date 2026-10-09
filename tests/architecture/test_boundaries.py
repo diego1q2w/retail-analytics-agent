@@ -112,12 +112,15 @@ def test_import_time_check_rejects_invalid_fixture() -> None:
 
     application = check_import_time(FIXTURE_ROOT, FIXTURE_PACKAGE, "application")
     assert "application import loads sqlglot" in application
-    # Effects pydantic performs for itself are exempt; the module's own are not.
+    # Only pydantic's exact own effects are exempt; the module's own are not,
+    # including ones run through a pydantic callback.
     assert (
         "application import side effect: environ read FIXTURE_APP_PROJECT"
         in application
     )
+    assert "application import side effect: environ read SECRET_TOKEN" in application
     assert not any("PYDANTIC" in problem for problem in application)
+    assert not any("entry_points" in problem for problem in application)
 
 
 def test_every_exception_has_a_reason() -> None:

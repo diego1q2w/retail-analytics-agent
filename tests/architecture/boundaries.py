@@ -509,41 +509,32 @@ allowed_libraries = json.loads(sys.argv[3])
 sys.path.insert(0, root)
 effects = []
 ALLOWED_SUFFIXES = (".py", ".pyc", ".so", ".pyd", ".pth", ".typed")
-STDLIB = tuple(
-    {os.path.realpath(sysconfig.get_path(k)) for k in ("stdlib", "platstdlib")}
-)
-SITE = tuple(
-    {os.path.realpath(sysconfig.get_path(k)) for k in ("purelib", "platlib")}
-)
 
-# Third-party packages the layer may use are imported before watching, and
-# effects they perform themselves (e.g. pydantic reading its own plugin
-# settings when a model class is created) are theirs, not the layer's. An
-# effect is attributed to the nearest non-stdlib frame that performed it.
-library_dirs = []
+# Third-party packages the layer may use are imported before watching. Frame
+# attribution is not used: callbacks run by pydantic-core would hide a layer's
+# own effects. Instead exactly the effects pydantic itself performs when a model
+# class is created are exempt, and only when the layer may use pydantic.
+# Interpreter bookkeeping (sysconfig and platform caches) is warmed first so it
+# is not mistaken for a layer effect.
+sysconfig.get_config_vars()
+sysconfig.get_path("purelib")
 for name in allowed_libraries:
     try:
-        module = importlib.import_module(name)
+        importlib.import_module(name)
     except ImportError:
-        continue
-    library_dirs.extend(getattr(module, "__path__", []))
-    if getattr(module, "__file__", None):
-        library_dirs.append(os.path.dirname(module.__file__))
-library_dirs = tuple(os.path.realpath(d) + os.sep for d in library_dirs)
+        pass
 
-def performed_by_allowed_library():
-    frame = sys._getframe(2)
-    while frame is not None:
-        filename = frame.f_code.co_filename
-        if not filename.startswith("<"):
-            path = os.path.realpath(filename)
-            if path.startswith(SITE) or not path.startswith(STDLIB):
-                return path.startswith(library_dirs)
-        frame = frame.f_back
-    return False
+EXEMPT = set()
+if "pydantic" in allowed_libraries:
+    EXEMPT = {
+        "environ read PYDANTIC_DISABLE_PLUGINS",
+        "environ read PYTHONTZPATH",
+        "open entry_points.txt",
+        "open python%d%d.zip" % sys.version_info[:2],
+    }
 
 def record(effect):
-    if not performed_by_allowed_library():
+    if effect not in EXEMPT:
         effects.append(effect)
 
 def hook(event, args):
