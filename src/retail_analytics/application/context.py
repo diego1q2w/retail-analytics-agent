@@ -11,7 +11,7 @@ and topic resets take effect on the next iteration:
 - evidence comes only from ``EvidenceService.session_standing`` and only
   records usable under current authority are rendered, newest first, with
   bounded rows; larger tables are compacted to a reference the model can
-  fetch through the evidence tool;
+  fetch through ``fetch_evidence`` (``ContextBuilder.read_evidence``);
 - history messages pass ``HistoryRules`` (see ``domain.context``), then every
   text that enters context is screened for direct personal data and
   references that current evidence does not contain;
@@ -35,7 +35,12 @@ from retail_analytics.application.authorization import (
     OwnershipGuard,
 )
 from retail_analytics.application.contracts.authorization import Principal
-from retail_analytics.application.contracts.context import TopicReset
+from retail_analytics.application.contracts.context import (
+    EvidenceListing,
+    EvidencePage,
+    TopicReset,
+)
+from retail_analytics.application.contracts.tools import ExecutionContext
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.ports.context import (
     MessageHistory,
@@ -67,6 +72,7 @@ from retail_analytics.domain.labels import fallback_for, label_notes
 from retail_analytics.domain.preferences import EffectivePreferences
 from retail_analytics.domain.request_scope import Admission, assess_request
 
+MAX_FETCH_ROWS = 50
 FIGURE_MASK = "[figure withheld]"
 _ACCESS_NOTE = (
     "[Earlier answer withheld: it relied on data outside your current access.]"
@@ -99,7 +105,8 @@ class EvidenceDigest:
     rows: tuple[tuple[str, ...], ...]
     total_rows: int
     truncated_at_source: bool
-    # True when only a reference is included (budget); fetch rows on demand.
+    # True when only a reference is included (budget); the rows are available
+    # through the fetch_evidence tool.
     compacted: bool
     # Disclosures about display fallbacks (missing product names or brands).
     notes: tuple[str, ...] = ()
@@ -329,6 +336,116 @@ class ContextBuilder:
             permitted_references=permitted,
         )
 
+    async def list_evidence(
+        self, principal: Principal, run_id: str, *, trace_id: str | None = None
+    ) -> tuple[EvidenceListing, ...]:
+        """Usable session evidence (newest first) without rows.
+
+        Authority is resolved now; evidence before a topic reset, invalidated
+        or computed under other access is not listed.
+        """
+        _, usable = await self._usable(principal, run_id, trace_id)
+        return tuple(
+            EvidenceListing(
+                evidence_id=e.evidence_id,
+                version=e.version,
+                computed_at=e.computed_at,
+                period=_period(e),
+                definitions=tuple(
+                    str(d) for d in sorted(e.content.analysis.definitions)
+                ),
+                columns=e.content.table.column_names,
+                total_rows=len(e.content.table.rows),
+                truncated_at_source=e.content.table.truncated,
+            )
+            for e in usable
+        )
+
+    async def read_evidence(
+        self,
+        principal: Principal,
+        run_id: str,
+        evidence_id: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+        trace_id: str | None = None,
+    ) -> EvidencePage | None:
+        """One slice of a usable evidence record, or None if not available.
+
+        Read-only and session-scoped: authority is re-resolved on every call
+        and the record must be usable *now* (same rules as context assembly).
+        Unknown, other-session, other-owner, withheld, invalidated and
+        pre-reset records are all ``None``. Text is screened exactly like
+        context (personal data masked, unknown references masked); the page
+        is bounded by rows and by half of the context character budget, and
+        the source truncation flag is always carried.
+        """
+        ctx, usable = await self._usable(principal, run_id, trace_id)
+        target = next((e for e in usable if e.evidence_id == evidence_id), None)
+        if target is None:
+            return None
+        messages = await self._history.recent_messages(
+            ctx.correlation.session_id, self._budget.history_scan
+        )
+        screen = _Screen(
+            frozenset(r for e in usable for r in _references_in(e)),
+            tuple(self._protected_terms())
+            + user_supplied_terms(
+                m.content for m in messages if m.role is MessageRole.USER
+            ),
+        )
+        table = target.content.table
+        total = len(table.rows)
+        start = min(max(offset, 0), total)
+        wanted = min(limit or MAX_FETCH_ROWS, MAX_FETCH_ROWS)
+        char_cap = self._budget.max_chars // 2
+        rows: list[tuple[str, ...]] = []
+        used = 0
+        for row in table.rows[start : start + wanted]:
+            cells = tuple(
+                _cell_text(cell)
+                if column.role == "reference"
+                else screen.text(_cell_text(cell, fallback_for(column)))
+                for cell, column in zip(row, table.columns, strict=True)
+            )
+            size = sum(len(c) for c in cells) + len(cells)
+            if rows and used + size > char_cap:
+                break
+            rows.append(cells)
+            used += size
+        end = start + len(rows)
+        return EvidencePage(
+            evidence_id=target.evidence_id,
+            version=target.version,
+            computed_at=target.computed_at,
+            period=_period(target),
+            definitions=tuple(
+                str(d) for d in sorted(target.content.analysis.definitions)
+            ),
+            columns=table.column_names,
+            rows=tuple(rows),
+            offset=start,
+            total_rows=total,
+            next_offset=end if end < total else None,
+            truncated_at_source=table.truncated,
+            notes=label_notes(table),
+            masked=bool(screen.masked),
+        )
+
+    async def _usable(
+        self, principal: Principal, run_id: str, trace_id: str | None
+    ) -> tuple[ExecutionContext, list[Evidence]]:
+        ctx = await self._resolver.context_for_run(principal, run_id, trace_id=trace_id)
+        reset = await self._resets.latest_reset(ctx.correlation.session_id)
+        reset_at = reset.reset_at if reset else None
+        session = await self._evidence.session_standing(
+            ctx, limit=self._budget.evidence_scan
+        )
+        return ctx, [
+            e for e in session.usable if reset_at is None or e.computed_at >= reset_at
+        ]
+
     async def reset_topic(
         self, principal: Principal, session_id: str, reset_id: str
     ) -> TopicReset:
@@ -419,6 +536,11 @@ def _preference_lines(preferences: EffectivePreferences) -> list[str]:
     ]
 
 
+def _period(evidence: Evidence) -> str | None:
+    period = evidence.content.analysis.period
+    return period.describe() if period else None
+
+
 def _cell_text(cell: EvidenceCell, fallback: str | None = None) -> str:
     """Cell text; a missing product name or brand shows its explicit fallback."""
     if cell is None:
@@ -488,11 +610,13 @@ def _render_evidence(item: EvidenceDigest) -> str:
     )
     lines = [header, "columns: " + " | ".join(_quote(c) for c in item.columns)]
     if item.compacted:
-        lines.append("rows omitted for space; fetch this evidence by id if needed")
+        lines.append("rows omitted for space; read them with fetch_evidence")
     else:
         lines.extend(" | ".join(_quote(c) for c in row) for row in item.rows)
         if len(item.rows) < item.total_rows:
-            lines.append(f"... {item.total_rows - len(item.rows)} more rows by id")
+            lines.append(
+                f"... {item.total_rows - len(item.rows)} more rows (fetch_evidence)"
+            )
     lines.extend(f"note: {note}" for note in item.notes)
     return "\n".join(lines)
 
@@ -517,7 +641,10 @@ def _omission_notes(omissions: ContextOmissions) -> list[str]:
             "(access changed or superseded); recompute instead of recalling them."
         )
     if omissions.history_over_budget or omissions.evidence_over_budget:
-        notes.append("Older context omitted for space; retrieve evidence by id.")
+        notes.append(
+            "Older context omitted for space; fetch_evidence lists and reads "
+            "the evidence still available."
+        )
     if omissions.masked:
         notes.append(f"Personal data was removed and shown as {MASK}.")
     return notes

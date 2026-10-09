@@ -113,7 +113,9 @@ execute_analysis); aggregate in SQL and narrow when a limit is hit. The \
 SQL is a restricted dialect: use SAFE_DIVIDE(a, b) instead of /, no window \
 functions (rank with ORDER BY ... LIMIT in a CTE or scalar subquery), no \
 SELECT *, and alias tables and qualify columns when joining. Fresh, \
-sufficient evidence already in <evidence> can answer without a new query.
+sufficient evidence already in <evidence> can answer without a new query. If \
+rows were omitted for space, or older evidence is not shown, use fetch_evidence \
+(no id lists what is available); it never returns more than you may use.
 4. Check that evidence, calculations and conclusions agree.
 5. Answer with findings, definitions, limitations and suggested actions.
 

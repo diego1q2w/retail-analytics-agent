@@ -223,6 +223,7 @@ class World:
         rows: tuple[tuple[str | Decimal | int | None, ...], ...],
         columns: tuple[str, ...] = ("label", "amount"),
         principal: Principal = A,
+        truncation: str | None = None,
     ) -> Evidence:
         """Evidence with arbitrary content (e.g. a provider's text) for fault tests."""
         ctx = await self.resolver.context_for_run(principal, run_id)
@@ -240,6 +241,7 @@ class World:
                 columns=tuple(EvidenceColumn(c, "value") for c in columns),
                 rows=rows,
                 received_rows=len(rows),
+                truncation=truncation,
             ),
             grain=(),
             analytical_slots=frozenset({"metric_definition:revenue"}),
