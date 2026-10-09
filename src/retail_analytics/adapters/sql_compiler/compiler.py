@@ -40,7 +40,7 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.errors import ErrorLevel, OptimizeError
 from sqlglot.optimizer.qualify import qualify
-from sqlglot.optimizer.scope import Scope, traverse_scope
+from sqlglot.optimizer.scope import Scope, ScopeType, traverse_scope
 
 from retail_analytics.adapters.sql_compiler.bindings import (
     TRUSTED_SOURCE,
@@ -66,6 +66,7 @@ from retail_analytics.application.contracts.query_compiler import (
     CompiledQuery,
     DemographicUse,
     FieldRef,
+    LatestMonthFilter,
     OutputColumn,
     ParameterType,
     QueryParameter,
@@ -86,7 +87,7 @@ from retail_analytics.domain.catalog import (
 )
 from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.operations import ToolErrorCode
-from retail_analytics.domain.periods import DateWindow
+from retail_analytics.domain.periods import DateWindow, month_window
 
 _DIALECT = "bigquery"
 _SCHEMA_TYPES: Mapping[FieldType, str] = {
@@ -192,7 +193,8 @@ class SqlglotQueryCompiler:
             _check_scope(scope, catalog)
         demographics = _demographic_use(tree, scopes, catalog)
         outputs = _lineage(tree, scopes)
-        window = _date_window(scopes, catalog, values)
+        latest = _latest_month(scopes, catalog, values)
+        window = None if latest is not None else _date_window(scopes, catalog, values)
         literal_parameters = _parameterize(tree, len(values))
         logical_sql = tree.sql(dialect=_DIALECT)
         relations, fields = self._bind(scopes, catalog)
@@ -215,6 +217,7 @@ class SqlglotQueryCompiler:
             entitlement_version=catalog.entitlement_version,
             maximum_bytes_billed=self._limits.maximum_bytes_billed,
             date_window=window,
+            latest_month=latest,
             demographic_use=demographics,
         )
 
@@ -739,11 +742,14 @@ def _date_window(
 
     Conservative by design: each scope that reads a dated relation directly
     must bound its date field with constant top-level WHERE conjuncts
-    (>=, >, <, <=, =, BETWEEN against DATE literals or DATE values), every
-    such scope must give the same window, and the date field may not appear
-    in any other filter (OR, NOT, CASE, JOIN ON or HAVING). Anything else,
-    including comparisons of several periods, yields None: the period is then
-    reported as not recorded rather than guessed.
+    (>=, >, <, <=, =, BETWEEN against DATE literals or DATE values), or
+    select one calendar month with ``EXTRACT(YEAR FROM d) = <integer>`` and
+    ``EXTRACT(MONTH FROM d) = <integer>`` on the same column (literals or
+    INT64 values; not mixed with range bounds), every such scope must give
+    the same window, and the date field may not appear in any other filter
+    (OR, NOT, CASE, JOIN ON or HAVING). Anything else, including comparisons
+    of several periods, yields None: the period is then reported as not
+    recorded rather than guessed.
     """
     windows: set[DateWindow] = set()
     for scope in scopes:
@@ -784,9 +790,16 @@ def _scope_window(
     where = select.args.get("where") if isinstance(select, exp.Select) else None
     lower: set[date] = set()
     upper: set[date] = set()
+    parts: set[tuple[str, str, int]] = set()
     understood: set[int] = set()
     conjuncts = list(where.this.flatten()) if isinstance(where, exp.Where) else []
     for node in conjuncts:
+        part = _calendar_part(node, dated, values)
+        if part is not None:
+            column, unit, number = part
+            understood.add(id(column))
+            parts.add((column.table, unit, number))
+            continue
         bound = _bound(node, dated, values)
         if bound is None:
             continue
@@ -796,10 +809,174 @@ def _scope_window(
         upper.update([high] if high is not None else [])
     if any(_in_filter(c) and id(c) not in understood for c in date_columns):
         return None
+    if parts:
+        return None if lower or upper else _calendar_month(parts)
     if len(lower) != 1 or len(upper) != 1:
         return None
     start, end = lower.pop(), upper.pop()
     return DateWindow(start, end) if start <= end else None
+
+
+def _calendar_month(parts: set[tuple[str, str, int]]) -> DateWindow | None:
+    """One year and one month on one column; conflicts or gaps give None."""
+    if len({table for table, _, _ in parts}) != 1:
+        return None
+    years = {n for _, unit, n in parts if unit == "YEAR"}
+    months = {n for _, unit, n in parts if unit == "MONTH"}
+    if len(years) != 1 or len(months) != 1:
+        return None
+    year, month = years.pop(), months.pop()
+    if not (1 <= month <= 12 and 1 <= year <= 9998):
+        return None
+    return month_window(year, month)
+
+
+def _calendar_part(
+    node: exp.Expr, dated: set[str], values: Mapping[str, QueryParameter]
+) -> tuple[exp.Column, str, int] | None:
+    """(column, YEAR|MONTH, number) for ``EXTRACT(unit FROM d) = constant``."""
+    if type(node) is not exp.EQ:
+        return None
+    left, right = node.args.get("this"), node.args.get("expression")
+    if not isinstance(left, exp.Extract):
+        left, right = right, left
+    column = _extracted(left, dated)
+    if column is None:
+        return None
+    number = _constant_int(right, values)
+    if number is None:
+        return None
+    return column[0], column[1], number
+
+
+def _extracted(node: object, dated: set[str]) -> tuple[exp.Column, str] | None:
+    """(column, unit) for ``EXTRACT(YEAR|MONTH FROM <dated column>)``."""
+    if not isinstance(node, exp.Extract):
+        return None
+    unit = node.this.name.upper() if isinstance(node.this, exp.Var) else ""
+    column = node.expression
+    if unit not in ("YEAR", "MONTH") or not _dated_column(column, dated):
+        return None
+    return column, unit
+
+
+def _constant_int(node: object, values: Mapping[str, QueryParameter]) -> int | None:
+    if isinstance(node, exp.Literal) and node.is_int:
+        return int(node.this)
+    if isinstance(node, exp.Parameter):
+        parameter = values.get(node.name)
+        if (
+            parameter is None
+            or parameter.array
+            or parameter.type is not ParameterType.INT64
+            or type(parameter.value) is not int
+        ):
+            return None
+        return parameter.value
+    return None
+
+
+def _latest_month(
+    scopes: list[Scope], catalog: CatalogView, values: Mapping[str, QueryParameter]
+) -> LatestMonthFilter | None:
+    """The documented latest-month shape, recognized exactly, else None.
+
+    The top-level query reads one dated relation and filters it with
+    ``EXTRACT(MONTH FROM d) = <integer>`` and
+    ``EXTRACT(YEAR FROM d) = (SELECT MAX(EXTRACT(YEAR FROM x.d)) FROM <dated
+    relation> AS x [WHERE ...])``; nothing else filters the date and no other
+    scope exists. The subquery only chooses the year, so the figures cover
+    exactly one calendar month; which one is read from the result's own
+    dates (the witnesses), never assumed.
+    """
+    if len(scopes) != 2:
+        return None
+    subquery, root = scopes
+    select = root.expression
+    if not (root.is_root and isinstance(select, exp.Select)):
+        return None
+    dated = {
+        alias
+        for alias in root.selected_sources
+        if _is_dated(_leaf(root, alias), catalog)
+    }
+    if len(dated) != 1 or not _year_subquery(subquery, catalog):
+        return None
+    where = select.args.get("where")
+    conjuncts = list(where.this.flatten()) if isinstance(where, exp.Where) else []
+    months: list[tuple[exp.Column, int]] = []
+    years: list[exp.Column] = []
+    for node in conjuncts:
+        part = _calendar_part(node, dated, values)
+        if part is not None:
+            column, unit, number = part
+            if unit != "MONTH":
+                return None
+            months.append((column, number))
+            continue
+        year_column = _year_from_subquery(node, dated, subquery)
+        if year_column is not None:
+            years.append(year_column)
+    if len(months) != 1 or len(years) != 1:
+        return None
+    (month_column, month), (year_column,) = months[0], years
+    understood = {id(month_column), id(year_column)}
+    date_columns = [c for c in root.columns if c.name == DATED_FIELD]
+    if any(_in_filter(c) and id(c) not in understood for c in date_columns):
+        return None
+    if not 1 <= month <= 12:
+        return None
+    witnesses = tuple(
+        e.alias_or_name
+        for e in select.expressions
+        if e.alias_or_name and _carries_date(e.unalias(), dated)
+    )
+    return LatestMonthFilter(month, witnesses) if witnesses else None
+
+
+def _year_from_subquery(
+    node: exp.Expr, dated: set[str], subquery: Scope
+) -> exp.Column | None:
+    if type(node) is not exp.EQ:
+        return None
+    left, right = node.args.get("this"), node.args.get("expression")
+    if not isinstance(left, exp.Extract):
+        left, right = right, left
+    extracted = _extracted(left, dated)
+    if (
+        extracted is None
+        or extracted[1] != "YEAR"
+        or not isinstance(right, exp.Subquery)
+        or right.this is not subquery.expression
+    ):
+        return None
+    return extracted[0]
+
+
+def _year_subquery(scope: Scope, catalog: CatalogView) -> bool:
+    """``SELECT MAX(EXTRACT(YEAR FROM x.d)) FROM <dated relation> AS x ...``."""
+    select = scope.expression
+    if not isinstance(select, exp.Select) or scope.scope_type is not ScopeType.SUBQUERY:
+        return False
+    if any(select.args.get(k) for k in ("joins", "group", "having", "limit")):
+        return False
+    sources = list(scope.selected_sources)
+    if len(sources) != 1 or not _is_dated(_leaf(scope, sources[0]), catalog):
+        return False
+    if len(select.expressions) != 1:
+        return False
+    value = select.expressions[0].unalias()
+    if not isinstance(value, exp.Max):
+        return False
+    extracted = _extracted(value.this, set(sources))
+    return extracted is not None and extracted[1] == "YEAR"
+
+
+def _carries_date(node: exp.Expr, dated: set[str]) -> bool:
+    """The output is the filtered rows' own date: d, MIN(d) or MAX(d)."""
+    if isinstance(node, exp.Min | exp.Max) and not node.expressions:
+        node = node.this
+    return _dated_column(node, dated)
 
 
 def _bound(

@@ -15,10 +15,11 @@ Each record carries its definition basis, determined by trusted code. It is
 analytical context, not proof that the SQL implemented a metric: the catalog
 definitions whose fields the compiled query read, what terms such as
 "revenue" meant under the effective preferences, the compiler's date window,
-the date field and the time zone (UTC). Saved reports compare it with the
-reader's current definitions when displayed. A query comparing several periods
-records no single period, so answers and reports must say which periods were
-compared.
+the date field and the time zone (UTC); for the latest-month query shape the
+year comes from the released rows' own dates (no extra query). Saved reports
+compare it with the reader's current definitions when displayed. A query
+comparing several periods records no single period, so answers and reports
+must say which periods were compared.
 
 The handler owns its operation record (the warehouse job reference must be
 recorded before submission), and charges a reformulation to the run budget
@@ -181,7 +182,10 @@ def analysis_capability(
                         # from the compiled query, the metric catalog and the
                         # effective preferences, never from the model.
                         query_basis(
-                            outcome.compiled, metrics=catalog, effective=effective
+                            outcome.compiled,
+                            metrics=catalog,
+                            effective=effective,
+                            released=outcome.result,
                         ),
                         # Evidence identity includes its timestamp. Replaying a
                         # committed job must reproduce the same immutable record.

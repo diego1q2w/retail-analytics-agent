@@ -689,6 +689,31 @@ described above, not from wrong figures. The model was not observed trying
 a refused query, so compiler refusal of model-written profile SQL is covered
 by the scripted held-out run and unit tests, not by this live run.
 
+## Trusted single-month periods (T08-F1)
+
+Before, a September answer computed with `EXTRACT(MONTH ...) = 9` and a year
+filter cited "period not recorded". The compiler now records the calendar
+month for `EXTRACT(YEAR FROM d) = <integer>` with `EXTRACT(MONTH FROM d) =
+<integer>` (literals or INT64 values, leap years included). For the latest-month
+shape (month filter plus `EXTRACT(YEAR FROM d) = (SELECT MAX(EXTRACT(YEAR ...))
+...)`) it names the outputs that carry the filtered rows' own dates
+(`d`, `MIN(d)`, `MAX(d)`), and the year is read from those released dates: the
+period is the whole calendar month, never the observed MIN-MAX span. No extra
+query is run. Other shapes (month only, conflicting filters, OR/NOT, a
+different alias, no date output, an empty result) keep "period not recorded";
+existing evidence is not rewritten.
+
+`python evaluation/real-model/proportion_walkthrough.py --only scalar
+--show-answers --show-sources` (local backend, offline DuckDB over the frozen
+extract, men's product scope, freshly migrated throwaway PostgreSQL, one run
+on 2026-10-09, Gemini `gemini-3.8-flash`, no fallback): each of the first two
+turns ran one latest-month query (month 9, then 8) and the repeat ran none.
+Recorded periods: 2025-09-01 to 2025-10-01 and 2025-08-01 to 2025-09-01
+(the extract's latest September and August); source lines "September 2025
+(UTC, by ordered date)" and "August 2025 (UTC, by ordered date)". The answers
+(27,051.80 and 33,665.86) match the reference computed from the extract files.
+One run: an observation, not a promise.
+
 ## Limitations
 
 - Ten conversations, one run each, one day: no variance estimate, and no

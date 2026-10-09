@@ -92,6 +92,27 @@ class OutputColumn:
 
 
 @dataclass(frozen=True, slots=True)
+class LatestMonthFilter:
+    """The query keeps one calendar month of a year chosen by a scalar subquery.
+
+    Recognized by the compiler only for the documented latest-month shape: the
+    top-level query reads one dated relation filtered by
+    ``EXTRACT(MONTH FROM d) = <constant>`` and
+    ``EXTRACT(YEAR FROM d) = (SELECT MAX(EXTRACT(YEAR FROM ...)) ...)``. The
+    year is known only after execution: ``witnesses`` are the output columns
+    that carry the filtered rows' own date (the date itself, or its MIN/MAX),
+    so the released result states which year the filter selected.
+    """
+
+    month: int
+    witnesses: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.month <= 12 or not self.witnesses:
+            raise ValueError("a latest-month filter needs a month and a witness")
+
+
+@dataclass(frozen=True, slots=True)
 class CompiledQuery:
     """A checked, scope-bound statement. Treat ``sql`` as protected provenance."""
 
@@ -108,6 +129,9 @@ class CompiledQuery:
     # The one calendar window every dated read is filtered to, derived by the
     # compiler from the query itself; None when there is none or several.
     date_window: DateWindow | None = None
+    # Set instead of ``date_window`` when the year is selected by a subquery;
+    # the window is then resolved from the executed result, or stays unknown.
+    latest_month: LatestMonthFilter | None = None
     # Verified by the compiler's grain check; the result boundary withholds
     # demographic results unless this says AGGREGATE.
     demographic_use: DemographicUse = DemographicUse.NONE

@@ -14,7 +14,11 @@ Prints, per run: tool sequence, provider, model requests, tokens, queries,
 active and wall-clock seconds, and the SQL each query executed (from the
 ``query.compile`` span content). Also prints the reference monthly revenue
 computed independently from the extract files (DuckDB, not the runtime).
-``--show-answers`` prints the released answers for a reviewer. Run from the
+``--show-answers`` prints the released answers for a reviewer;
+``--show-sources`` adds, per run, each evidence record's logical SQL and
+parameters, its trusted period and date basis, and the source line rendered
+from that metadata (``describe_source``, as the answer's SOURCES list shows
+it). Run from the
 repository root that holds the ``.env`` (see ``README.md`` here) against a
 migrated PostgreSQL that no API holds; about 10-25 model requests.
 """
@@ -43,6 +47,7 @@ from retail_analytics.adapters.evaluation.files import load_manifest
 from retail_analytics.adapters.evaluation.telemetry_recorder import (
     RecordingTelemetrySink,
 )
+from retail_analytics.application.citations import describe_source
 from retail_analytics.application.contracts.evaluation import ScenarioInput, Turn
 from retail_analytics.application.contracts.telemetry import (
     Attributes,
@@ -126,6 +131,47 @@ class SqlRecordingSink(RecordingTelemetrySink):
             return list(self._sql.get(run_id, []))
 
 
+class SourceWalkthroughTarget(WalkthroughTarget):
+    """Also records each run's evidence metadata and rendered source line."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.sources: dict[str, list[dict[str, Any]]] = {}
+
+    async def _record(
+        self, harness: Any, principal: Any, session_id: str, run_ids: Sequence[str]
+    ) -> Any:
+        record = await super()._record(harness, principal, session_id, run_ids)
+        for run_id in run_ids:
+            ctx = await harness.access.resolver.context_for_run(principal, run_id)
+            session = await harness.evidence.session_standing(ctx, run_ids=[run_id])
+            linked = session.run_links.get(run_id, frozenset())
+            entries = []
+            for standing in session.standings:
+                evidence = standing.evidence
+                if evidence.evidence_id not in linked:
+                    continue
+                content = evidence.content
+                period = content.analysis.period
+                entries.append(
+                    {
+                        "evidence_id": evidence.evidence_id,
+                        "logical_sql": content.provenance.logical_sql,
+                        "parameters": [
+                            f"{p.name}={p.value}" for p in content.provenance.parameters
+                        ],
+                        "period": None
+                        if period is None
+                        else [period.start.isoformat(), period.end.isoformat()],
+                        "date_basis": content.analysis.date_basis,
+                        "rows": [list(map(str, r)) for r in content.table.rows][:5],
+                        "source_line": describe_source(standing, {}),
+                    }
+                )
+            self.sources[run_id] = entries
+        return record
+
+
 def reference_revenue(product_scope: Sequence[str]) -> dict[str, float]:
     """Completed item sales per order month in scope, straight from the files."""
     lo, hi = (int(x) for x in product_scope[0].removeprefix("products:").split("-"))
@@ -153,6 +199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--only", choices=sorted(CONVERSATIONS), nargs="*")
     parser.add_argument("--show-answers", action="store_true")
+    parser.add_argument("--show-sources", action="store_true")
     parser.add_argument("--turn-timeout", type=float, default=300.0)
     args = parser.parse_args(argv)
     settings = load_backend_settings()
@@ -166,7 +213,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     sink = SqlRecordingSink()
     with use_telemetry(Telemetry(sink, capture_content=True)):
-        target = WalkthroughTarget(
+        target = SourceWalkthroughTarget(
             settings,
             realdata_source(EVALUATION),
             provider_chain(settings),
@@ -205,6 +252,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "wall_seconds": run.wall_seconds,
                         }
                     )
+                    if args.show_sources:
+                        runs[-1]["evidence"] = target.sources.get(run.run_id, [])
                 report[name] = {
                     "conversation_seconds": round(time.monotonic() - started, 1),
                     "runs": runs,

@@ -133,7 +133,7 @@ from retail_analytics.domain.metrics import (
     Operation,
     UnknownMetricError,
 )
-from retail_analytics.domain.periods import DEFAULT_TIME_ZONE, DateWindow
+from retail_analytics.domain.periods import DEFAULT_TIME_ZONE, DateWindow, month_window
 from retail_analytics.domain.preferences import EffectivePreferences, PreferenceKind
 
 # Logical fields a query's rows are dated by (UTC calendar dates).
@@ -187,6 +187,7 @@ def query_basis(
     *,
     metrics: MetricCatalog,
     effective: EffectivePreferences,
+    released: ReleasedResult | None = None,
 ) -> QueryBasis:
     """The definition basis of a compiled query, from trusted data only.
 
@@ -200,7 +201,9 @@ def query_basis(
     meaning is one of those definitions. The period is the compiler's exact
     date window (None when the query has none or several), the date basis the
     dated logical field it read, and the time zone UTC (warehouse dates are
-    UTC calendar dates). Nothing here comes from the model's text.
+    UTC calendar dates). For the latest-month shape the compiler leaves the
+    year to the executed result: see :func:`latest_month_window`. Nothing
+    here comes from the model's text.
     """
     read = {(f.relation, f.field) for f in compiled.fields}
     preferences = effective.definition_preferences(metrics)
@@ -226,13 +229,53 @@ def query_basis(
     return QueryBasis(
         definitions=frozenset(DefinitionRef(*d.key) for d in used),
         preference_fingerprint=effective.analytical_fingerprint,
-        period=compiled.date_window,
+        period=compiled.date_window or latest_month_window(compiled, released),
         time_zone=DEFAULT_TIME_ZONE,
         analytical_slots=frozenset(f"metric_definition:{t.term}" for t in terms),
         terms=frozenset(terms),
         date_basis=dated[0] if len(dated) == 1 else None,
         definitions_recorded=True,
     )
+
+
+def latest_month_window(
+    compiled: CompiledQuery, released: ReleasedResult | None
+) -> DateWindow | None:
+    """The calendar month a latest-month query selected, read from its result.
+
+    The compiler verified that every row the query aggregates has month
+    ``latest_month.month`` and the one year its subquery chose, and named the
+    output columns that carry those rows' own dates (the date, or its
+    MIN/MAX). Those released dates therefore state the year; the window is the
+    filter's whole calendar month, not the observed MIN-MAX coverage. No date,
+    a withheld witness column, or dates that disagree with the filter or with
+    each other leave the period unknown. Costs no extra query.
+    """
+    latest = compiled.latest_month
+    if latest is None or released is None:
+        return None
+    witnesses = set(latest.witnesses)
+    positions = [
+        i
+        for i, column in enumerate(released.columns)
+        if column.name in witnesses
+        and column.name not in released.masked_columns
+        and column.sources
+        and all(f.field in DATED_FIELDS for f in column.sources)
+    ]
+    found: set[tuple[int, int]] = set()
+    for row in released.rows:
+        for i in positions:
+            value = row[i]
+            if isinstance(value, datetime) or not isinstance(value, date):
+                if value is None:
+                    continue
+                return None
+            found.add((value.year, value.month))
+    if len(found) != 1:
+        return None
+    year, month = found.pop()
+    return month_window(year, month) if month == latest.month else None
 
 
 def _reads_definition(

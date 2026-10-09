@@ -275,3 +275,81 @@ async def test_conversion_keeps_rate_provenance(env: Env) -> None:
     assert text.startswith("Currency conversion of [1] to EUR; rate 0.9213 (")
     assert "ECB reference rates, rate date 2026-10-08, daily reference" in text
     assert "source currency not verified" in text
+
+
+async def _record_with_trusted_basis(
+    env: Env, run: str, sql: str, values: dict[str, object], op: str
+) -> str:
+    """Record like ``execute_analysis``: basis from the compiled query and the
+    released result only (T08-F1)."""
+    from retail_analytics.application.contracts.tools import OperationContext
+    from retail_analytics.application.evidence import query_basis
+    from retail_analytics.domain.metrics import default_catalog
+    from retail_analytics.domain.preferences import EffectivePreferences
+    from tests.unit.privacy.support import BOUNDARY, compile_for, raw_rows
+    from tests.unit.sql_compiler.support import view
+
+    world = env.world
+    ctx = await world.resolver.context_for_run(A, run)
+    compiled = compile_for(EXEC_A, sql, ctx.product_scope, values)  # type: ignore[arg-type]
+    released = BOUNDARY.release(
+        compiled,
+        raw_rows(world.db, compiled),
+        catalog=view(version=ctx.product_scope.entitlement_version),
+    )
+    evidence = await world.evidence.record_query(
+        OperationContext(ctx, op),
+        compiled,
+        released,
+        query_basis(
+            compiled,
+            metrics=default_catalog(),
+            effective=EffectivePreferences(()),
+            released=released,
+        ),
+    )
+    return evidence.evidence_id
+
+
+LATEST_SEPTEMBER = (
+    "SELECT MIN(s.ordered_date) AS first_day, MAX(s.ordered_date) AS last_day, "
+    "SUM(s.sale_amount) AS revenue FROM sales_items AS s "
+    "WHERE s.item_status = 'Complete' "
+    "AND EXTRACT(MONTH FROM s.ordered_date) = @month "
+    "AND EXTRACT(YEAR FROM s.ordered_date) = "
+    "(SELECT MAX(EXTRACT(YEAR FROM x.ordered_date)) FROM sales_items AS x "
+    "WHERE EXTRACT(MONTH FROM x.ordered_date) = @month)"
+)
+
+
+async def test_single_month_queries_cite_their_calendar_month(env: Env) -> None:
+    run = env.world.new_run()
+    latest = await _record_with_trusted_basis(
+        env, run, LATEST_SEPTEMBER, {"month": 9}, "op-latest"
+    )
+    literal = await _record_with_trusted_basis(
+        env,
+        run,
+        "SELECT SUM(s.sale_amount) AS revenue FROM sales_items AS s "
+        "WHERE EXTRACT(YEAR FROM s.ordered_date) = @year "
+        "AND EXTRACT(MONTH FROM s.ordered_date) = 2",
+        {"year": 2024},
+        "op-literal",
+    )
+    month_only = await _record_with_trusted_basis(
+        env,
+        run,
+        "SELECT SUM(s.sale_amount) AS revenue FROM sales_items AS s "
+        "WHERE EXTRACT(MONTH FROM s.ordered_date) = 9",
+        {},
+        "op-month-only",
+    )
+    env.answer(
+        run, f"Sept [{latest}], Feb [{literal}], every September [{month_only}]."
+    )
+    view = await env.service.run_view(A, run)
+    assert view.answer is not None
+    first, second, third = (c.description for c in view.answer.citations)
+    assert "September 2026 (UTC, by ordered date)" in first
+    assert "February 2024 (UTC, by ordered date)" in second
+    assert "period not recorded" in third
