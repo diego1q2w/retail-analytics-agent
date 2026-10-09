@@ -217,6 +217,7 @@ class GuardedModel(Model):
             # arguments from a context that is no longer valid.
             _record_restart(deps.run_id, cause)
             raise InvestigationContextChanged(cause)
+        _record_focus(deps.run_id, messages, step)
         parameters = replace(
             model_request_parameters,
             function_tools=[
@@ -235,6 +236,7 @@ class GuardedModel(Model):
             "evidence": dict(step.evidence_versions),
             "messages": dict(step.history_messages),
             "parts": dict(step.standing.key_parts) if step.standing else {},
+            "tools": sorted(step.tools),
         }
         return replace(
             response,
@@ -331,6 +333,47 @@ def _record_restart(run_id: str, cause: ContextRestartCause) -> None:
                     "restart_cause": cause.value,
                     "effect": "earlier model turns discarded; the agent loop "
                     "restarts from freshly built context",
+                }
+            )
+
+
+def _record_focus(run_id: str, messages: list[ModelMessage], step: ModelStep) -> None:
+    """Record the exposed tool set when a conversation starts and whenever it
+    changes (a group loaded, steering, changed authority): names, counts and
+    reason codes only, through the existing trace."""
+    previous: set[str] | None = None
+    for message in reversed(messages):
+        if isinstance(message, ModelResponse):
+            provenance = (message.metadata or {}).get(_HISTORY_PROVENANCE)
+            shown = provenance.get("tools") if isinstance(provenance, dict) else None
+            previous = set(shown) if isinstance(shown, list) else None
+            break
+    if previous is not None and previous == step.tools:
+        return
+    focus = step.focus
+    added = sorted(step.tools - previous) if previous is not None else []
+    removed = sorted(previous - step.tools) if previous is not None else []
+    with telemetry().span(
+        Span.TOOL_FOCUS,
+        run_id=run_id,
+        attributes={
+            "focus.change": "initial" if previous is None else "changed",
+            "focus.exposed": len(step.tools),
+            "focus.authorized": focus.authorized if focus else len(step.tools),
+            "focus.groups": ",".join(f"{g}:{r}" for g, r in focus.active)
+            if focus
+            else "",
+            "focus.loadable": ",".join(focus.loadable) if focus else "",
+        },
+    ) as span:
+        if span.captures:
+            span.outputs(
+                {
+                    "exposed": sorted(step.tools),
+                    "added": added,
+                    "removed": removed,
+                    "groups": {g: str(r) for g, r in focus.active} if focus else {},
+                    "loadable": list(focus.loadable) if focus else [],
                 }
             )
 

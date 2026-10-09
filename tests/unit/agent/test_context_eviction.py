@@ -130,7 +130,7 @@ async def _investigation(
         registry=cast(Any, SimpleNamespace(catalog=lambda ctx: ())),
         events=Mock(),
         evidence=w.evidence,
-        operations=Mock(),
+        operations=Mock(for_run=AsyncMock(return_value=())),
         queries=None,
         launcher=Mock(),
     )

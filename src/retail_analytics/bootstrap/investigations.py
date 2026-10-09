@@ -58,6 +58,7 @@ from retail_analytics.capabilities.preferences import preference_capabilities
 from retail_analytics.capabilities.report_deletion import report_deletion_capability
 from retail_analytics.capabilities.reports import report_capabilities
 from retail_analytics.capabilities.retrieval import retrieval_capability
+from retail_analytics.capabilities.tool_focus import tool_loader_capabilities
 from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.metrics import default_catalog
 
@@ -164,6 +165,9 @@ def build_capability_registry(
                 )
             )
         )
+    # Loaders of the on-demand groups; a loader whose group has no tool the
+    # executive may use is never exposed (application.tool_focus).
+    specs.extend(tool_loader_capabilities())
     return CapabilityRegistry(specs)
 
 

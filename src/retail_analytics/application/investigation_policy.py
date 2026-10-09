@@ -11,6 +11,11 @@ tool names in the principal's catalog (``CapabilityRegistry.catalog``):
 - the text depends on nothing else, so equal catalogs render identical,
   cache-friendly instructions (``catalog_fingerprint`` keys the rendering).
 
+The names are the tools *exposed* to one model request
+(``application.tool_focus``): an authorized group that is not loaded yet is
+present only through its loader, and the policy then says how to load it
+instead of describing tools the model cannot see.
+
 Rendering happens in the activity that prepares a model step (never in
 workflow code), from the catalog resolved under current authority.
 """
@@ -32,12 +37,25 @@ FETCH_EVIDENCE = "fetch_evidence"
 CONVERT_CURRENCY = "convert_currency"
 INSPECT_PREFERENCES = "inspect_preferences"
 REMEMBER_PREFERENCE = "remember_preference"
+FORGET_PREFERENCE = "forget_preference"
 CONFIRM_PREFERENCE = "confirm_preference"
+DECLINE_PREFERENCE = "decline_preference"
 SAVE_REPORT = "save_report"
 READ_REPORT = "read_report"
 LIST_REPORTS = "list_reports"
 SEARCH_REPORTS = "search_reports"
+EXPORT_REPORT = "export_report"
 PROPOSE_DELETION = "propose_report_deletion"
+# Loaders of on-demand tool groups (application.tool_focus).
+LOAD_REPORT_TOOLS = "load_report_tools"
+LOAD_DELETION_TOOLS = "load_deletion_tools"
+LOAD_PREFERENCE_TOOLS = "load_preference_tools"
+LOAD_CURRENCY_TOOLS = "load_currency_tools"
+
+
+_LOADERS = frozenset(
+    {LOAD_REPORT_TOOLS, LOAD_DELETION_TOOLS, LOAD_PREFERENCE_TOOLS, LOAD_CURRENCY_TOOLS}
+)
 
 
 def catalog_fingerprint(tools: Collection[str]) -> str:
@@ -79,12 +97,20 @@ def _opening(tools: frozenset[str]) -> str:
             "investigate data or produce figures. Say plainly what you cannot "
             "do for this request and do not invent results."
         )
-    return (
+    text = (
         "You are a retail analytics assistant for one executive. Investigate "
         "their question with the tools you are given and answer from "
         "evidence. You are one flexible agent: use any tool at any point, and "
         "skip what a request does not need."
     )
+    if tools & _LOADERS:
+        text += (
+            " Some tools are loaded on demand (named below): load a group "
+            "only when the request turns out to need it, at any point; its "
+            "tools appear at your next step. Loading never changes what this "
+            "user may do."
+        )
+    return text
 
 
 def _how_to_work(tools: frozenset[str]) -> str:
@@ -229,6 +255,13 @@ def _analytical_rules(tools: frozenset[str]) -> str:
             "declared, unverified source currency) wherever converted figures "
             "appear."
         )
+    elif LOAD_CURRENCY_TOOLS in tools:
+        rules.append(
+            "Amounts stay in the source currency. When the user asks for "
+            "another currency or a saved display currency applies, call "
+            f"{LOAD_CURRENCY_TOOLS} first, then convert; repeat the "
+            "conversion's disclosure wherever converted figures appear."
+        )
     else:
         rules.append(
             "Amounts stay in the source currency; you cannot convert "
@@ -259,7 +292,12 @@ def _answer_shapes(tools: frozenset[str]) -> list[str]:
         "and limitations, not causes the data cannot show.",
         '"Prepare a report on third-quarter sales with recommendations": '
         "findings that cite evidence, definitions and limitations, then "
-        "recommended actions kept apart from the findings.",
+        "recommended actions kept apart from the findings"
+        + (
+            f" (call {LOAD_REPORT_TOOLS} first if it must be saved)."
+            if SAVE_REPORT not in tools and LOAD_REPORT_TOOLS in tools
+            else "."
+        ),
     ]
     return [
         "Answer shapes (examples of proportion; figures only ever come from evidence):",
@@ -284,6 +322,13 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
             "something; a correction for the current question applies to that "
             "question only."
         )
+    elif LOAD_PREFERENCE_TOOLS in tools:
+        lines.append(
+            "- To inspect, remember, forget, confirm or decline saved "
+            "preferences (only when the user asks to, or answers a preference "
+            f"proposal), call {LOAD_PREFERENCE_TOOLS} first. A correction for "
+            "the current question applies to that question only."
+        )
     else:
         lines.append(
             "- You cannot save preferences for this user; a correction applies "
@@ -299,6 +344,12 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
             f"- {SAVE_REPORT} when the user asks for a report: findings cite "
             "evidence, recommended actions are separate from findings."
         )
+    elif LOAD_REPORT_TOOLS in tools:
+        lines.append(
+            "- When the user asks to save, read, list, search or export saved "
+            f"reports, call {LOAD_REPORT_TOOLS} first; never load them as a "
+            "routine step."
+        )
     else:
         lines.append("- You cannot save reports for this user.")
     if READ_REPORT in tools:
@@ -310,11 +361,22 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
             "be recomputed. Recorded definitions are context for the fields a "
             "query read, not proof of how it calculated."
         )
+    finders = _names(tools, LIST_REPORTS, SEARCH_REPORTS)
+    if finders:
+        lines.append(
+            f"- {finders} find the user's saved reports when they refer to one; "
+            "never as a routine step."
+        )
     if PROPOSE_DELETION in tools:
-        finders = _names(tools, LIST_REPORTS, SEARCH_REPORTS)
         source = f" with ids from {finders}" if finders else ""
         lines.append(
             f"- To delete reports, use {PROPOSE_DELETION}{source}. You can "
+            "never confirm a deletion; the user confirms in the application, "
+            "and a chat reply is not a confirmation."
+        )
+    elif LOAD_DELETION_TOOLS in tools:
+        lines.append(
+            f"- To delete reports, call {LOAD_DELETION_TOOLS} first. You can "
             "never confirm a deletion; the user confirms in the application, "
             "and a chat reply is not a confirmation."
         )

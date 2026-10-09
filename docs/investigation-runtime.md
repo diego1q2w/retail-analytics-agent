@@ -67,8 +67,8 @@ see [model providers](model-providers.md). The local backend builds the same
 model and tools (`bootstrap/execution.py`).
 
 `bootstrap.investigations.build_investigations` composes the application
-services and one permission-filtered tool catalog (the same small set on every
-model step; nothing depends on an investigation stage):
+services and one permission-filtered tool catalog (nothing depends on an
+investigation stage):
 
 - `list_relations`, `describe_relation` (with discovery) and
   `execute_analysis` (with guarded query execution);
@@ -85,6 +85,25 @@ model step; nothing depends on an investigation stage):
   saving passes the gate (REPORT) and links the cited evidence to the run;
   deletion is only proposed, the user confirms in the application;
 - `convert_currency`, with its declared-currency disclosure.
+
+Each model step sees a focused part of that catalog
+(`application/tool_focus.py`). Schema, query, evidence and example tools are
+always exposed; four groups are exposed on demand: saved reports, report
+deletion, preferences and currency conversion. A group is exposed when the
+request or later steering mentions what it is for, when an effective
+preference needs it (a display currency), or after the model calls the
+group's argument-free loader (`load_report_tools`, `load_deletion_tools`,
+`load_preference_tools`, `load_currency_tools`). Until then only the loader
+is exposed, so a mixed or follow-up request broadens within the same run, in
+any order, with one extra model step at most. Loader calls are recorded
+operations, so the local and Temporal runtimes recompute the same selection
+on every step. Selection only narrows the authorized catalog: a loader
+appears only when its group has a tool the executive may use, and every call
+is still authorized when it runs. The instructions are rendered from the
+exposed tools and say how to load a group rather than naming hidden tools.
+The trace records an `investigation.tool_focus` span when a conversation
+starts and whenever the exposed set changes (counts, `group:reason` codes and,
+with content capture, the exposed, added and removed tool names).
 
 The model instructions treat the five analytical steps as guidelines, group
 products by ID, date order figures by `orders.created_at`, report

@@ -108,6 +108,7 @@ from retail_analytics.application.query_execution import (
     QueryExecutionService,
 )
 from retail_analytics.application.telemetry import telemetry
+from retail_analytics.application.tool_focus import LOADERS, select_tools
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     ExecutionContext,
@@ -322,8 +323,9 @@ class InvestigationRuntime:
         """Context and tools for the next model request, or ``RunStopped``.
 
         Applies pending steering/answers (the safe boundary), assembles the
-        context under current authority and links the evidence it shows to
-        the run.
+        context under current authority, links the evidence it shows to the
+        run and exposes the authorized tools relevant now
+        (``application.tool_focus``; never more than the catalog allows).
         """
         principal, run = await self._running(run_id)
         snapshot = await self._budgets.snapshot(run_id)
@@ -337,7 +339,12 @@ class InvestigationRuntime:
         await self._evidence.link_to_run(
             context, [digest.evidence_id for digest in built.evidence]
         )
-        tools = frozenset(d.name for d in self._registry.catalog(context))
+        tools, focus = select_tools(
+            [d.name for d in self._registry.catalog(context)],
+            request=built.request,
+            preferences=built.preferences,
+            loaded=await self._loaded_groups(run_id),
+        )
         persona = await self._pinned_persona(run_id)
         # Which history is shown is a prompt-capacity choice, so it is not
         # part of the key: shown messages and evidence are validated one by
@@ -374,6 +381,20 @@ class InvestigationRuntime:
                 messages=built.current_history,
                 key_parts=tuple((str(k), _digest_of(v)[:16]) for k, v in key_parts),
             ),
+            focus=focus,
+        )
+
+    async def _loaded_groups(self, run_id: str) -> frozenset[str]:
+        """Loaders of on-demand tool groups that succeeded in this run.
+
+        Read from the recorded operations, so every runtime (and a replayed
+        or resumed one) sees the same expansion; authority is not implied:
+        the selection still intersects the catalog under current authority.
+        """
+        return frozenset(
+            op.capability
+            for op in await self._operations.for_run(run_id)
+            if op.capability in LOADERS and op.status is ToolExecutionStatus.SUCCEEDED
         )
 
     async def catalog(self, run_id: str) -> tuple[ToolDescriptor, ...]:

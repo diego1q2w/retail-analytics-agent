@@ -115,6 +115,8 @@ class Span(StrEnum):
     ANSWER = "answer.release"
     LIFECYCLE = "run.step"
     CONTEXT_RESTART = "investigation.context_restart"
+    # The tools exposed to the model: at the start and whenever they change.
+    TOOL_FOCUS = "investigation.tool_focus"
     USER_INPUT = "user.input"
     CLARIFICATION = "clarification.ask"
 

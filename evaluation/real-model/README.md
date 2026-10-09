@@ -238,6 +238,60 @@ walkthrough): `python evaluation/real-model/proportion_walkthrough.py
 [--only scalar report] [--show-answers]`. It prints each query's executed SQL
 from the sanitized `query.compile` span content.
 
+## Focused tool exposure (before/after, T26-F5)
+
+`focus_walkthrough.py` records, at the provider boundary, which tool
+definitions each model request is actually sent (names, characters of their
+descriptions and JSON schemas), the instruction characters and the provider's
+input/output tokens. Conversations: `scalar` ("What's the latest revenue of
+September?", "And August?"), `complex` ("Why did revenue change between August
+and September? Break it down by category and name the main contributors.") and
+`mixed` (a September figure plus "Keep a copy of the result for the board so I
+can find it again later", worded without "report"; then "Also show that
+figure in the currency they use in Berlin, and remember that I prefer that
+currency from now on."). Same harness as above (local backend, offline DuckDB
+over the frozen extract, men's product scope, fresh sessions on a freshly
+migrated throwaway PostgreSQL), one run each on 2026-10-09. "Before" is
+`b136939`; "after" adds this change. Gemini `gemini-3.8-flash` answered every
+request; no fallback.
+
+Before, every request was sent all 17 business tools (13,668 schema
+characters). After, an ordinary request is sent 9 (execute_analysis,
+fetch_evidence, find_analysis_examples, list_relations, describe_relation and
+four argument-free loaders): 5,036 characters, of which the loaders are about
+1,200 (selection overhead on every request).
+
+| run | before: requests / input tokens / queries | after | tools sent per request (after) |
+| --- | --- | --- | --- |
+| September | 2 / 12,922 / 1 | 3 / 12,948 / 1 | 9 |
+| "And August?" | 2 / 13,437 / 1 | 2 / 8,881 / 1 | 9 |
+| Why did revenue change | 5 / 41,522 / 4 | 6 / 38,333 / 5 | 9 |
+| Figure + keep a copy | 4 / 27,840 / 2 | 3 / 15,827 / 1 | 9, then 13 after `load_report_tools` |
+| Berlin currency + remember | 3 / 20,471 / 0 | 3 / 16,564 / 0 | 13 (currency and preference wording) |
+| Total | 16 / 116,192 | 17 / 92,553 | |
+
+Average input tokens per request fell from 7,262 to 5,444 (-25%). The
+selection itself cost one loader call (one model step) in the "keep a copy"
+run, and the loader definitions on every request; the before run of that turn
+made a second query instead, so its request count still fell. All runs gave
+the reference revenue (September 27,051.80, August 33,665.86); the "keep a
+copy" turn saved a report in both; the Berlin turn remembered EUR and called
+`convert_currency` in both. Before, it then asked whether to use the current
+or a historical rate; after, the conversion refused for lack of a rate in the
+offline setup and the answer stayed in the source currency, marked
+incomplete. The `investigation.tool_focus` span recorded the initial set and
+the change (`reports:loaded`, 9 to 13 tools).
+
+One run per conversation on one day: observations, not promises. Run-to-run
+variation is visible (the September turn took 3 requests after versus 2
+before; the "why" run 5 queries versus 4). An earlier attempt of the after run
+reused a database where the before run had already saved the EUR preference,
+which exposed the currency tools from the first step; it was discarded and
+rerun on a fresh database. Reproduce from the repository root (same
+requirements as the discovery walkthrough): `python
+evaluation/real-model/focus_walkthrough.py [--only scalar complex mixed]
+[--show-answers]`.
+
 ## Limitations
 
 - Ten conversations, one run each, one day: no variance estimate, and no

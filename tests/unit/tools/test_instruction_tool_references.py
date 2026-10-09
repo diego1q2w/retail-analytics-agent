@@ -32,6 +32,7 @@ from retail_analytics.application.investigation_policy import (
     catalog_fingerprint,
     render_investigation_policy,
 )
+from retail_analytics.application.tool_focus import LOADERS, select_tools
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     OperationContext,
@@ -152,10 +153,22 @@ def _mentions(text: str) -> set[str]:
     return set(_TOOL_LIKE.findall(text))
 
 
-def _descriptor_text(registry: CapabilityRegistry, ctx: ExecutionContext) -> str:
+def _descriptor_text(
+    registry: CapabilityRegistry, ctx: ExecutionContext, exposed: frozenset[str]
+) -> str:
     return "\n".join(
-        d.description + "\n" + json.dumps(d.parameters) for d in registry.catalog(ctx)
+        d.description + "\n" + json.dumps(d.parameters)
+        for d in registry.catalog(ctx)
+        if d.name in exposed
     )
+
+
+# Focus states a run can be in: nothing loaded, one group loaded, all loaded.
+_FOCUS_STATES: tuple[frozenset[str], ...] = (
+    frozenset(),
+    *(frozenset({loader}) for loader in sorted(LOADERS)),
+    LOADERS,
+)
 
 
 def _role_combinations() -> list[tuple[str, frozenset[str]]]:
@@ -172,16 +185,26 @@ def _role_combinations() -> list[tuple[str, frozenset[str]]]:
 
 
 def _principal_text(
-    registry: CapabilityRegistry, permissions: frozenset[str]
+    registry: CapabilityRegistry,
+    permissions: frozenset[str],
+    loaded: frozenset[str] = LOADERS,
 ) -> tuple[set[str], str, str]:
+    """The tools exposed to one model request (the focused subset of the
+    permission-filtered catalog), its policy and all model-facing text."""
     ctx = _execution(permissions)
-    catalog = {d.name for d in registry.catalog(ctx)}
-    policy = render_investigation_policy(catalog)
-    notes = _worst_case_context(
-        can_fetch_evidence="fetch_evidence" in catalog,
-        can_describe_schema="describe_relation" in catalog,
+    exposed, _ = select_tools(
+        [d.name for d in registry.catalog(ctx)], request="q", loaded=loaded
     )
-    return catalog, policy, "\n".join([policy, notes, _descriptor_text(registry, ctx)])
+    policy = render_investigation_policy(exposed)
+    notes = _worst_case_context(
+        can_fetch_evidence="fetch_evidence" in exposed,
+        can_describe_schema="describe_relation" in exposed,
+    )
+    return (
+        set(exposed),
+        policy,
+        "\n".join([policy, notes, _descriptor_text(registry, ctx, exposed)]),
+    )
 
 
 def test_every_tool_named_in_instructions_and_context_is_callable() -> None:
@@ -202,12 +225,12 @@ def test_instructions_only_name_tools_in_each_principals_catalog() -> None:
     assert {"executive", "editor", "reviewer", "admin", "analysis-only"} <= {
         name for name, _ in combos
     }
-    for name, permissions in combos:
-        catalog, policy, text = _principal_text(registry, permissions)
+    for (name, permissions), loaded in itertools.product(combos, _FOCUS_STATES):
+        catalog, policy, text = _principal_text(registry, permissions, loaded)
         mentioned = _mentions(text)
-        assert mentioned <= catalog, (name, sorted(mentioned - catalog))
-        # Guidance exists for tools that are present.
-        assert catalog <= _mentions(policy) | _NO_POLICY_GUIDANCE, name
+        assert mentioned <= catalog, (name, loaded, sorted(mentioned - catalog))
+        # Guidance exists for tools that are present (loaders included).
+        assert catalog <= _mentions(policy) | _NO_POLICY_GUIDANCE, (name, loaded)
 
 
 # Present tools whose use the policy does not need to spell out.
@@ -249,8 +272,10 @@ def test_missing_capabilities_are_described_as_unavailable() -> None:
 def test_policy_is_deterministic_per_catalog_fingerprint() -> None:
     registry = _registry()
     seen: dict[str, str] = {}
-    for name, permissions in _role_combinations():
-        catalog = {d.name for d in registry.catalog(_execution(permissions))}
+    for (name, permissions), loaded in itertools.product(
+        _role_combinations(), _FOCUS_STATES
+    ):
+        catalog, _, _ = _principal_text(registry, permissions, loaded)
         first = render_investigation_policy(sorted(catalog))
         second = render_investigation_policy(sorted(catalog, reverse=True))
         assert first == second, name

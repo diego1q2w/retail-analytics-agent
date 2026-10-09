@@ -6,7 +6,8 @@ are created so an unsafe one (trusted fields in its arguments, permissive
 input models, blind retries of external effects) cannot be registered.
 
 The catalog depends only on the trusted context, never on an investigation
-stage, so the model sees the same small tool set on every iteration.
+stage. Which part of it one model request sees is a separate relevance choice
+(``application.tool_focus``) that can only narrow it.
 """
 
 from __future__ import annotations
