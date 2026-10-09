@@ -175,6 +175,9 @@ def query_basis(
 ) -> QueryBasis:
     """The definition basis of a compiled query, from trusted data only.
 
+    It is context, not certification: a definition is included because the
+    query read its fields, not because the SQL was shown to implement it.
+
     ``definitions`` are the catalog definitions in force (current versions,
     plus versions the executive's preferences select) whose population and
     measure fields the compiled query read; ``terms`` say what each business

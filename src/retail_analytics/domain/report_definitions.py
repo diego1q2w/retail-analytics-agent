@@ -5,8 +5,12 @@ change. When it is shown, the definitions recorded with its cited evidence
 (metric versions and what business terms such as "revenue" meant) are compared
 with the reader's *current* definitions. A difference produces a plain-language
 notice naming both definitions and saying the figures were not recalculated.
-Evidence that recorded no definitions gets a neutral notice instead: unknown
-is never reported as "unchanged". Notices are computed on every display and
+The recorded definitions are analytical context: those relevant to the fields
+the queries read. They do not prove the SQL calculated that metric (a query
+reading ``sale_price`` might average it rather than total revenue), and a
+notice never certifies that a definition was applied. Evidence that recorded
+no definitions gets a neutral notice instead: unknown is never reported as
+"unchanged". Notices are computed on every display and
 never stored, so reading is never blocked or altered by a definition change.
 """
 
@@ -30,11 +34,13 @@ from retail_analytics.domain.metrics import (
 
 NOT_RECALCULATED = (
     "The figures in this report have not been recalculated; using your current "
-    "definition requires recalculating them."
+    "definition requires recalculating them. The recorded definition is "
+    "context from the fields the queries read; it does not confirm that the "
+    "queries calculated it."
 )
 UNRECORDED_MESSAGE = (
-    "The definitions used by this report were not recorded, so they cannot be "
-    "compared with your current definitions. Its figures have not been "
+    "The definitions relevant to this report were not recorded, so they cannot "
+    "be compared with your current definitions. Its figures have not been "
     "recalculated; recalculate them before relying on them under your current "
     "definitions."
 )
@@ -156,8 +162,9 @@ def _term_notice(
         else "not defined (no approved definition is available)"
     )
     message = (
-        f'This report uses "{term}" to mean {before}. Your current definition '
-        f'of "{term}" is {after}. {NOT_RECALCULATED}'
+        f"The definitions recorded for this report's evidence include "
+        f'"{term}" as {before}. Your current definition of "{term}" is '
+        f"{after}. {NOT_RECALCULATED}"
     )
     return DefinitionNotice(
         DefinitionNoticeKind.DEFINITION_CHANGED, message, term, before, after
@@ -174,7 +181,8 @@ def _version_notice(
         else "no longer an approved definition"
     )
     message = (
-        f"This report uses {before}. The current definition is {after}. "
+        f"The definitions recorded for this report's evidence include {before}. "
+        f"The current definition is {after}. "
         f"{NOT_RECALCULATED}"
     )
     return DefinitionNotice(

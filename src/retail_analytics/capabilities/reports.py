@@ -91,7 +91,8 @@ _SNAPSHOT_NOTE = (
     "computation date, period, definitions) and never present it as current. "
     "For current figures, or evidence not reusable, query again and cite the "
     "new evidence. Tell the user every definition notice in plain words: the "
-    "report's figures were not recalculated."
+    "report's figures were not recalculated. Recorded definitions are context "
+    "for the fields its queries read, not proof the queries calculated them."
 )
 
 EvidenceRef = Annotated[str, StringConstraints(pattern=r"^evd_[0-9a-z]{1,40}$")]
@@ -204,8 +205,9 @@ class CitedEvidenceSummary(ContractModel):
 
 
 class DefinitionNoticeOutput(ContractModel):
-    """The report's definitions differ from the user's current ones, or were
-    not recorded (display-time; the saved report is unchanged)."""
+    """Definitions recorded as relevant to the report differ from the user's
+    current ones, or were not recorded (display-time; the saved report is
+    unchanged). Context only: it does not certify how the SQL calculated."""
 
     kind: str
     message: str
@@ -536,7 +538,9 @@ def report_capabilities(
                 "in this investigation as a dated historical snapshot (state "
                 "its source line; never present it as current). Questions "
                 "about current figures need a new query. Definition notices "
-                "say where its definitions differ from the user's current ones."
+                "say where the definitions recorded as relevant to it differ from the "
+                "user's current ones; they are context, not proof of how the "
+                "queries calculated their figures."
             ),
             progress_label="Opening the saved report.",
             input_model=ReadReportInput,

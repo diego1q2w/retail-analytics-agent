@@ -162,7 +162,9 @@ def _analytical_rules(tools: frozenset[str]) -> str:
         "data cannot show.",
         "State the definition, scope (the executive's permitted products "
         "only), period and date basis you used, and any limitations (partial "
-        "periods, small samples, missing labels).",
+        "periods, small samples, missing labels). A query that compares "
+        "several periods records no single period: name the compared periods "
+        "in the answer or report.",
         "If a result is incomplete or truncated, say so, do not compute "
         "totals from it and never call results complete; aggregate at the "
         "source or narrow instead.",
@@ -213,7 +215,8 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
             "here, with no extra step or confirmation. Cite it only with its "
             "source line (report, computed date, period, definitions); "
             "evidence marked not reusable (definitions or access changed) must "
-            "be recomputed."
+            "be recomputed. Recorded definitions are context for the fields a "
+            "query read, not proof of how it calculated."
         )
     if PROPOSE_DELETION in tools:
         finders = _names(tools, LIST_REPORTS, SEARCH_REPORTS)

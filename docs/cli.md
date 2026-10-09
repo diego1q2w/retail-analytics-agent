@@ -132,10 +132,12 @@ exit 1; usage errors exit 2.
 | `steer RUN TEXT`, `queue SESSION TEXT` | Refine the active run / queue a separate question |
 | `cancel RUN [--wait]` | Cancel |
 | `show RUN`, `runs SESSION`, `sessions` | Inspect state (`--json`) |
-| `reports list\|search Q\|show ID [--version N]\|versions ID\|export ID [-o FILE]` | Saved reports; `show` and `export` print a `DEFINITIONS:` line when a report's definitions differ from your current ones or were not recorded (the saved report is unchanged) |
+| `reports list\|search Q\|show ID [--version N]\|versions ID\|export ID [-o FILE]` | Saved reports; `show` and `export` print a `DEFINITIONS:` line when the definitions recorded as relevant to a report's evidence differ from your current ones or were not recorded (context, not proof the SQL implemented a metric; the saved report is unchanged) |
 | `deletion list` | Your pending, unexpired proposals (`--json`) |
 | `deletion show\|confirm\|cancel PROPOSAL` | Review and decide on a proposal |
 | `status` | Backend health |
+
+Period note: a query that compares several periods currently has no single recorded period (there is no multi-period marker), so a report or agent answer should disclose the periods it compares.
 
 Exit codes of `ask`, `follow`, `answer`, `cancel`: 0 completed, 3 partial
 result, 4 waiting for your answer, 5 failed, 6 cancelled, 7 cancellation

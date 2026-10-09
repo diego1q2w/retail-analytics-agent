@@ -57,8 +57,10 @@ evidence (metric versions, what terms such as "revenue" meant) with the
 reader's current definitions (their effective metric preferences, by
 ``resolve_term``, and the catalog's current versions). Differences become
 display-time ``DefinitionNotice`` values on the returned document; evidence
-without recorded definitions adds a neutral notice. The saved artifact and
-version are never modified, and a notice never blocks reading.
+without recorded definitions adds a neutral notice. The recorded
+definitions are context for the fields the queries read, not proof the SQL
+implemented them, and a notice never certifies that a metric was applied. The saved
+artifact and version are never modified, and a notice never blocks reading.
 
 Search
 ------

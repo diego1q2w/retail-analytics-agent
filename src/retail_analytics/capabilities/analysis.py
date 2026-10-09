@@ -11,11 +11,14 @@ names, row count and completeness. Released rows reach the model only through
 context assembly (``ContextBuilder``), which re-checks authority on every
 model request, so result rows never travel through workflow history.
 
-Each record carries its definition basis, determined by trusted code: the
-catalog definitions whose fields the compiled query read, what terms such as
+Each record carries its definition basis, determined by trusted code. It is
+analytical context, not proof that the SQL implemented a metric: the catalog
+definitions whose fields the compiled query read, what terms such as
 "revenue" meant under the effective preferences, the compiler's date window,
 the date field and the time zone (UTC). Saved reports compare it with the
-reader's current definitions when displayed.
+reader's current definitions when displayed. A query comparing several periods
+records no single period, so answers and reports must say which periods were
+compared.
 
 The handler owns its operation record (the warehouse job reference must be
 recorded before submission), and charges a reformulation to the run budget

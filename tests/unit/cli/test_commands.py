@@ -379,10 +379,13 @@ def test_expired_proposal_error_is_clear() -> None:
 NOTICE = {
     "kind": "definition_changed",
     "message": (
-        'This report uses "revenue" to mean completed item sales (version 1). '
+        "The definitions recorded for this report's evidence include "
+        '"revenue" as completed item sales (version 1). '
         'Your current definition of "revenue" is shipped item sales (version 1). '
         "The figures in this report have not been recalculated; using your "
-        "current definition requires recalculating them."
+        "current definition requires recalculating them. The recorded "
+        "definition is context from the fields the queries read; it does not "
+        "confirm that the queries calculated it."
     ),
     "subject": "revenue",
     "report_definition": "completed item sales (version 1)",

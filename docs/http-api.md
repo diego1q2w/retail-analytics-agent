@@ -55,7 +55,7 @@ records. A missing permission (for example no `reports:delete_own`) is 403
 | `POST /v1/runs/{run_id}/cancel` | Stop new work; the run reports `cancelled` once in-flight effects settle |
 | `GET /v1/reports` | The caller's saved reports (`session_id`, `limit`, `offset`) |
 | `GET /v1/reports/search?q=` | Search titles and content (`session_id`, `limit` up to 25) |
-| `GET /v1/reports/{report_id}` | Read a report and its cited evidence (`version` optional); `definition_notices` lists where its definitions differ from your current ones, or were not recorded (display-time, never part of the report) |
+| `GET /v1/reports/{report_id}` | Read a report and its cited evidence (`version` optional); `definition_notices` lists where the definitions recorded as relevant to its evidence differ from your current ones, or were not recorded (display-time, never part of the report; context from the fields the queries read, not proof the SQL implemented a metric) |
 | `GET /v1/reports/{report_id}/versions` | Its versions |
 | `GET /v1/reports/{report_id}/export` | One Markdown file with the evidence appendix (`text/markdown` attachment); definition notices, if any, in the `X-Report-Definition-Notices` header (JSON list) |
 | `GET /v1/deletion-proposals?status=pending` | The caller's own pending, unexpired proposals, newest first: `{"proposals": [<preview>]}`. `pending` is the only status (default); anything else is 422. Confirmed, cancelled and expired proposals and other executives' proposals never appear. Listing deletes nothing |
@@ -70,6 +70,8 @@ records. A missing permission (for example no `reports:delete_own`) is 403
 | `POST /v1/persona/drafts/{id}/preview` | Current and proposed persona over the same sample findings; checks figures, evidence and limitations survived |
 | `POST /v1/persona/drafts/{id}/publish` | `{expected_current_version_id}` (the active version you saw, or null). 409 `conflict` if it moved or the draft is based on an older version, 409 `not_previewed` without a preview of this exact text |
 | `POST /v1/persona/rollback` | `{target_version_id, expected_current_version_id}`: make an earlier published version active again |
+
+Period note: a query that compares several periods currently has no single recorded period (there is no multi-period marker), so a report or agent answer should disclose the periods it compares.
 
 Deletion confirmation exists only as this explicit, authenticated user
 request: the model can propose a deletion but nothing it writes can confirm

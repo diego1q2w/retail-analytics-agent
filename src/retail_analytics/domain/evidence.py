@@ -125,7 +125,11 @@ class AnalysisStamp:
     """What the numbers mean: versions that must match for reuse.
 
     ``definitions_recorded`` says trusted code recorded the definition basis
-    (``definitions``, ``terms``, ``date_basis``) at computation time. Records
+    (``definitions``, ``terms``, ``date_basis``) at computation time. The basis
+    is analytical context: the definitions relevant to the fields the query
+    read. It does not prove the SQL calculated that metric. ``period`` is the
+    one exact window, or None: a query comparing several periods records no
+    single period. Records
     made before that (or by code that does not know it) leave it False: their
     definitions are *unknown*, never assumed compatible with current ones.
     """

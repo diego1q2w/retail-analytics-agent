@@ -152,7 +152,8 @@ async def test_changed_term_definition_names_both_and_needs_recalculation(
     assert "shipped item sales (version 1)" in notice.current_definition
     assert "Complete or Shipped" in notice.current_definition
     assert notice.message.startswith(
-        'This report uses "revenue" to mean completed item sales (version 1)'
+        "The definitions recorded for this report's evidence include "
+        '"revenue" as completed item sales (version 1)'
     )
     assert notice.current_definition in notice.message
     assert "have not been recalculated" in notice.message
@@ -208,7 +209,7 @@ async def test_unrecorded_definitions_get_a_neutral_notice(w: ReportWorld) -> No
 
     assert notice.kind is DefinitionNoticeKind.DEFINITIONS_NOT_RECORDED
     assert notice.message == UNRECORDED_MESSAGE
-    assert "definitions used by this report were not recorded" in notice.message
+    assert "definitions relevant to this report were not recorded" in notice.message
     assert notice.report_definition is None and notice.current_definition is None
 
 
