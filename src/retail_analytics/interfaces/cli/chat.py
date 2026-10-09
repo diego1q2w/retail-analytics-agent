@@ -1,0 +1,542 @@
+"""The interactive chat loop.
+
+One main thread owns all output and state. A follower thread streams the
+active run's events, and a reader thread supplies input lines; both feed one
+inbox. On a terminal the user can type while a run works: plain text then
+steers the run (or answers its open question), ``/queue`` queues a separate
+request, ``/cancel`` cancels. When stdin is not a terminal (scripts, tests)
+the next line is read only once the run has finished or asks a question, so
+results are deterministic.
+
+Ctrl-C: while a run is being followed it only DETACHES (the run keeps
+working; nothing is cancelled); at an idle prompt it leaves the chat. Use
+``/cancel`` to stop a run. Reopen the session to see its progress again.
+"""
+
+from __future__ import annotations
+
+import queue
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import IO, Any
+
+from retail_analytics.interfaces.cli.client import (
+    ApiClient,
+    ApiError,
+    JsonObject,
+    Unreachable,
+    new_submission_key,
+)
+from retail_analytics.interfaces.cli.deletion import confirm_deletion
+from retail_analytics.interfaces.cli.follow import (
+    DEFAULT_STALL_SECONDS,
+    StreamLost,
+    follow_run,
+)
+from retail_analytics.interfaces.cli.render import (
+    find_hex_ids,
+    format_deletion_preview,
+    format_error,
+    format_event,
+    format_question,
+    format_report,
+    format_report_list,
+    format_report_search,
+    format_run_result,
+    format_sessions,
+    one_line,
+)
+from retail_analytics.interfaces.cli.runs import Question, open_question
+
+HELP = """Type a question to start an investigation. While one is running:
+  <text>            steer it (or answer its question when it asks one)
+  /queue <text>     ask a separate question to run after this one
+  /cancel           stop the run (new work stops; external work is confirmed)
+  /status           show the run's state and any open question
+  /follow           re-attach to the run's progress
+Other commands:
+  /sessions  /new  /reports  /search <words>  /report <id> [version]
+  /export <id> [file]   save a report as Markdown
+  /confirm <proposal>   review and confirm a deletion the assistant proposed
+  /decline <proposal>   withdraw a deletion proposal
+  /help  /quit
+Ctrl-C while a run works only detaches (the run keeps going); /cancel cancels."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Item:
+    kind: str
+    generation: int
+    payload: Any
+
+
+class Chat:
+    def __init__(
+        self,
+        api: ApiClient,
+        session_id: str,
+        *,
+        out: Callable[[str], None],
+        stdin: IO[str],
+        interactive: bool,
+        stall_seconds: float = DEFAULT_STALL_SECONDS,
+        sleep: Callable[[float], None] = time.sleep,
+        write_file: Callable[[str, bytes], None] | None = None,
+    ) -> None:
+        self.api = api
+        self.session_id = session_id
+        self.out = out
+        self._stdin = stdin
+        self._interactive = interactive
+        self._stall = stall_seconds
+        self._sleep = sleep
+        self._write_file = write_file or _write_file
+        self._inbox: queue.Queue[_Item] = queue.Queue()
+        self._want = threading.Event()
+        self._reader: threading.Thread | None = None
+        self._generation = 0
+        self.run_id: str | None = None
+        self.running = False
+        self.following = False
+        self.question: Question | None = None
+        self.last_event_id: str | None = None
+        self.queued = 0
+        self._eof = False
+        self._line: str | None = None
+        self._have_line = False
+        self._redraw = False
+
+    # --- lifecycle ---
+
+    def run(self, *, resume: bool) -> int:
+        if resume:
+            self._attach_existing()
+        while True:
+            try:
+                if not self._interactive:
+                    self._settle()
+                    if self._eof:
+                        break
+                line = self._read_line(self._prompt())
+                if line is None:
+                    if self.running and not self.question:
+                        self._settle()
+                    break
+                if not self._dispatch(line):
+                    break
+            except KeyboardInterrupt:
+                if self.following:
+                    self._detach()
+                    continue
+                self.out("")
+                break
+        self._farewell()
+        return 0
+
+    def _farewell(self) -> None:
+        self._generation += 1  # stops any follower thread; the run is untouched
+        if self.running and self.run_id:
+            extra = ""
+            if self.question:
+                extra = " It is waiting for your answer."
+            self.out(
+                f"Run {self.run_id} is still active and was not cancelled.{extra} "
+                f"Reopen with: analytics chat --session {self.session_id}"
+            )
+
+    def _prompt(self) -> str:
+        if self.question:
+            return "answer> "
+        if self.running:
+            return "steer> "
+        return "you> "
+
+    # --- input ---
+
+    def _start_reader(self) -> None:
+        if self._reader is not None:
+            return
+
+        def work() -> None:
+            while True:
+                self._want.wait()
+                self._want.clear()
+                line = self._stdin.readline()
+                self._inbox.put(_Item("line", 0, line if line else None))
+                if not line:
+                    return
+
+        self._reader = threading.Thread(target=work, daemon=True)
+        self._reader.start()
+
+    def _read_line(self, prompt: str, *, force_prompt: bool = False) -> str | None:
+        self._start_reader()
+        self._have_line = False
+        self._want.set()
+        if self._interactive or force_prompt:
+            _echo_prompt(prompt)
+        while not self._have_line:
+            self._pump_once(0.2)
+            if self._interactive and not self._have_line and self._redraw:
+                self._redraw = False
+                _echo_prompt(self._prompt())
+        line = self._line
+        if line is None:
+            self._eof = True
+            return None
+        return line.rstrip("\r\n")
+
+    def _settle(self) -> None:
+        """Non-interactive: process events until the run finished, asks for an
+        answer, or nothing is in flight."""
+        while (self.running and not self.question) or (
+            self.queued > 0 and not self.running
+        ):
+            self._pump_once(0.2)
+
+    def _pump_once(self, timeout: float) -> None:
+        try:
+            item = self._inbox.get(timeout=timeout)
+        except queue.Empty:
+            return
+        if item.kind == "line":
+            self._line = item.payload
+            self._have_line = True
+            return
+        if item.generation != self._generation:
+            return
+        try:
+            self._handle(item)
+        except (ApiError, Unreachable) as error:
+            self.out(format_error(error))
+        if self._interactive:
+            self._redraw = True
+
+    # --- stream events ---
+
+    def _handle(self, item: _Item) -> None:
+        if item.kind == "event":
+            event: JsonObject = item.payload
+            self.last_event_id = str(event.get("event_id") or self.last_event_id)
+            text = format_event(event)
+            if text:
+                self.out(text)
+            if event.get("kind") == "input.required" and self.run_id:
+                question = open_question(self.api, self.run_id, sleep=self._sleep)
+                if question is not None:
+                    self.question = question
+                    self.out(format_question(question.text))
+                    self.out("Type your answer below.")
+        elif item.kind == "notice":
+            self.out(item.payload)
+        elif item.kind == "end":
+            self._finish()
+        elif item.kind == "error":
+            self.following = False
+            error = item.payload
+            if isinstance(error, StreamLost):
+                self.out(
+                    "The connection to the event stream was lost. The run keeps "
+                    "working on the server; /follow retries."
+                )
+            else:
+                self.out(format_error(error))
+                if isinstance(error, ApiError) and error.code in (
+                    "not_found",
+                    "unauthenticated",
+                ):
+                    self.running = False
+                    self.question = None
+
+    def _finish(self) -> None:
+        finished = self.run_id
+        self.following = False
+        self.running = False
+        self.question = None
+        if finished is None:
+            return
+        run = self.api.get_run(finished)
+        self.out(format_run_result(run))
+        answer = run.get("answer")
+        if isinstance(answer, dict) and not answer.get("withheld"):
+            self._offer_deletions(str(answer.get("text", "")))
+        if self.queued > 0:
+            self._start_queued(finished)
+
+    def _offer_deletions(self, text: str) -> None:
+        for candidate in find_hex_ids(text)[:3]:
+            try:
+                preview = self.api.deletion_preview(candidate)
+            except (ApiError, Unreachable):
+                continue
+            if preview.get("status") == "pending":
+                self.out("")
+                self.out(format_deletion_preview(preview))
+                self.out(
+                    f"Nothing is deleted yet. To review and confirm: /confirm "
+                    f"{candidate}   To withdraw it: /decline {candidate}"
+                )
+
+    def _start_queued(self, finished: str) -> None:
+        for _ in range(20):
+            session = self.api.get_session(self.session_id)
+            runs = session.get("runs") or []
+            if runs and runs[0].get("active") and runs[0].get("run_id") != finished:
+                self.queued -= 1
+                self.out("Your queued question is starting.")
+                self._follow(str(runs[0]["run_id"]), None)
+                return
+            self._sleep(0.5)
+        self.queued = 0
+        self.out("The queued question did not start; check /status.")
+
+    # --- following ---
+
+    def _follow(self, run_id: str, after: str | None) -> None:
+        self._generation += 1
+        generation = self._generation
+        self.run_id = run_id
+        self.running = True
+        self.following = True
+        if after is None:
+            self.last_event_id = None
+
+        def work() -> None:
+            try:
+                result = follow_run(
+                    self.api,
+                    run_id,
+                    after=after,
+                    on_event=lambda e: self._inbox.put(_Item("event", generation, e)),
+                    on_notice=lambda t: self._inbox.put(_Item("notice", generation, t)),
+                    should_stop=lambda: self._generation != generation,
+                    stall_seconds=self._stall,
+                    sleep=self._sleep,
+                )
+                if result.outcome == "end":
+                    self._inbox.put(_Item("end", generation, result))
+            except (ApiError, Unreachable, StreamLost) as error:
+                self._inbox.put(_Item("error", generation, error))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _detach(self) -> None:
+        self._generation += 1
+        self.following = False
+        self.out(
+            f"\nDetached. Run {self.run_id} keeps working (nothing was cancelled). "
+            "/follow re-attaches, /cancel stops it."
+        )
+
+    def _ensure_following(self) -> None:
+        if self.running and self.run_id and not self.following:
+            self._follow(self.run_id, self.last_event_id)
+
+    def _attach_existing(self) -> None:
+        session = self.api.get_session(self.session_id)
+        runs = session.get("runs") or []
+        if not runs:
+            return
+        newest = runs[0]
+        if newest.get("active"):
+            run = self.api.get_run(str(newest["run_id"]))
+            self.out(f"Resuming run {run['run_id']} ({run['status']}).")
+            self._follow(str(run["run_id"]), None)
+        else:
+            run = self.api.get_run(str(newest["run_id"]))
+            self.out(f"Last run ({run['run_id']}, {run['status']}):")
+            self.out(format_run_result(run))
+
+    # --- dispatch ---
+
+    def _dispatch(self, line: str) -> bool:
+        """Handle one input line; False to leave the chat."""
+        text = line.strip()
+        if not text:
+            return True
+        try:
+            if text.startswith("/"):
+                return self._command(text)
+            self._say(text)
+        except KeyboardInterrupt:
+            self.out("\nInterrupted. Nothing further was sent.")
+        except (ApiError, Unreachable) as error:
+            self.out(format_error(error))
+        except Exception as error:  # the session must survive any one failure
+            self.out(f"error [internal]: {type(error).__name__}; the chat continues")
+        return True
+
+    def _say(self, text: str) -> None:
+        if self.question and self.run_id:
+            self.api.answer(
+                self.run_id, self.question.question_id, text, new_submission_key()
+            )
+            self.question = None
+            self._ensure_following_after()
+            return
+        if self.running and self.run_id:
+            try:
+                self.api.steer(self.run_id, text, new_submission_key())
+            except ApiError as error:
+                if error.code != "run_not_active":
+                    raise
+                self.out("That run just finished; starting a new request.")
+                self._submit(text, "steer")
+                return
+            self.out("Sent as steering for the active run.")
+            self._ensure_following()
+            return
+        self._submit(text, "steer")
+
+    def _ensure_following_after(self) -> None:
+        if not self.following and self.run_id:
+            self._follow(self.run_id, self.last_event_id)
+
+    def _submit(self, text: str, mode: str) -> None:
+        receipt = self.api.send_message(
+            self.session_id, text, new_submission_key(), mode=mode
+        )
+        run_id = receipt.get("run_id")
+        if run_id is None:
+            self.queued += 1
+            self.out("Queued: it will run after the current investigation.")
+            return
+        if run_id != self.run_id or not self.running:
+            self._follow(str(run_id), None)
+        else:
+            self._ensure_following()
+
+    def _command(self, text: str) -> bool:
+        name, _, rest = text.partition(" ")
+        arg = rest.strip()
+        name = name.lower()
+        if name in ("/quit", "/exit", "/q"):
+            return False
+        if name == "/help":
+            self.out(HELP)
+        elif name == "/status":
+            self._status()
+        elif name == "/cancel":
+            self._cancel()
+        elif name == "/queue":
+            if not arg:
+                self.out("Usage: /queue <question>")
+            elif self.running:
+                self._submit(arg, "queue")
+            else:
+                self._submit(arg, "steer")
+        elif name == "/steer":
+            if arg:
+                self._say(arg)
+            else:
+                self.out("Usage: /steer <text>")
+        elif name == "/follow":
+            if self.running and self.run_id:
+                self._follow(self.run_id, self.last_event_id)
+            else:
+                self.out("No run is active.")
+        elif name == "/new":
+            if self.running:
+                self.out("A run is active here; /cancel it or reopen later.")
+            else:
+                self.session_id = str(
+                    self.api.open_session(new_submission_key())["session_id"]
+                )
+                self.out(f"New session {self.session_id}.")
+        elif name == "/sessions":
+            self.out(format_sessions(self.api.list_sessions()["sessions"]))
+        elif name == "/reports":
+            self.out(format_report_list(self.api.list_reports()["reports"]))
+        elif name == "/search":
+            if not arg:
+                self.out("Usage: /search <words>")
+            else:
+                self.out(format_report_search(self.api.search_reports(arg)))
+        elif name == "/report":
+            self._report(arg)
+        elif name == "/export":
+            self._export(arg)
+        elif name == "/confirm":
+            self._confirm(arg)
+        elif name == "/decline":
+            if not arg:
+                self.out("Usage: /decline <proposal id>")
+            else:
+                self.api.cancel_deletion(arg)
+                self.out("Deletion proposal withdrawn. Nothing was deleted.")
+        else:
+            self.out(f"Unknown command {one_line(name)}. /help lists the commands.")
+        return True
+
+    def _status(self) -> None:
+        if not self.run_id:
+            self.out("No run in this chat yet.")
+            return
+        run = self.api.get_run(self.run_id)
+        self.out(f"Run {run['run_id']}: {run['status']}")
+        question = run.get("question")
+        if isinstance(question, dict):
+            self.out(format_question(str(question["text"]["text"])))
+        if self.queued:
+            self.out(f"{self.queued} queued question(s) waiting.")
+
+    def _cancel(self) -> None:
+        if not (self.running and self.run_id):
+            self.out("No run is active.")
+            return
+        result = self.api.cancel(self.run_id)
+        status = (result.get("run") or {}).get("status", "?")
+        if status == "cancelled":
+            self.out("Cancelled.")
+        else:
+            self.out(
+                "Cancellation requested: no new work will start. The run is "
+                f"{status} until in-flight external work (such as a query) is "
+                "confirmed stopped; that is reported when it ends."
+            )
+        self.question = None
+        self._ensure_following()
+
+    def _report(self, arg: str) -> None:
+        parts = arg.split()
+        if not parts or len(parts) > 2 or (len(parts) == 2 and not parts[1].isdigit()):
+            self.out("Usage: /report <report id> [version]")
+            return
+        version = int(parts[1]) if len(parts) == 2 else None
+        self.out(format_report(self.api.get_report(parts[0], version)))
+
+    def _export(self, arg: str) -> None:
+        parts = arg.split(maxsplit=1)
+        if not parts:
+            self.out("Usage: /export <report id> [file]")
+            return
+        name, content = self.api.export_report(parts[0])
+        target = parts[1] if len(parts) == 2 else name
+        self._write_file(target, content)
+        self.out(f"Saved {len(content)} bytes to {target}.")
+
+    def _confirm(self, arg: str) -> None:
+        if not arg:
+            self.out("Usage: /confirm <proposal id>")
+            return
+
+        def read(prompt: str) -> str | None:
+            try:
+                return self._read_line(prompt, force_prompt=True)
+            except KeyboardInterrupt:
+                return None
+
+        confirm_deletion(self.api, arg, read_line=read, out=self.out)
+
+
+def _echo_prompt(prompt: str) -> None:
+    import click
+
+    click.echo(prompt, nl=False)
+
+
+def _write_file(path: str, content: bytes) -> None:
+    with open(path, "wb") as handle:
+        handle.write(content)

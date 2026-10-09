@@ -85,7 +85,7 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 
 | Command | Module | Purpose |
 | --- | --- | --- |
-| `analytics` | `retail_analytics.bootstrap.cli` | CLI client; talks to the backend over HTTP only (`analytics status`) |
+| `analytics` | `retail_analytics.bootstrap.cli` | CLI client and prototype UI; talks to the backend over HTTP only (`analytics chat`). See [CLI guide](docs/cli.md) |
 | `retail-analytics-api` | `retail_analytics.bootstrap.api` | Authenticated HTTP/SSE investigation API; needs PostgreSQL, Temporal and the signing key. See [HTTP and SSE API](docs/http-api.md) |
 | `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
 | `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker (fixture model, or the live Gemini/GPT chain) |

@@ -242,6 +242,10 @@ class CliSettings(BaseModel):
 
     api_url: str = "http://127.0.0.1:8080"
     timeout_seconds: float = Field(default=10.0, gt=0)
+    # The bearer token (never printed) or a file holding it; the file wins when
+    # both are set so a rotated token is picked up without editing the shell.
+    token: SecretStr | None = None
+    token_file: Path | None = None
 
 
 def load_backend_settings(
