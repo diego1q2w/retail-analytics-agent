@@ -200,7 +200,7 @@ class FixtureWarehouse:
         import sqlglot
 
         tree = sqlglot.parse_one(submission.sql, read="bigquery")
-        sql = _group_by_position(tree).sql(dialect="duckdb")
+        sql = tree.sql(dialect="duckdb")
         params = {
             p.name: list(p.value) if isinstance(p.value, tuple) else p.value
             for p in submission.parameters
@@ -224,26 +224,6 @@ class FixtureWarehouse:
                 cache_hit=False,
             ),
         )
-
-
-def _group_by_position(tree: Any) -> Any:
-    """GROUP BY output names as positions.
-
-    BigQuery resolves an unqualified GROUP BY name to the SELECT alias first;
-    DuckDB treats it as an ambiguous column when two joined relations have
-    it. Positions mean the same in both engines.
-    """
-    from sqlglot import exp
-
-    for select in tree.find_all(exp.Select):
-        group = select.args.get("group")
-        if group is None:
-            continue
-        aliases = [e.alias_or_name for e in select.expressions]
-        for key in group.expressions:
-            if isinstance(key, exp.Column) and not key.table and key.name in aliases:
-                key.replace(exp.Literal.number(aliases.index(key.name) + 1))
-    return tree
 
 
 def heldout_fixture_warehouse(fixture_dir: Path) -> FixtureWarehouse:

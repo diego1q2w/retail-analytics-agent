@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 from retail_analytics.adapters.evaluation.fixture_warehouse import (
-    _group_by_position,
     heldout_fixture_warehouse,
 )
 from retail_analytics.adapters.models.scripted import (
@@ -181,15 +180,7 @@ def test_scopes_and_executives_are_stable() -> None:
     assert evaluation_executive_id("ho-1") != evaluation_executive_id("ho-2")
 
 
-def test_fixture_warehouse_exposes_source_layout_and_group_positions() -> None:
-    import sqlglot
-
-    tree = sqlglot.parse_one(
-        "SELECT p.id AS product_id, SUM(x) AS n FROM a AS s JOIN b AS p "
-        "ON p.id = s.product_id GROUP BY product_id",
-        read="bigquery",
-    )
-    assert "GROUP BY 1" in _group_by_position(tree).sql(dialect="duckdb")
+def test_fixture_warehouse_exposes_source_layout() -> None:
     warehouse = heldout_fixture_warehouse(EVALUATION / "heldout" / "fixture")
     schema = asyncio.run(warehouse.read_schema(frozenset({"users", "orders"})))
     assert {c.name for c in schema.tables["users"]} >= {"email", "age", "state"}

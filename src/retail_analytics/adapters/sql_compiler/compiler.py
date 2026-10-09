@@ -162,6 +162,7 @@ class SqlglotQueryCompiler:
         _check_sources(tree, catalog, self._bindings, self._limits)
         _check_parameter_references(tree, values)
         tree = _qualify(tree, catalog)
+        _resolve_group_aliases(tree)
         # Qualification can introduce nodes (a bare table alias becomes a
         # whole-row TableColumn); the result must still be inside the subset.
         check_grammar(tree)
@@ -436,6 +437,57 @@ def _qualify(tree: exp.Select, catalog: CatalogView) -> exp.Select:
     if not isinstance(qualified, exp.Select):
         raise _internal("qualification changed the statement type")
     return qualified
+
+
+def _resolve_group_aliases(tree: exp.Select) -> None:
+    """Make every GROUP BY key unambiguous: never a bare SELECT-alias name.
+
+    A bare name may be a SELECT alias or a source column; engines disagree on
+    which wins when joined relations share it. sqlglot's BigQuery generator
+    also rewrites a key equal to an aliased SELECT item into that alias when
+    the query has ORDER BY. Such keys become the item's position instead, which
+    means the same in every engine and survives generation unchanged; a bare
+    name that is not otherwise rewritten becomes the item's qualified column.
+    Positions are not data literals, so nothing is parameterized.
+    """
+    for select in tree.find_all(exp.Select):
+        group = select.args.get("group")
+        if group is None:
+            continue
+        items = list(select.expressions)
+        names = [item.alias_or_name for item in items]
+        ordered = select.args.get("order") is not None
+        for key in group.expressions:
+            position = _selected_position(key, items, names, ordered)
+            if position is None:
+                continue
+            inner = _inner(items[position])
+            bare = isinstance(key, exp.Column) and not key.table
+            if bare and not ordered and isinstance(inner, exp.Column) and inner.table:
+                key.replace(inner.copy())
+                continue
+            key.replace(exp.Literal.number(position + 1))
+
+
+def _inner(item: exp.Expr) -> exp.Expr:
+    return item.this if isinstance(item, exp.Alias) else item
+
+
+def _selected_position(
+    key: exp.Expr, items: list[exp.Expr], names: list[str], ordered: bool
+) -> int | None:
+    """Index of the SELECT item a key refers to by alias or (with ORDER BY) by value."""
+    if isinstance(key, exp.Column) and not key.table:
+        return names.index(key.name) if names.count(key.name) == 1 else None
+    if ordered:
+        matches = [
+            i
+            for i, item in enumerate(items)
+            if isinstance(item, exp.Alias) and item.this == key
+        ]
+        if len(matches) == 1:
+            return matches[0]
+    return None
 
 
 def _output_names(select: exp.Expr) -> list[str]:
