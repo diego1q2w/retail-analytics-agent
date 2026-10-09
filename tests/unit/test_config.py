@@ -19,6 +19,7 @@ LIVE_ENV = {
     "RETAIL_ANALYTICS_TEMPORAL_ADDRESS": "localhost:7233",
     "RETAIL_ANALYTICS_BIGQUERY_PROJECT": "example-project",
     "RETAIL_ANALYTICS_GEMINI_API_KEY": SECRET,
+    "RETAIL_ANALYTICS_AUTH_SIGNING_KEY": SECRET + "-signing-key",
 }
 
 
@@ -37,6 +38,7 @@ def test_live_mode_lists_every_missing_required_setting() -> None:
         "RETAIL_ANALYTICS_TEMPORAL_ADDRESS",
         "RETAIL_ANALYTICS_BIGQUERY_PROJECT",
         "RETAIL_ANALYTICS_GEMINI_API_KEY",
+        "RETAIL_ANALYTICS_AUTH_SIGNING_KEY",
     ):
         assert name in message
 

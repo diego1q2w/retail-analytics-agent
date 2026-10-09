@@ -124,3 +124,22 @@ def test_demo_executives_have_disjoint_products_and_no_admin() -> None:
     assert a.product_ids and b.product_ids
     assert not a.product_ids & b.product_ids
     assert all(Role.ADMIN not in demo.roles for demo in (a, b))
+
+
+def test_api_requires_database_temporal_and_signing_key() -> None:
+    result = CliRunner().invoke(api.main, [], env={})
+    assert result.exit_code == 2
+    for name in (
+        "RETAIL_ANALYTICS_DATABASE_URL",
+        "RETAIL_ANALYTICS_TEMPORAL_ADDRESS",
+        "RETAIL_ANALYTICS_AUTH_SIGNING_KEY",
+    ):
+        assert name in result.output
+
+
+def test_live_mode_requires_the_signing_key() -> None:
+    result = CliRunner().invoke(
+        api.main, ["--check-config"], env={"RETAIL_ANALYTICS_MODE": "live"}
+    )
+    assert result.exit_code == 2
+    assert "RETAIL_ANALYTICS_AUTH_SIGNING_KEY" in result.output

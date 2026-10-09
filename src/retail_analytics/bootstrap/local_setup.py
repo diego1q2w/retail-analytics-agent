@@ -357,7 +357,8 @@ def next_steps(ctx: SetupContext) -> list[str]:
     lines += [
         "Next:",
         "  retail-analytics-dev-access token demo-a   # a dev token (stdout only)",
-        "  retail-analytics-api                       # start the HTTP backend",
+        "  retail-analytics-api                       # start the HTTP/SSE API",
+        "  (see docs/http-api.md: send the token as Authorization: Bearer)",
         "  retail-analytics-worker                    # start the Temporal worker",
         "  analytics status                           # CLI check against the API",
         "  ./scripts/bootstrap.sh                     # rerun any time (idempotent)",

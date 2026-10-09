@@ -225,11 +225,13 @@ class BackendSettings(BaseModel):
 
 
 # OpenAI is the optional fallback provider, so it is not required in live mode.
+# The signing key is required: every API route authenticates a bearer token.
 LIVE_REQUIRED_SETTINGS: tuple[str, ...] = (
     "database_url",
     "temporal_address",
     "bigquery_project",
     "gemini_api_key",
+    "auth_signing_key",
 )
 
 

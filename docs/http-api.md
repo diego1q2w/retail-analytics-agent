@@ -1,0 +1,132 @@
+# HTTP and SSE API (v1)
+
+`retail-analytics-api` serves the investigation API that the `analytics` CLI
+uses. The machine-readable contract is the OpenAPI document at
+`GET /openapi.json` (interactive docs at `/docs`), generated from
+`src/retail_analytics/interfaces/http/schemas.py`. This page covers the parts
+OpenAPI cannot express: authentication, errors, idempotency and the event
+stream.
+
+## Starting it
+
+```sh
+./scripts/bootstrap.sh                       # once: services, migrations, demo executives
+retail-analytics-worker &                    # runs the investigations
+retail-analytics-api                         # http://127.0.0.1:8080 by default
+TOKEN="$(retail-analytics-dev-access token demo-a)"
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/sessions
+```
+
+The API needs `RETAIL_ANALYTICS_DATABASE_URL`, `RETAIL_ANALYTICS_TEMPORAL_ADDRESS`
+and `RETAIL_ANALYTICS_AUTH_SIGNING_KEY` in every mode, and exits with status 2
+naming whichever is missing. The signing key is also a required setting of
+live mode. Temporal is connected lazily: the API starts before Temporal is
+ready, and a request that cannot be scheduled yet answers 503 (retry it with
+the same `submission_key`; the worker also re-sends unsent starts).
+
+## Authentication and ownership
+
+Every `/v1` route requires `Authorization: Bearer <token>`. Identity never
+comes from a body, query parameter or cookie: request bodies reject unknown
+fields, so `executive_id` or similar fields fail validation. Missing, malformed,
+expired, forged, wrong-audience or unknown-subject tokens all get the same
+401 `unauthenticated` with `WWW-Authenticate: Bearer`.
+
+Everything is owner-scoped. A session, run, event stream, report, export or
+deletion proposal that belongs to another executive answers exactly like a
+missing one (404 `not_found`). Lists and search only return the caller's own
+records. A missing permission (for example no `reports:delete_own`) is 403
+`forbidden`.
+
+## Endpoints
+
+| Method and path | Purpose |
+| --- | --- |
+| `GET /healthz` | Liveness and mode (no authentication) |
+| `POST /v1/sessions` | Open a session; body `{submission_key}`, a repeated key returns the same session |
+| `GET /v1/sessions` | The caller's sessions, most recently active first (`limit`, `offset`) |
+| `GET /v1/sessions/{session_id}` | A session with its runs, newest first |
+| `POST /v1/sessions/{session_id}/runs` | Start an investigation `{text, submission_key}`; 409 `active_run_exists` (with `details.active_run_id`) if one is active |
+| `POST /v1/sessions/{session_id}/messages` | A message `{text, submission_key, mode}`: `steer` (default) refines the active run or starts one; `queue` waits behind it as a separate request |
+| `GET /v1/runs/{run_id}` | Status, the open clarification question and, once ended, the released answer |
+| `GET /v1/runs/{run_id}/events` | Server-Sent Events (below) |
+| `POST /v1/runs/{run_id}/steer` | Refine the active run `{text, submission_key}` |
+| `POST /v1/runs/{run_id}/answers` | Answer the open question `{question_id, text, submission_key}` |
+| `POST /v1/runs/{run_id}/cancel` | Stop new work; the run reports `cancelled` once in-flight effects settle |
+| `GET /v1/reports` | The caller's saved reports (`session_id`, `limit`, `offset`) |
+| `GET /v1/reports/search?q=` | Search titles and content (`session_id`, `limit` up to 25) |
+| `GET /v1/reports/{report_id}` | Read a report and its cited evidence (`version` optional) |
+| `GET /v1/reports/{report_id}/versions` | Its versions |
+| `GET /v1/reports/{report_id}/export` | One Markdown file with the evidence appendix (`text/markdown` attachment) |
+| `GET /v1/deletion-proposals/{proposal_id}` | Preview a deletion the assistant proposed |
+| `POST /v1/deletion-proposals/{proposal_id}/confirm` | Delete exactly the proposed reports; body must be `{"confirm": true}` |
+| `POST /v1/deletion-proposals/{proposal_id}/cancel` | Withdraw the proposal |
+
+Deletion confirmation exists only as this explicit, authenticated user
+request: the model can propose a deletion but nothing it writes can confirm
+one. There is no restore route. Restoring a deleted report within its seven
+days is an operator action (`retail-analytics-maintenance restore`).
+
+## Idempotency
+
+Every write carries a client `submission_key` (1–128 characters, letters,
+digits, `.`, `_`, `:`, `-`). Repeating a request with the same key returns
+the original result (`created: false` for a run) and never starts a second
+run; reusing a key for different content is 409 `idempotency_conflict`.
+After a 503 or a lost response, resend the same request with the same key.
+
+## Errors
+
+Every error has the same body:
+
+```json
+{"error": {"code": "run_not_active", "message": "...", "details": {}}}
+```
+
+| Status | Codes |
+| --- | --- |
+| 400 | `invalid_cursor` (malformed `Last-Event-ID`, or one that is not this run's) |
+| 401 | `unauthenticated` |
+| 403 | `forbidden` |
+| 404 | `not_found` (missing or not the caller's) |
+| 409 | `active_run_exists`, `run_not_active`, `idempotency_conflict`, `access_changed`, `evidence_unavailable`, `stale_base_version`, `already_resolved`, `stale`, `too_many_pending` |
+| 410 | `expired` (deletion proposal older than ten minutes) |
+| 422 | `invalid_request` (malformed body or parameters; `details.problems` lists locations, never the submitted values) |
+| 503 | `unavailable` (retry with the same `submission_key`) |
+
+## Event stream
+
+`GET /v1/runs/{run_id}/events` returns `text/event-stream`. Each event is one
+persisted progress event of the run:
+
+```text
+id: 8a9290d810bb4402a2dce2bd89bdb724
+event: input.required
+data: {"schema_version":1,"correlation":{...},"kind":"input.required","source":"application","summary":"Waiting for your answer.","tool":null,"input_request":{"question_id":"qst_...","question":"Which sales period should I use?"},"event_id":"8a92...","sequence":2,"occurred_at":"2026-10-09T04:11:59Z"}
+```
+
+`data` is a `ProgressEvent` (`application/contracts/progress.py`): `kind` is
+one of `run.started`, `analysis.progress`, `tool.started`, `tool.retrying`,
+`tool.pending`, `tool.outcome_unknown`, `tool.succeeded`, `tool.failed`,
+`input.required`, `run.completed`, `run.partial`, `run.failed`,
+`run.cancelled`; `sequence` starts at 1 and increases by one per event.
+
+- **Resume.** Reconnect with the `Last-Event-ID` header (or `?after=<event_id>`)
+  set to the last ID received: the stream continues with exactly the later
+  events, in order, with no gaps or repeats. Connecting or reconnecting never
+  starts, restarts or cancels anything; disconnecting leaves the run working.
+- **Release.** Every streamed summary and question passes the output privacy
+  gate, with the caller's authority resolved again for every batch: personal
+  data is masked, and a summary the gate refuses is replaced by a fixed
+  notice, never dropped, so sequences stay whole. The stream re-checks
+  ownership on every poll; if access is lost it sends
+  `event: error` (`{"code": "not_found", ...}`) and closes.
+- **Keep-alive.** Comment lines (`: keepalive`) are sent when nothing happened
+  for 15 seconds. The server suggests `retry: 2000` milliseconds.
+- **End.** After the run's terminal event the server sends
+  `event: end` with `{"run_id", "status"}` (no ID) and closes. Then
+  `GET /v1/runs/{run_id}` returns the released answer. A connection is also
+  closed after 15 minutes; reconnect with the last ID.
+- **Questions.** On `input.required`, answer with
+  `POST /v1/runs/{run_id}/answers` using `input_request.question_id`; the
+  stream (still open, or resumed) then continues.

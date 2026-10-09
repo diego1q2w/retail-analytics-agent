@@ -27,6 +27,8 @@ That one command is idempotent and does everything needed for a working, seeded 
 5. provisions the demo executives and seeds the Golden knowledge library;
 6. validates the configuration and, when BigQuery and Gemini are configured, checks that access.
 
+Then start the worker and the API (`retail-analytics-worker`, `retail-analytics-api`; bootstrap prints these commands) and call it with a dev token; see [HTTP and SSE API](docs/http-api.md).
+
 External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `RETAIL_ANALYTICS_REFERENCE_KEY`: rotating it invalidates every existing customer reference.
 
 Options: `--telemetry` also starts MLflow, Prometheus and Grafana; `--env-file FILE` works on another environment file (the Compose and every child command then use only its values; the repository's `.env` is never read or changed); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
@@ -78,10 +80,12 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 | Command | Module | Purpose |
 | --- | --- | --- |
 | `analytics` | `retail_analytics.bootstrap.cli` | CLI client; talks to the backend over HTTP only (`analytics status`) |
-| `retail-analytics-api` | `retail_analytics.bootstrap.api` | HTTP backend (`GET /healthz`) |
+| `retail-analytics-api` | `retail_analytics.bootstrap.api` | Authenticated HTTP/SSE investigation API; needs PostgreSQL, Temporal and the signing key. See [HTTP and SSE API](docs/http-api.md) |
 | `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
 | `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker (fixture model, or the live Gemini/GPT chain) |
 | `retail-analytics-dev-access` | `retail_analytics.bootstrap.dev_access` | Development only: provision the two synthetic executives and issue local tokens; see [Authentication and entitlements](#authentication-and-entitlements) |
+
+Live mode (`RETAIL_ANALYTICS_MODE=live`) also requires `RETAIL_ANALYTICS_AUTH_SIGNING_KEY`, and the API requires it in every mode (no route skips authentication).
 
 Backend entry points accept `--check-config`: validate settings, print them with secrets shown only as `<set>`/`<unset>`, and exit. Invalid configuration exits with status 2.
 
