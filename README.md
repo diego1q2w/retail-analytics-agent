@@ -4,7 +4,7 @@ A conversational analytics assistant for retail executives. It investigates busi
 
 ## Project status
 
-Early implementation. The application skeleton, configuration validation and repository checks exist; analytical behavior does not yet. The intended application uses a CLI connected to an HTTP backend, Pydantic AI for the agent, Temporal for durable execution, and PostgreSQL for application state. BigQuery provides read-only retail analysis; model and database credentials stay on the backend.
+Early implementation. The application skeleton, configuration validation and repository checks exist; analytical behavior does not yet. The intended application uses a CLI connected to an HTTP backend, Pydantic AI for the agent, PostgreSQL for application state, and either in-process execution inside the API (the local default) or Temporal for durable execution (opt-in). BigQuery provides read-only retail analysis; model and database credentials stay on the backend.
 
 Setup for live services, public architecture documentation and evaluation results will be added as their implementations are verified.
 
@@ -22,22 +22,30 @@ That one command is idempotent and does everything needed for a working, seeded 
 
 1. creates `.venv` and installs the pinned dependencies if no virtualenv is active;
 2. creates `.env` from `.env.example`, or only adds the keys an existing `.env` lacks. It never overwrites or reorders a value, generates local-only secrets (`RETAIL_ANALYTICS_AUTH_SIGNING_KEY`, `RETAIL_ANALYTICS_REFERENCE_KEY`, and the database passwords for a new Compose volume) with `secrets`, and fills the connection defaults. It prints `<generated>`, `<kept>`, `<default>` or `<missing: action>` per key, never a value;
-3. checks Docker, starts PostgreSQL and Temporal and waits until they are healthy;
+3. checks Docker, starts PostgreSQL and waits until it is healthy (Temporal only when [selected](#temporal-execution-opt-in));
 4. runs `alembic upgrade head`;
 5. provisions the demo executives and seeds the Golden knowledge library;
 6. validates the configuration and, when BigQuery and Gemini are configured, checks that access.
 
-Then run the worker and the API together with one command and call the API with a dev token; see [HTTP and SSE API](docs/http-api.md):
+Then start the backend with one command and call it with a dev token; see [HTTP and SSE API](docs/http-api.md) and the [CLI guide](docs/cli.md):
 
 ```sh
 ./scripts/dev.sh        # or: python -m retail_analytics.bootstrap.dev_up
 ```
 
-`dev.sh` makes sure PostgreSQL, Temporal, the telemetry stack (MLflow, Prometheus, Grafana; skip with `--no-telemetry`) and the migrations are in place (the same bootstrap steps; unrelated containers are never touched), starts `retail-analytics-worker` and `retail-analytics-api` with the same environment file, prefixes their logs with `[worker]` / `[api]`, waits until the worker is connected to Temporal and `/healthz` answers, then prints the API URL, the Grafana and MLflow URLs and the command that issues a dev token (the token and secrets are never printed). Ctrl-C or SIGTERM stops both (SIGTERM, then SIGKILL after 10 s) and exits 0. If either process exits on its own, the other is stopped and the command exits 1 naming the one that failed. It refuses to start if the API port is taken by something else. Options: `--env-file FILE` (the same isolation as bootstrap: only that file is read, parent-shell `RETAIL_ANALYTICS_*` variables are dropped), `--project NAME` (Compose project), `--no-services` (do not touch Docker; only check that PostgreSQL and Temporal are reachable), `--no-telemetry` (do not start the telemetry stack; `--telemetry` is accepted and does nothing), `--ready-timeout SECONDS`. It is a local-development convenience, not a supervisor: in production the API and the worker run as separate services.
+By default investigations run inside the API process (local execution): `dev.sh` needs only PostgreSQL, and no Temporal server or worker is started. A run keeps going when the CLI disconnects; stopping the API ends running investigations as interrupted (they are not resumed; send the request again). Durable Temporal execution is [opt-in](#temporal-execution-opt-in).
+
+`dev.sh` makes sure PostgreSQL, the telemetry stack (MLflow, Prometheus, Grafana; skip with `--no-telemetry`) and the migrations are in place (the same bootstrap steps; unrelated containers are never touched), starts `retail-analytics-api` with the same environment file and `[api]`-prefixed logs, waits until `/healthz` answers for the selected execution backend, then prints the API URL, the Grafana and MLflow URLs and the command that issues a dev token (the token and secrets are never printed). Ctrl-C or SIGTERM stops what it started (SIGTERM, then SIGKILL after 10 s; with local execution after `RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS` + 5 s, so the API first ends its running investigations as interrupted) and exits 0; if a process exits on its own, the command exits 1 naming it. It refuses to start if the API port is taken by something else. Options: `--env-file FILE` (the same isolation as bootstrap: only that file is read, parent-shell `RETAIL_ANALYTICS_*` variables are dropped), `--project NAME` (Compose project), `--execution-backend local|temporal` (this run only), `--no-services` (do not touch Docker; only check that the needed services are reachable), `--no-telemetry` (do not start the telemetry stack; `--telemetry` is accepted and does nothing), `--ready-timeout SECONDS`. It is a local-development convenience, not a supervisor.
 
 External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `RETAIL_ANALYTICS_REFERENCE_KEY`: rotating it invalidates every existing customer reference.
 
-Options: MLflow, Prometheus and Grafana start by default and the next steps print their URLs; `--no-telemetry` skips them (and writes `RETAIL_ANALYTICS_TELEMETRY_ENABLED=false` when that key is new), `--telemetry` is accepted and does nothing; an existing env file without the key gets `true`, and an explicit `false` is never overwritten (the stack is then not started either); `--env-file FILE` works on another environment file (the Compose and every child command then use only its values; the repository's `.env` is never read or changed); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
+Options: MLflow, Prometheus and Grafana start by default and the next steps print their URLs; `--no-telemetry` skips them (and writes `RETAIL_ANALYTICS_TELEMETRY_ENABLED=false` when that key is new), `--telemetry` is accepted and does nothing; an existing env file without the key gets `true`, and an explicit `false` is never overwritten (the stack is then not started either); `--env-file FILE` works on another environment file (the Compose and every child command then use only its values; the repository's `.env` is never read or changed); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--execution-backend local|temporal` selects the backend for this run (written to the env file only when the key is new); `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
+
+### Temporal execution (opt-in)
+
+`RETAIL_ANALYTICS_EXECUTION_BACKEND` selects where investigations execute, independently of fixture/live mode: `local` (default) runs them in the API process over PostgreSQL; `temporal` runs them as durable Temporal workflows on `retail-analytics-worker`, which resume after a process restart. To use Temporal, set `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal` in `.env` (or pass `--execution-backend temporal` to `bootstrap.sh`/`dev.sh` for one run). Bootstrap and `dev.sh` then also start the Temporal server and its namespace, and `dev.sh` runs the worker next to the API with `[worker]`/`[api]` logs and waits for the worker's Temporal connection; `RETAIL_ANALYTICS_TEMPORAL_ADDRESS` is required (bootstrap fills the local default). With local execution `retail-analytics-worker` exits at once with an instruction.
+
+Existing environment files: one without the setting runs local, even if it still has a Temporal address; the next `./scripts/bootstrap.sh` adds `RETAIL_ANALYTICS_EXECUTION_BACKEND=local` and explains it, keeping Temporal values, containers and volumes. An explicit `temporal` is never changed. Runs are never moved between backends: if the other backend still has active investigations or queued requests, the API refuses to start, lists them and says how to finish or cancel them with their original backend. Details, guarantees and limits: [investigation runtime](docs/investigation-runtime.md). The production design keeps Temporal with separately scaled workers; local execution is the single-process local topology.
 
 ### How to add a bootstrap step
 
@@ -86,9 +94,9 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 | Command | Module | Purpose |
 | --- | --- | --- |
 | `analytics` | `retail_analytics.bootstrap.cli` | CLI client and prototype UI; talks to the backend over HTTP only (`analytics chat`). See [CLI guide](docs/cli.md) |
-| `retail-analytics-api` | `retail_analytics.bootstrap.api` | Authenticated HTTP/SSE investigation API; needs PostgreSQL, Temporal and the signing key. See [HTTP and SSE API](docs/http-api.md) |
+| `retail-analytics-api` | `retail_analytics.bootstrap.api` | Authenticated HTTP/SSE investigation API; needs PostgreSQL and the signing key, and runs the investigations itself with local execution (Temporal execution: also Temporal and the worker). See [HTTP and SSE API](docs/http-api.md) |
 | `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
-| `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker (fixture model, or the live Gemini/GPT chain) |
+| `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker, only with `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal` (fixture model, or the live Gemini/GPT chain); exits with status 3 otherwise |
 | `retail-analytics-dev-access` | `retail_analytics.bootstrap.dev_access` | Development only: provision the two synthetic executives and issue local tokens; see [Authentication and entitlements](#authentication-and-entitlements) |
 
 Live mode (`RETAIL_ANALYTICS_MODE=live`) also requires `RETAIL_ANALYTICS_AUTH_SIGNING_KEY`, and the API requires it in every mode (no route skips authentication).
@@ -102,7 +110,8 @@ Backend entry points accept `--check-config`: validate settings, print them with
 - `RETAIL_ANALYTICS_MODE=fixture` (default) runs offline with no credentials.
 - `RETAIL_ANALYTICS_GEMINI_MODEL` is the default model name used by the credential check.
 - The investigation agent uses `RETAIL_ANALYTICS_AGENT_GEMINI_MODEL` (default `gemini-3.8-flash`, Gemini Interactions API) as primary and `RETAIL_ANALYTICS_AGENT_OPENAI_MODEL` (default `gpt-5-mini`, OpenAI Responses API) as backup when `RETAIL_ANALYTICS_OPENAI_API_KEY` is set. First-token (60 s), streaming-stall (30 s) and per-request (180 s) limits, retries, fallback and per-attempt budget accounting are described in [docs/model-providers.md](docs/model-providers.md).
-- `RETAIL_ANALYTICS_MODE=live` requires the database URL, Temporal address, BigQuery project and Gemini API key; all missing settings are reported together.
+- `RETAIL_ANALYTICS_MODE=live` requires the database URL, BigQuery project and Gemini API key (and the Temporal address with Temporal execution); all missing settings are reported together.
+- `RETAIL_ANALYTICS_EXECUTION_BACKEND=local` (default) or `temporal`: see [Temporal execution (opt-in)](#temporal-execution-opt-in). `RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS` (4) and `RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS` (10) bound local execution.
 - `RETAIL_ANALYTICS_REFERENCE_KEY` (at least 32 bytes) is the master key for opaque customer, order and item references. It is optional: when it is unset, queries that need references fail closed. Never commit or log it.
 
 Errors name the variable and the problem, never the value. All settings are declared in `src/retail_analytics/bootstrap/config.py`; add new ones there and to `.env.example` (a test keeps them in sync). Only bootstrap reads configuration; inner layers receive typed values.
@@ -129,7 +138,7 @@ retail-analytics-eval summary evaluation-results/run.json
 
 #### Agent runtime target
 
-`retail_analytics.bootstrap.agent_evaluation` provides the `agent_runtime` target: every scenario runs as real investigations (Temporal workflow, guarded model steps, permission-filtered tools, compiler, result privacy boundary, evidence, reports and the output gate) against an offline DuckDB warehouse instead of BigQuery. It needs the local PostgreSQL (migrated) and Temporal from your settings; if they are unreachable every case is `blocked`. Each scenario gets its own evaluation executive (stable per scenario, so opaque references are reproducible) and a new session.
+`retail_analytics.bootstrap.agent_evaluation` provides the `agent_runtime` target: every scenario runs as real investigations (guarded model steps, permission-filtered tools, compiler, result privacy boundary, evidence, reports and the output gate) against an offline DuckDB warehouse instead of BigQuery. It uses the configured execution backend: with local execution (default) it needs only the local PostgreSQL (migrated); with `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal`, or the explicit `heldout_scripted_temporal` / `realdata_scripted_temporal` factories, it runs Temporal workflows on an in-process worker and also needs Temporal. The result records the backend in its target ID (`agent_runtime:local` or `agent_runtime:temporal`). If the services are unreachable, or another local-execution process holds the database, every case is `blocked`. Each scenario gets its own evaluation executive (stable per scenario, so opaque references are reproducible) and a new session.
 
 ```sh
 retail-analytics-eval run --manifest evaluation/heldout/manifest.json \
@@ -142,6 +151,7 @@ retail-analytics-eval run --manifest evaluation/realdata/manifest.json \
 ```
 
 - `heldout_*` answers from the synthetic held-out fixture; `realdata_*` from the frozen real-data extract (`frozen_extract_source`). Live BigQuery is never scored against frozen values.
+- Scripted results are expected to match across backends (same application steps and agent); recovery after a process restart differs and is covered by the Docker suites, not by these manifests.
 - `*_scripted` plays reviewed plans (`evaluation/agent-scripts/*.json`, some deliberately adversarial) instead of a model. It measures the runtime and its guards under a known plan, not model planning quality; report it as scripted. `*_live` uses the configured provider chain and counts against provider quotas.
 - Values are read from released evidence (single-row results by column name). Safety flags come from evidence, released text and tool calls against fixture canaries; report-element flags (definition disclosed, contributors, causal wording, partial periods) are textual heuristics until a judge scores those dimensions.
 - The DuckDB oracle rewrites `GROUP BY <output name>` to positions because DuckDB, unlike BigQuery, does not resolve an ambiguous name to the SELECT alias.
@@ -150,13 +160,14 @@ retail-analytics-eval run --manifest evaluation/realdata/manifest.json \
 
 `python -m retail_analytics.bootstrap.retrieval_eval` measures precision@k, recall@k, MRR, nDCG, no-match behavior and access violations for keyword-only, semantic-only and fused retrieval on labeled questions with separate tuning and held-out splits. Labels, corpus, method, measured results and limits are in `evaluation/retrieval/README.md`. It uses the runner's manifest and result format.
 
-### Local services (PostgreSQL and Temporal)
+### Local services (PostgreSQL, and Temporal when selected)
 
 `compose.yaml` runs one PostgreSQL 17 server and Temporal 1.32 (image digests pinned), both bound to loopback only. Requires Docker with Compose v2. Passwords are throwaway local defaults; override with `COMPOSE_APP_DB_PASSWORD`, `COMPOSE_TEMPORAL_DB_PASSWORD`, `COMPOSE_PG_ADMIN_PASSWORD`.
 
 ```sh
-docker compose up -d --wait postgres temporal      # project retail-analytics-local
-docker compose run --rm temporal-namespace         # create the namespace (7-day closed-history retention)
+docker compose up -d --wait postgres               # project retail-analytics-local (local execution)
+docker compose up -d --wait temporal               # Temporal execution only
+docker compose run --rm temporal-namespace         #   and its namespace (7-day closed-history retention)
 export RETAIL_ANALYTICS_DATABASE_URL=postgresql+psycopg://retail_app:local-only-app@127.0.0.1:55442/retail_app
 alembic upgrade head                               # application schema; safe to rerun
 docker compose down                                # keeps the volume; add -v to delete data

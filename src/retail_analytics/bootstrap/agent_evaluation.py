@@ -1,9 +1,9 @@
 """Composition root of the ``agent_runtime`` evaluation target.
 
-The target runs each scenario as real investigations: the same Temporal
-workflow, guarded model steps, permission-filtered catalog, tool runner,
-compiler, privacy boundary, evidence store, output gate and reports as the
-worker. Only two things are replaced at this root:
+The target runs each scenario as real investigations: the same guarded model
+steps, permission-filtered catalog, tool runner, compiler, privacy boundary,
+evidence store, output gate and reports as the API/worker. Only two things are
+replaced at this root:
 
 - the warehouse: an offline ``FixtureWarehouse`` (held-out fixture or the
   frozen real-data extract) instead of BigQuery, with an ephemeral reference
@@ -11,19 +11,24 @@ worker. Only two things are replaced at this root:
 - optionally the model: a scripted plan (``adapters.models.scripted``) for
   deterministic runs, or the configured live provider chain.
 
-It needs PostgreSQL (migrated) and Temporal from the settings
-(``RETAIL_ANALYTICS_DATABASE_URL``, ``RETAIL_ANALYTICS_TEMPORAL_ADDRESS``),
-e.g. the local stack from ``./scripts/bootstrap.sh``. Constructed explicitly
-with ``backend=ExecutionBackend.LOCAL`` it runs the same investigations on the
-in-process local manager instead (PostgreSQL only, no Temporal). Each scenario gets a
-fresh evaluation executive, product entitlements and session; nothing is
-shared with other executives. If the stack is unreachable every scenario is
+Execution follows ``RETAIL_ANALYTICS_EXECUTION_BACKEND`` like the API: with
+``local`` (the default) the investigations run on an in-process local manager
+and need only PostgreSQL (migrated), e.g. the local stack from
+``./scripts/bootstrap.sh``; with ``temporal`` they run as Temporal workflows
+on a worker inside this process and also need
+``RETAIL_ANALYTICS_TEMPORAL_ADDRESS``. The ``*_temporal`` factories select
+Temporal explicitly whatever the setting. The backend is part of the
+recorded target ID (``agent_runtime:local`` / ``agent_runtime:temporal``).
+Each scenario gets a fresh evaluation executive, product entitlements and
+session; nothing is shared with other executives. If the stack is unreachable
+(or another local-execution process holds the database) every scenario is
 blocked (``TargetUnavailable``), never passed.
 
 Factories for ``retail-analytics-eval run --target``:
 
 - ``...agent_evaluation:heldout_scripted`` / ``:realdata_scripted`` (offline,
-  scripted plans in ``evaluation/agent-scripts``);
+  scripted plans in ``evaluation/agent-scripts``), and
+  ``:heldout_scripted_temporal`` / ``:realdata_scripted_temporal``;
 - ``...agent_evaluation:heldout_live`` / ``:realdata_live`` (live provider
   chain; counts against provider quotas).
 
@@ -44,11 +49,10 @@ from collections.abc import Callable, Coroutine, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final, TypeVar
+from typing import TYPE_CHECKING, Any, Final, TypeVar
 
 from pydantic import SecretStr
 from pydantic_ai.models import Model
-from temporalio.client import Client
 
 from retail_analytics.adapters.embedding.hashing import HashingEmbedder
 from retail_analytics.adapters.evaluation.fixture_warehouse import (
@@ -59,6 +63,7 @@ from retail_analytics.adapters.evaluation.fixture_warehouse import (
 from retail_analytics.adapters.exchange_rates.fixture import FixtureRateProvider
 from retail_analytics.adapters.local.investigations import LocalInvestigationManager
 from retail_analytics.adapters.models.scripted import scripted_model
+from retail_analytics.adapters.postgres.local_execution import ManagerLockHeld
 from retail_analytics.application.authentication import (
     AuthenticationFailed,
     AuthFailure,
@@ -113,17 +118,13 @@ from retail_analytics.bootstrap.preferences import build_preferences
 from retail_analytics.bootstrap.query import build_query_execution
 from retail_analytics.bootstrap.reports import build_reports
 from retail_analytics.bootstrap.retrieval import build_retrieval
-from retail_analytics.bootstrap.temporal import (
-    connect,
-    investigation_worker,
-)
-from retail_analytics.bootstrap.temporal import (
-    scheduler as temporal_scheduler,
-)
 from retail_analytics.domain.access import Role, permissions_for
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.evidence import scope_digest
 from retail_analytics.domain.runs import ExecutionBackend, RunStatus
+
+if TYPE_CHECKING:
+    from temporalio.client import Client
 
 TARGET_ID: Final = "agent_runtime"
 EVALUATION_DIR: Final = Path("evaluation")
@@ -285,17 +286,27 @@ class _Harness:
 
 @dataclass
 class AgentRuntimeTarget:
-    """``EvaluationTarget`` running scenarios through the durable runtime."""
+    """``EvaluationTarget`` running scenarios through the investigation runtime.
+
+    ``backend`` defaults to the settings' execution backend; ``target_id``
+    defaults to ``agent_runtime:<backend>`` so results record it.
+    """
 
     settings: BackendSettings
     source: FixtureSource
     model: ModelSource
     turn_timeout: float = 240.0
     seed_knowledge: bool = True
-    target_id: str = TARGET_ID
-    backend: ExecutionBackend = ExecutionBackend.TEMPORAL
+    target_id: str = ""
+    backend: ExecutionBackend | None = None
     _loop: _Loop | None = field(default=None, init=False, repr=False)
     _harness: _Harness | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.backend is None:
+            self.backend = self.settings.execution_backend
+        if not self.target_id:
+            self.target_id = f"{TARGET_ID}:{self.backend.value}"
 
     def run(self, case: ScenarioInput) -> TargetObservation:
         if self._loop is None:
@@ -337,6 +348,9 @@ class AgentRuntimeTarget:
         client: Client | None = None
         try:
             if not local_backend:
+                # Imported only for the Temporal backend.
+                from retail_analytics.bootstrap.temporal import connect
+
                 client = await connect(
                     settings.temporal_address or "", settings.temporal_namespace
                 )
@@ -382,8 +396,20 @@ class AgentRuntimeTarget:
                 local, persistence, access, self.model, **wiring
             )
             services, manager = built.services, built.manager
-            await manager.open()
+            try:
+                await manager.open()
+            except ManagerLockHeld:
+                # Another local-execution process (an API) owns the database.
+                persistence.close()
+                raise TargetUnavailable from None
         else:
+            from retail_analytics.bootstrap.temporal import (
+                investigation_worker,
+            )
+            from retail_analytics.bootstrap.temporal import (
+                scheduler as temporal_scheduler,
+            )
+
             queue = "eval-" + uuid.uuid4().hex
             services = build_investigations(
                 local,
@@ -641,6 +667,24 @@ def realdata_scripted() -> AgentRuntimeTarget:
     )
 
 
+def heldout_scripted_temporal() -> AgentRuntimeTarget:
+    return AgentRuntimeTarget(
+        _settings(),
+        heldout_source(),
+        scripted_model(load_plans("heldout")),
+        backend=ExecutionBackend.TEMPORAL,
+    )
+
+
+def realdata_scripted_temporal() -> AgentRuntimeTarget:
+    return AgentRuntimeTarget(
+        _settings(),
+        realdata_source(),
+        scripted_model(load_plans("realdata")),
+        backend=ExecutionBackend.TEMPORAL,
+    )
+
+
 def heldout_live() -> AgentRuntimeTarget:
     settings = _settings()
     return AgentRuntimeTarget(settings, heldout_source(), provider_chain(settings))
@@ -659,9 +703,11 @@ __all__ = [
     "expand_scope",
     "heldout_live",
     "heldout_scripted",
+    "heldout_scripted_temporal",
     "heldout_source",
     "load_plans",
     "realdata_live",
     "realdata_scripted",
+    "realdata_scripted_temporal",
     "realdata_source",
 ]

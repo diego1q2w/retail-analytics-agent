@@ -36,6 +36,8 @@ from pydantic import (
     model_validator,
 )
 
+from retail_analytics.domain.runs import ExecutionBackend
+
 BACKEND_ENV_PREFIX = "RETAIL_ANALYTICS_"
 CLI_ENV_PREFIX = "ANALYTICS_CLI_"
 DEFAULT_ENV_FILE = Path(".env")
@@ -87,6 +89,15 @@ class BackendSettings(BaseModel):
     )
 
     database_url: SecretStr | None = None
+    # Where investigations execute, independent of ``mode``. ``local`` (the
+    # default): tasks of the API process, PostgreSQL only, interrupted if the
+    # API stops. ``temporal`` (opt-in): durable workflows run by
+    # ``retail-analytics-worker``; needs the Temporal settings below.
+    execution_backend: ExecutionBackend = ExecutionBackend.LOCAL
+    # Local backend: investigations executing at once in the API process, and
+    # how long shutdown waits for them before marking them interrupted.
+    local_max_concurrent_runs: int = Field(default=4, ge=1, le=64)
+    local_shutdown_grace_seconds: float = Field(default=10.0, ge=0.0, le=300.0)
     temporal_address: str | None = None
     temporal_namespace: str = "default"
     temporal_task_queue: str = "retail-analytics"
@@ -216,6 +227,11 @@ class BackendSettings(BaseModel):
                 for name in LIVE_REQUIRED_SETTINGS
                 if getattr(self, name) is None
             ]
+            if (
+                self.execution_backend is ExecutionBackend.TEMPORAL
+                and self.temporal_address is None
+            ):
+                missing.append(BACKEND_ENV_PREFIX + "TEMPORAL_ADDRESS")
             if missing:
                 raise ValueError("live mode requires " + ", ".join(missing))
         return self
@@ -237,13 +253,30 @@ class BackendSettings(BaseModel):
 
 # OpenAI is the optional fallback provider, so it is not required in live mode.
 # The signing key is required: every API route authenticates a bearer token.
+# The Temporal address is required only with the Temporal execution backend.
 LIVE_REQUIRED_SETTINGS: tuple[str, ...] = (
     "database_url",
-    "temporal_address",
     "bigquery_project",
     "gemini_api_key",
     "auth_signing_key",
 )
+
+
+def api_required_settings(settings: BackendSettings) -> tuple[str, ...]:
+    """Settings the API needs with the selected execution backend."""
+    names: tuple[str, ...] = ("database_url", "auth_signing_key")
+    if settings.execution_backend is ExecutionBackend.TEMPORAL:
+        names += ("temporal_address",)
+    return names
+
+
+def missing_api_settings(settings: BackendSettings) -> list[str]:
+    """Variable names of unset settings the API needs (never values)."""
+    return [
+        BACKEND_ENV_PREFIX + name.upper()
+        for name in api_required_settings(settings)
+        if getattr(settings, name) is None
+    ]
 
 
 class CliSettings(BaseModel):

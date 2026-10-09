@@ -132,8 +132,11 @@ def status(make_client: ClientFactory) -> None:
         raise click.ClickException(
             f"backend unavailable ({type(exc).__name__})"
         ) from None
+    execution = body.get("execution_backend")
     click.echo(
-        f"backend {body['status']} (mode={body['mode']}, version={body['version']})"
+        f"backend {body['status']} (mode={body['mode']}, "
+        + (f"execution={execution}, " if execution else "")
+        + f"version={body['version']})"
     )
 
 

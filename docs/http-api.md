@@ -11,18 +11,30 @@ stream.
 
 ```sh
 ./scripts/bootstrap.sh                       # once: services, migrations, demo executives
-./scripts/dev.sh &                           # worker + API, http://127.0.0.1:8080 by default
-                                             # (production: run them as separate services)
+./scripts/dev.sh &                           # the API, http://127.0.0.1:8080 by default
 TOKEN="$(retail-analytics-dev-access token demo-a)"
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/sessions
 ```
 
-The API needs `RETAIL_ANALYTICS_DATABASE_URL`, `RETAIL_ANALYTICS_TEMPORAL_ADDRESS`
-and `RETAIL_ANALYTICS_AUTH_SIGNING_KEY` in every mode, and exits with status 2
+The API needs `RETAIL_ANALYTICS_DATABASE_URL` and
+`RETAIL_ANALYTICS_AUTH_SIGNING_KEY` in every mode, and exits with status 2
 naming whichever is missing. The signing key is also a required setting of
-live mode. Temporal is connected lazily: the API starts before Temporal is
-ready, and a request that cannot be scheduled yet answers 503 (retry it with
-the same `submission_key`; the worker also re-sends unsent starts).
+live mode.
+
+With local execution (`RETAIL_ANALYTICS_EXECUTION_BACKEND=local`, the
+default) the API process itself runs the investigations; no other service but
+PostgreSQL is needed. A run continues when its client disconnects; if the API
+stops, its running investigations end as interrupted (see
+[investigation runtime](investigation-runtime.md)). Startup fails with a clear
+message if another local-execution API already uses the database, or if
+Temporal runs are still active.
+
+With Temporal execution (opt-in, `temporal`) the API also needs
+`RETAIL_ANALYTICS_TEMPORAL_ADDRESS` and only schedules; `retail-analytics-worker`
+executes (`./scripts/dev.sh --execution-backend temporal` starts both).
+Temporal is connected lazily: the API starts before Temporal is ready, and a
+request that cannot be scheduled yet answers 503 (retry it with the same
+`submission_key`; the worker also re-sends unsent starts).
 
 ## Authentication and ownership
 
@@ -42,7 +54,7 @@ records. A missing permission (for example no `reports:delete_own`) is 403
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /healthz` | Liveness and mode (no authentication) |
+| `GET /healthz` | Liveness, mode and `execution_backend` (`local` or `temporal`; no authentication) |
 | `POST /v1/sessions` | Open a session; body `{submission_key}`, a repeated key returns the same session |
 | `GET /v1/sessions` | The caller's sessions, most recently active first (`limit`, `offset`) |
 | `GET /v1/sessions/{session_id}` | A session with its runs, newest first |

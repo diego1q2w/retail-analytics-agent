@@ -1,7 +1,9 @@
 """The HTTP/SSE API over real PostgreSQL, Temporal and a worker (Docker).
 
 A real uvicorn server runs the production composition (``bootstrap.api``)
-with a scripted model in the worker. Covers: duplicate submissions creating
+with a scripted model in the worker. ``test_local_http_api`` runs the same
+tests with local execution (PostgreSQL only, the scripted model in the API
+process) by overriding the ``backend`` fixture. Covers: duplicate submissions creating
 one run, SSE replay after a client disconnect (later events only, gap-free,
 no repeats), two executives (every route answers the other's records as
 missing, including SSE and export), authentication failures and the
@@ -29,13 +31,17 @@ import pytest_asyncio
 import sqlalchemy as sa
 import uvicorn
 from pydantic import SecretStr
+from pydantic_ai.models.function import FunctionModel
 
 from retail_analytics.adapters.auth.local_jwt import LocalJwtAuthority
 from retail_analytics.application.contracts.authorization import Principal
-from retail_analytics.bootstrap.api import build_app
+from retail_analytics.bootstrap.api import SchedulerProvider, build_app
 from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.execution import local_scheduler
+from retail_analytics.domain.runs import ExecutionBackend
 from retail_analytics.interfaces.http.services import StreamSettings
 from tests.integration.compose_stack import Stack, running_stack
+from tests.integration.scripted_investigations import effect_registry, scripted_model
 from tests.integration.test_report_deletion import World
 
 pytestmark = [pytest.mark.docker, pytest.mark.asyncio]
@@ -64,34 +70,59 @@ class Api:
     stack: Stack
     base_url: str
     root: Path
+    backend: ExecutionBackend = ExecutionBackend.TEMPORAL
 
 
 @pytest.fixture(scope="module")
-def api(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Api]:
+def backend() -> ExecutionBackend:
+    """Explicit Temporal execution here; the ``test_local_*`` modules
+    override it with local execution."""
+    return ExecutionBackend.TEMPORAL
+
+
+def _scripted_local(settings: BackendSettings) -> SchedulerProvider:
+    """Local execution with the same scripted model and tools as the worker."""
+    return lambda persistence: local_scheduler(
+        settings,
+        persistence,
+        model=FunctionModel(scripted_model, model_name="scripted"),
+        registry=effect_registry(persistence),
+    )
+
+
+@pytest.fixture(scope="module")
+def api(
+    tmp_path_factory: pytest.TempPathFactory, backend: ExecutionBackend
+) -> Iterator[Api]:
     root = tmp_path_factory.mktemp("artifacts")
-    with running_stack("temporal") as stack:
-        stack.compose("run", "--rm", "temporal-namespace")
-        stack.migrate()
+    temporal = backend is ExecutionBackend.TEMPORAL
+    with running_stack("temporal" if temporal else "postgres") as stack:
+        worker: subprocess.Popen[str] | None = None
         queue = "t21-" + uuid.uuid4().hex
-        worker = subprocess.Popen(
-            [sys.executable, "-m", "tests.integration.investigation_worker"],
-            cwd=ROOT,
-            env={
-                **os.environ,
-                "PYTHONPATH": str(ROOT / "src"),
-                "T13_DATABASE_URL": stack.app_url,
-                "T13_TEMPORAL_ADDRESS": f"127.0.0.1:{stack.temporal_port}",
-                "T13_TASK_QUEUE": queue,
-                "T13_CRASH_HOLD": "0",
-                "T14_PROVIDERS": "scripted",
-            },
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
+        if temporal:
+            stack.compose("run", "--rm", "temporal-namespace")
+        stack.migrate()
+        if temporal:
+            worker = subprocess.Popen(
+                [sys.executable, "-m", "tests.integration.investigation_worker"],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(ROOT / "src"),
+                    "T13_DATABASE_URL": stack.app_url,
+                    "T13_TEMPORAL_ADDRESS": f"127.0.0.1:{stack.temporal_port}",
+                    "T13_TASK_QUEUE": queue,
+                    "T13_CRASH_HOLD": "0",
+                    "T14_PROVIDERS": "scripted",
+                },
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
         settings = BackendSettings(
             database_url=SecretStr(stack.app_url),
-            temporal_address=f"127.0.0.1:{stack.temporal_port}",
+            execution_backend=backend,
+            temporal_address=f"127.0.0.1:{stack.temporal_port}" if temporal else None,
             temporal_task_queue=queue,
             auth_signing_key=SecretStr(KEY),
             auth_issuer=ISSUER,
@@ -109,6 +140,8 @@ def api(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Api]:
                         max_seconds=60,
                         terminal_grace_seconds=1,
                     ),
+                    # Temporal: the production scheduler (worker above).
+                    scheduler=None if temporal else _scripted_local(settings),
                 ),
                 host="127.0.0.1",
                 port=port,
@@ -123,12 +156,15 @@ def api(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Api]:
                 assert datetime.now(UTC) < deadline, "API did not start"
                 assert thread.is_alive(), "API failed to start"
                 threading.Event().wait(0.1)
-            yield Api(stack, f"http://127.0.0.1:{port}", root)
+            health = httpx.get(f"http://127.0.0.1:{port}/healthz").json()
+            assert health["execution_backend"] == backend.value
+            yield Api(stack, f"http://127.0.0.1:{port}", root, backend)
         finally:
             server.should_exit = True
             thread.join(timeout=15)
-            worker.kill()
-            worker.communicate(timeout=10)
+            if worker is not None:
+                worker.kill()
+                worker.communicate(timeout=10)
 
 
 @pytest_asyncio.fixture

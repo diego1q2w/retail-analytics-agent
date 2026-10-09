@@ -1,12 +1,16 @@
 """Temporal assembly: client, scheduler and the investigation worker.
 
-The only composition module that knows the investigations run on Temporal.
+The only composition module that knows the investigations run on Temporal,
+used only with ``RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal`` (opt-in).
 General construction (``bootstrap.investigations``) builds runtime-neutral
 services; the worker, API and evaluation roots take them here to connect,
 schedule, bind and register.
 """
 
 from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from pydantic_ai.durable_exec.temporal import PydanticAIPlugin
 from temporalio.client import Client
@@ -16,6 +20,7 @@ from retail_analytics.adapters.temporal.activities import REGISTERED, bind_runti
 from retail_analytics.adapters.temporal.agent import bind_agent_services
 from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
 from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
+from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.investigations import InvestigationServices
 
 
@@ -28,6 +33,20 @@ async def connect(address: str, namespace: str, *, lazy: bool = False) -> Client
 
 def scheduler(client: Client, task_queue: str) -> TemporalInvestigationScheduler:
     return TemporalInvestigationScheduler(client, task_queue)
+
+
+@asynccontextmanager
+async def api_scheduler(
+    settings: BackendSettings,
+) -> AsyncIterator[TemporalInvestigationScheduler]:
+    """The API's scheduler: starts workflows for ``retail-analytics-worker``.
+
+    The client connects lazily, so the API can start before Temporal.
+    """
+    client = await connect(
+        settings.temporal_address or "", settings.temporal_namespace, lazy=True
+    )
+    yield scheduler(client, settings.temporal_task_queue)
 
 
 def bind_worker(services: InvestigationServices) -> None:

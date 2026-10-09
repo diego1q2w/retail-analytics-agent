@@ -10,7 +10,9 @@ from retail_analytics.bootstrap.config import (
     RuntimeMode,
     load_backend_settings,
     load_cli_settings,
+    missing_api_settings,
 )
+from retail_analytics.domain.runs import ExecutionBackend
 
 SECRET = "sk-test-do-not-print-0123456789"
 LIVE_ENV = {
@@ -35,12 +37,87 @@ def test_live_mode_lists_every_missing_required_setting() -> None:
     message = str(caught.value)
     for name in (
         "RETAIL_ANALYTICS_DATABASE_URL",
-        "RETAIL_ANALYTICS_TEMPORAL_ADDRESS",
         "RETAIL_ANALYTICS_BIGQUERY_PROJECT",
         "RETAIL_ANALYTICS_GEMINI_API_KEY",
         "RETAIL_ANALYTICS_AUTH_SIGNING_KEY",
     ):
         assert name in message
+    # Local execution (the default) never needs Temporal.
+    assert "TEMPORAL" not in message
+
+
+def test_execution_backend_defaults_to_local_independently_of_mode() -> None:
+    assert load_backend_settings(environ={}, env_file=None).execution_backend is (
+        ExecutionBackend.LOCAL
+    )
+    live = {k: v for k, v in LIVE_ENV.items() if "TEMPORAL" not in k}
+    settings = load_backend_settings(environ=live, env_file=None)
+    assert settings.mode is RuntimeMode.LIVE
+    assert settings.execution_backend is ExecutionBackend.LOCAL
+    assert settings.temporal_address is None
+
+
+def test_old_temporal_address_alone_does_not_select_temporal() -> None:
+    settings = load_backend_settings(environ=LIVE_ENV, env_file=None)
+    assert settings.temporal_address == "localhost:7233"
+    assert settings.execution_backend is ExecutionBackend.LOCAL
+
+
+def test_live_temporal_backend_requires_the_temporal_address() -> None:
+    env = {
+        **{k: v for k, v in LIVE_ENV.items() if "TEMPORAL" not in k},
+        "RETAIL_ANALYTICS_EXECUTION_BACKEND": "temporal",
+    }
+    with pytest.raises(ConfigError) as caught:
+        load_backend_settings(environ=env, env_file=None)
+    assert "RETAIL_ANALYTICS_TEMPORAL_ADDRESS" in str(caught.value)
+    assert SECRET not in str(caught.value)
+    settings = load_backend_settings(
+        environ={**env, "RETAIL_ANALYTICS_TEMPORAL_ADDRESS": "localhost:7233"},
+        env_file=None,
+    )
+    assert settings.execution_backend is ExecutionBackend.TEMPORAL
+
+
+def test_invalid_execution_backend_is_named_without_its_value() -> None:
+    with pytest.raises(ConfigError) as caught:
+        load_backend_settings(
+            environ={"RETAIL_ANALYTICS_EXECUTION_BACKEND": "celery-secret-xyz"},
+            env_file=None,
+        )
+    message = str(caught.value)
+    assert "RETAIL_ANALYTICS_EXECUTION_BACKEND" in message
+    assert "celery-secret-xyz" not in message
+
+
+def test_api_requirements_follow_the_execution_backend() -> None:
+    local = BackendSettings()
+    assert missing_api_settings(local) == [
+        "RETAIL_ANALYTICS_DATABASE_URL",
+        "RETAIL_ANALYTICS_AUTH_SIGNING_KEY",
+    ]
+    temporal = BackendSettings(execution_backend=ExecutionBackend.TEMPORAL)
+    assert "RETAIL_ANALYTICS_TEMPORAL_ADDRESS" in missing_api_settings(temporal)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS", "0"),
+        ("RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS", "65"),
+        ("RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS", "-1"),
+        ("RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS", "301"),
+    ],
+)
+def test_local_execution_limits_are_bounded(name: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=name):
+        load_backend_settings(environ={name: value}, env_file=None)
+
+
+def test_local_execution_limit_defaults() -> None:
+    settings = BackendSettings()
+    assert settings.local_max_concurrent_runs == 4
+    assert settings.local_shutdown_grace_seconds == 10.0
 
 
 def test_empty_values_count_as_missing() -> None:

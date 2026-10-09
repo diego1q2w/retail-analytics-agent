@@ -102,10 +102,15 @@ FORBIDDEN_AT_IMPORT_TIME_BY_LAYER: dict[str, frozenset[str]] = {
 # directly (``check_sources``) or transitively (``check_runtime_neutral``).
 # Pydantic AI's engine-neutral ``pydantic_ai.durable_exec`` package is imported
 # by Pydantic AI itself and is not Temporal.
+# ``bootstrap.api`` and ``bootstrap.execution`` are the default (local
+# execution) startup path; the API loads ``bootstrap.temporal`` lazily, only
+# when Temporal execution is selected.
 RUNTIME_NEUTRAL_MODULES = (
     "adapters.agent",
     "adapters.models",
     "adapters.local",
+    "bootstrap.api",
+    "bootstrap.execution",
     "bootstrap.investigations",
     "bootstrap.local_investigations",
 )

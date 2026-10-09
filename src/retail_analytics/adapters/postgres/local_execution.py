@@ -8,6 +8,8 @@
   distributed lease: losing the connection silently releases the lock.
 - ``PostgresOrphanedLocalRuns``: active local runs left by an ended manager
   and local sessions with queued requests nobody will start.
+- ``PostgresActiveExecutions``: unfinished work of a backend, checked before
+  a process with the other backend starts.
 """
 
 from __future__ import annotations
@@ -23,6 +25,9 @@ from retail_analytics.adapters.postgres.investigation_recovery import (
     sessions_led_by,
 )
 from retail_analytics.adapters.postgres.schema import run_inputs, runs
+from retail_analytics.application.contracts.execution_backends import (
+    ForeignExecutions,
+)
 from retail_analytics.domain.investigations import InputKind, InputStatus
 from retail_analytics.domain.runs import ACTIVE_RUN_STATUSES, ExecutionBackend
 
@@ -135,3 +140,42 @@ class PostgresOrphanedLocalRuns:
                 )
             ).scalars()
         )
+
+
+class PostgresActiveExecutions:
+    def __init__(self, db: Database) -> None:
+        self._db = db
+
+    async def owned_by(
+        self, backend: ExecutionBackend, *, sample: int
+    ) -> ForeignExecutions:
+        return await self._db.transaction(self._owned_by, backend, sample)
+
+    @staticmethod
+    def _owned_by(
+        connection: sa.Connection, backend: ExecutionBackend, sample: int
+    ) -> ForeignExecutions:
+        active = sa.and_(
+            runs.c.execution_backend == backend.value, runs.c.status.in_(_ACTIVE)
+        )
+        count = connection.execute(
+            sa.select(sa.func.count()).select_from(runs).where(active)
+        ).scalar_one()
+        run_ids = tuple(
+            connection.execute(
+                sa.select(runs.c.run_id)
+                .where(active)
+                .order_by(runs.c.created_at, runs.c.run_id)
+                .limit(sample)
+            ).scalars()
+        )
+        queued = connection.execute(
+            sa.select(sa.func.count())
+            .select_from(run_inputs)
+            .where(
+                run_inputs.c.kind == InputKind.QUEUED.value,
+                run_inputs.c.status == InputStatus.PENDING.value,
+                run_inputs.c.session_id.in_(sessions_led_by(backend)),
+            )
+        ).scalar_one()
+        return ForeignExecutions(backend, int(count), int(queued), run_ids)

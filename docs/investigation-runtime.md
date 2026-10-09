@@ -1,12 +1,57 @@
-# Durable investigation runtime
+# Investigation runtime
 
-Each investigation runs as one Pydantic AI agent inside a Temporal workflow.
-The agent can explore, call tools, ask a clarification or produce an answer.
-Analytical guidelines do not impose a fixed sequence of stages.
+Each investigation runs one Pydantic AI agent that can explore, call tools,
+ask a clarification or produce an answer. Analytical guidelines do not impose
+a fixed sequence of stages. Two execution backends run the same application
+steps and the same agent; they differ only in how work survives a process
+ending.
 
-## Local worker
+## Selecting the execution backend
 
-After configuring PostgreSQL and Temporal and running migrations:
+`RETAIL_ANALYTICS_EXECUTION_BACKEND` chooses where investigations execute. It
+is independent of `RETAIL_ANALYTICS_MODE`: fixture and live (real Gemini/GPT
+and BigQuery) both work with either backend.
+
+| | `local` (default) | `temporal` (opt-in) |
+| --- | --- | --- |
+| Executes in | `retail-analytics-api` (one process) | `retail-analytics-worker` (Temporal workflows); the API only schedules |
+| Services | PostgreSQL | PostgreSQL, Temporal server and namespace |
+| CLI disconnect | the run keeps going | the run keeps going |
+| API/worker process stops or dies | running investigations end **interrupted** (never resumed); the user sends a new request | the workflow resumes on a worker |
+| Settings | `RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS` (4), `RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS` (10) | `RETAIL_ANALYTICS_TEMPORAL_ADDRESS` (required), `_TEMPORAL_NAMESPACE`, `_TEMPORAL_TASK_QUEUE` |
+
+`./scripts/bootstrap.sh` and `./scripts/dev.sh` follow the setting; both also
+accept `--execution-backend local|temporal` for one run (bootstrap writes it
+to the environment file only when the key is new; an explicit value is never
+changed). With `local`, dev starts PostgreSQL (plus the telemetry stack) and
+one API process; no Temporal container, namespace job or worker, and nothing
+on that startup path imports the Temporal SDK. `retail-analytics-worker`
+exits at once (status 3) with an instruction. With `temporal`, dev starts
+Temporal and its namespace, the worker and the API, exactly as before;
+`/healthz` and `analytics status` report the backend that started.
+
+An environment file from before the setting existed has no
+`RETAIL_ANALYTICS_EXECUTION_BACKEND`, so it runs local even though it still
+names a Temporal address; the next bootstrap adds `local` and says so.
+Temporal settings, containers and volumes are left as they are.
+
+Runs are never moved between backends. Every run records its backend
+(`runs.execution_backend`). The API refuses to start while the other backend
+still has an active run or a queued request, names the runs and says what to
+do: start once with the original backend to let them finish or cancel them
+(`./scripts/dev.sh --execution-backend temporal`, then `analytics cancel`), or
+stay on it. Nothing is converted, interrupted or reset by switching. Only one
+API process with local execution may use a database at a time: a second one
+fails at startup.
+
+The Temporal composition (`bootstrap/temporal.py`) is imported only when
+`temporal` is selected. The production design keeps Temporal with separately
+scaled workers; the local backend is the simpler laptop/demo topology.
+
+## Temporal worker (opt-in)
+
+With `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal`, after configuring
+PostgreSQL and Temporal and running migrations:
 
 ```sh
 retail-analytics-worker
@@ -18,7 +63,8 @@ Namespace and task queue use the existing backend settings. In fixture mode
 the worker uses an offline model and returns a partial answer without
 warehouse findings. In live mode (`RETAIL_ANALYTICS_MODE=live`) it runs the
 Gemini primary / GPT backup chain with discovery and guarded query execution;
-see [model providers](model-providers.md).
+see [model providers](model-providers.md). The local backend builds the same
+model and tools (`bootstrap/execution.py`).
 
 `bootstrap.investigations.build_investigations` composes the application
 services and one permission-filtered tool catalog (the same small set on every
@@ -51,10 +97,9 @@ using real PostgreSQL, Temporal and all application guards.
 ## Runtime boundary
 
 Investigation behaviour is split from the engine that executes it. Two
-execution backends implement it: the durable Temporal workflow (described
-above) and an in-process local manager (see "Local execution backend" below).
-The local backend is available through explicit construction only; startup
-commands and settings do not select it yet.
+execution backends implement it: the durable Temporal workflow and an
+in-process local manager (see "Local execution backend" below), selected by
+`RETAIL_ANALYTICS_EXECUTION_BACKEND` (see above).
 
 - Application (`application/investigation_runtime.py`): the steps an
   investigation takes - begin, prepare a model step, release an answer, ask,
@@ -95,7 +140,8 @@ investigation as an asyncio task of the process that opens it - the API
 process. It implements the same `InvestigationScheduler` port and carries out
 the same lifecycle decisions as the workflow, over the same
 `InvestigationRuntime` steps and shared agent; it holds no business rules of
-its own. `bootstrap/local_investigations.py` composes it:
+its own. `bootstrap/local_investigations.py` composes it; with local execution
+the API opens it in its lifespan (`bootstrap.execution.local_scheduler`):
 
 ```python
 local = build_local_investigations(settings, persistence, access, model)
@@ -110,8 +156,8 @@ What it promises, and what it does not:
 - Tasks belong to the manager (the application lifespan), never to an HTTP
   request or SSE connection. Clients disconnect and reconnect freely;
   attachment replays persisted events and never starts or restarts work.
-  Concurrent agent work is bounded (`max_concurrent`, default 4); waiting
-  runs do not hold a slot.
+  Concurrent agent work is bounded (`RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS`,
+  default 4); waiting runs do not hold a slot.
 - Starting the same run twice (resubmission, concurrent duplicates, a direct
   scheduler call) never creates a second task. One active run per session,
   steering, queueing, clarification, cancellation, stale-context restarts,
@@ -122,7 +168,8 @@ What it promises, and what it does not:
   limit while the process lives.
 - Process lifetime only; no replay. The manager does not retry steps or
   persist agent progress. When the process stops, shutdown stops admission,
-  cancels the tasks and, within a bounded grace period (default 10 s), ends
+  cancels the tasks and, within a bounded grace period
+  (`RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS`, default 10 s), ends
   each run as **interrupted**: FAILED (CANCELLED if cancellation was already
   requested) with a notice, the open question closed, pending steering and the
   session's queued requests discarded (kept as history, named in the notice,
@@ -221,7 +268,18 @@ the run as "model unavailable" instead of being retried.
 python -m pytest -m docker tests/integration/test_investigations.py
 python -m pytest -m docker tests/integration/test_local_investigations.py \
   tests/integration/test_local_agent_runtime.py
+python -m pytest -m docker tests/integration/test_local_http_api.py \
+  tests/integration/test_local_cli.py tests/integration/test_dev_up.py
 ```
+
+`test_local_http_api.py` and `test_local_cli.py` run the HTTP/SSE and CLI
+suites of `test_http_api.py` / `test_cli.py` unchanged with local execution
+(reconnect with `Last-Event-ID`, attach from a new process, clarification,
+cancel, report save/read, typed deletion confirmation and declining it).
+`test_dev_up.py` starts `./scripts/dev.sh` on an isolated Compose project:
+PostgreSQL only by default, `--execution-backend temporal` for the durable
+stack, and a Temporal run left active that blocks local startup until Temporal
+finishes it.
 
 The local-backend suites use PostgreSQL only (no Temporal service). They run
 the acceptance conversations of `test_agent_runtime.py` unchanged on the local

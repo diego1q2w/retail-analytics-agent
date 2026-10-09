@@ -1,8 +1,14 @@
-"""One local command that runs the API and the worker together: ``./scripts/dev.sh``.
+"""One local command that runs the backend: ``./scripts/dev.sh``.
 
-Local development only. In production the API and the worker are separate
-services (they scale, fail and deploy independently); this module is a small
-foreground supervisor for a laptop, not a process manager to deploy.
+Local development only; a small foreground supervisor for a laptop, not a
+process manager to deploy. What it runs follows the execution backend
+(``RETAIL_ANALYTICS_EXECUTION_BACKEND``, or ``--execution-backend`` for this
+run):
+
+- ``local`` (default): one ``retail-analytics-api`` process that hosts the
+  investigations; PostgreSQL only, no Temporal, no worker.
+- ``temporal`` (opt-in): Temporal plus ``retail-analytics-worker`` and
+  ``retail-analytics-api`` (in production these are separate services).
 
 What it does, in order:
 
@@ -10,15 +16,17 @@ What it does, in order:
    that file, never a stray ``.env`` or parent-shell ``RETAIL_ANALYTICS_*``);
 2. checks the API port is free (refuses with an actionable message otherwise);
 3. unless ``--no-services``, reuses the bootstrap steps to make sure Docker,
-   PostgreSQL, Temporal and the migrations are in place (compose project from
+   PostgreSQL (and Temporal with its namespace, for the Temporal backend) and
+   the migrations are in place (compose project from
    ``--project``; unrelated containers are never touched). MLflow, Prometheus
    and Grafana start too unless ``--no-telemetry`` (or the environment file
    sets ``RETAIL_ANALYTICS_TELEMETRY_ENABLED=false``);
-4. starts ``retail_analytics.bootstrap.worker`` and ``...bootstrap.api`` as child
-   processes, prefixes their output with ``[worker]`` / ``[api]`` and waits
-   until the worker reports it is connected and ``/healthz`` answers;
-5. on Ctrl-C or SIGTERM stops both (SIGTERM, then SIGKILL after a grace
-   period) and exits 0. If either child exits on its own, stops the other and
+4. starts ``retail_analytics.bootstrap.api`` (and, for Temporal,
+   ``...bootstrap.worker``) as child processes, prefixes their output with
+   ``[api]`` / ``[worker]`` and waits until ``/healthz`` answers for the
+   selected backend (and the worker reports it is connected);
+5. on Ctrl-C or SIGTERM stops them (SIGTERM, then SIGKILL after a grace
+   period) and exits 0. If a child exits on its own, stops the others and
    exits 1 naming the one that failed.
 
 Output never contains secret values: every line from a child is scrubbed of the
@@ -29,6 +37,7 @@ command to issue one is).
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import socket
@@ -51,10 +60,13 @@ from retail_analytics.bootstrap.config import (
     BackendSettings,
     ConfigError,
     load_backend_settings,
+    missing_api_settings,
 )
+from retail_analytics.domain.runs import ExecutionBackend
 
 # The line retail_analytics.bootstrap.worker prints once it is connected to
-# Temporal and polling its task queue (a unit test keeps this in sync).
+# Temporal and polling its task queue (a unit test keeps this in sync). Only
+# the Temporal backend runs a worker.
 WORKER_READY_MARKER = "investigation worker ready"
 SERVICE_STEPS = ("docker", "services", "telemetry", "migrate")
 READY_TIMEOUT_SECONDS = 90.0
@@ -270,7 +282,10 @@ def check_backing_services(settings: BackendSettings) -> None:
         url = make_url(settings.database_url.get_secret_value())
         if url.host and url.port and not _reachable(url.host, url.port):
             problems.append(f"PostgreSQL is not reachable at {url.host}:{url.port}")
-    if settings.temporal_address:
+    if (
+        settings.execution_backend is ExecutionBackend.TEMPORAL
+        and settings.temporal_address
+    ):
         host, _, port = settings.temporal_address.rpartition(":")
         if host and port.isdigit() and not _reachable(host, int(port)):
             problems.append(f"Temporal is not reachable at {settings.temporal_address}")
@@ -286,11 +301,7 @@ def load_settings(env: Mapping[str, str]) -> BackendSettings:
         settings = load_backend_settings(environ=env)
     except ConfigError as exc:
         raise DevUpError(str(exc)) from None
-    missing = [
-        local_env.PREFIX + name.upper()
-        for name in ("database_url", "temporal_address", "auth_signing_key")
-        if getattr(settings, name) is None
-    ]
+    missing = missing_api_settings(settings)
     if missing:
         raise DevUpError(
             "missing in the environment file: "
@@ -300,20 +311,45 @@ def load_settings(env: Mapping[str, str]) -> BackendSettings:
     return settings
 
 
-def healthz_ok(base_url: str) -> bool:
+def healthz_ok(base_url: str, backend: ExecutionBackend | None = None) -> bool:
+    """``/healthz`` answers (and, given ``backend``, reports that backend)."""
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(base_url + "/healthz", timeout=2) as response:
-            return bool(response.status == 200)
+            if response.status != 200:
+                return False
+            if backend is None:
+                return True
+            body = json.loads(response.read() or b"{}")
+            return bool(body.get("execution_backend") == backend.value)
     except (urllib.error.URLError, OSError, ValueError):
         return False
 
 
-def child_specs() -> tuple[ChildSpec, ...]:
+def child_specs(
+    backend: ExecutionBackend = ExecutionBackend.LOCAL,
+) -> tuple[ChildSpec, ...]:
+    """The API alone (local execution), or the worker and the API (Temporal)."""
     python = sys.executable
+    api = ChildSpec("api", (python, "-m", "retail_analytics.bootstrap.api"))
+    if backend is ExecutionBackend.TEMPORAL:
+        worker = ChildSpec(
+            "worker", (python, "-m", "retail_analytics.bootstrap.worker")
+        )
+        return (worker, api)
+    return (api,)
+
+
+def adoption_hint(ctx: local_setup.SetupContext) -> str | None:
+    """Explain the local default to an environment file from before it."""
+    if ctx.execution_backend or ctx.values.get(local_env.EXECUTION_BACKEND_KEY):
+        return None
+    if not ctx.values.get(local_env.TEMPORAL_ADDRESS_KEY):
+        return None
     return (
-        ChildSpec("worker", (python, "-m", "retail_analytics.bootstrap.worker")),
-        ChildSpec("api", (python, "-m", "retail_analytics.bootstrap.api")),
+        f"{local_env.EXECUTION_BACKEND_KEY} is not set: using local execution "
+        "(the default; Temporal is opt-in). Rerun ./scripts/bootstrap.sh to "
+        "record it, or set it to temporal to keep Temporal execution."
     )
 
 
@@ -337,7 +373,7 @@ def run_dev(
     supervisor_out: IO[str] | None = None,
     stop_grace: float = STOP_GRACE_SECONDS,
 ) -> int:
-    """Run API and worker until stopped. Returns the process exit code."""
+    """Run the backend processes until stopped. Returns the exit code."""
     echo = ctx.echo
     if not ctx.env_file.is_file():
         raise DevUpError(
@@ -360,14 +396,20 @@ def run_dev(
         check_backing_services(settings)
 
     env["PYTHONUNBUFFERED"] = "1"
+    backend = settings.execution_backend
+    temporal = backend is ExecutionBackend.TEMPORAL
     supervisor = Supervisor(
-        specs or child_specs(),
+        specs or child_specs(backend),
         env=env,
         cwd=ctx.root,
         hidden=local_env.secret_values(ctx.values),
-        ready_markers={"worker": WORKER_READY_MARKER},
+        ready_markers={"worker": WORKER_READY_MARKER} if temporal else {},
         out=supervisor_out,
-        grace_seconds=stop_grace,
+        # Local execution: let the API end its runs truthfully (interrupted)
+        # within its own shutdown grace before it could be killed.
+        grace_seconds=stop_grace
+        if temporal
+        else max(stop_grace, settings.local_shutdown_grace_seconds + 5),
     )
     base_url = api_base_url(settings)
     previous: dict[signal.Signals, Any] = {}
@@ -377,34 +419,56 @@ def run_dev(
                 number, lambda _n, _f: supervisor.request_stop()
             )
     code = 0
+
+    def ready() -> list[tuple[str, bool]]:
+        checks = [
+            (
+                f"api (/healthz, {backend.value} execution)",
+                healthz_ok(base_url, backend),
+            )
+        ]
+        if temporal:
+            checks.insert(
+                0, ("worker (Temporal connection)", supervisor.worker_ready("worker"))
+            )
+        return checks
+
     try:
-        echo("[dev] starting worker and api (local development only)")
+        hint = adoption_hint(ctx)
+        if hint:
+            echo(f"[dev] {hint}")
+        echo(
+            "[dev] starting worker and api (Temporal execution; local development only)"
+            if temporal
+            else "[dev] starting api (local execution: investigations run in the "
+            "API process; no Temporal, no worker; local development only)"
+        )
         supervisor.start()
         outcome = supervisor.wait_until(
-            lambda: supervisor.worker_ready("worker") and healthz_ok(base_url),
-            ready_timeout,
+            lambda: all(ok for _, ok in ready()), ready_timeout
         )
         if outcome == "timeout":
-            waiting = [
-                label
-                for label, ok in (
-                    ("worker (Temporal connection)", supervisor.worker_ready("worker")),
-                    ("api (/healthz)", healthz_ok(base_url)),
-                )
-                if not ok
-            ]
+            waiting = [label for label, ok in ready() if not ok]
             echo(
                 f"[dev] not ready after {ready_timeout:.0f}s; still waiting for "
                 + ", ".join(waiting)
             )
             code = 1
         elif outcome is None:
-            echo(f"[dev] ready: API {base_url}  (mode: {settings.mode.value})")
+            echo(
+                f"[dev] ready: API {base_url}  (mode: {settings.mode.value}, "
+                f"execution: {backend.value})"
+            )
+            if not temporal:
+                echo(
+                    "[dev] local execution: disconnecting the CLI keeps a run "
+                    "going; stopping the API interrupts running investigations"
+                )
             if local_setup.telemetry_wanted(ctx) and services:
                 for name, url in local_setup.telemetry_urls(ctx).items():
                     echo(f"[dev] {name}: {url}")
             echo(f"[dev] dev token (printed to stdout only): {token_hint(ctx)}")
-            echo("[dev] Ctrl-C stops both")
+            echo("[dev] Ctrl-C stops " + ("both" if temporal else "it"))
             gone = supervisor.run_until_event()
             if gone is not None:
                 code = _report_exit(echo, gone)
@@ -424,7 +488,7 @@ def _report_exit(echo: Echo, gone: tuple[str, int]) -> int:
     name, status = gone
     echo(
         f"[dev] {name} exited unexpectedly with status {status}; "
-        "stopping the other process"
+        "stopping the other processes (if any)"
     )
     return 1
 
@@ -445,9 +509,21 @@ def _report_exit(echo: Echo, gone: tuple[str, int]) -> int:
     ),
 )
 @click.option(
+    "--execution-backend",
+    type=click.Choice(local_env.EXECUTION_BACKENDS),
+    default=None,
+    help=(
+        "Override RETAIL_ANALYTICS_EXECUTION_BACKEND for this run: local (the "
+        "default; API only) or temporal (Temporal, worker and API)."
+    ),
+)
+@click.option(
     "--no-services",
     is_flag=True,
-    help="Do not touch Docker; only check PostgreSQL and Temporal are reachable.",
+    help=(
+        "Do not touch Docker; only check PostgreSQL (and Temporal, with "
+        "Temporal execution) are reachable."
+    ),
 )
 @click.option(
     "--telemetry/--no-telemetry",
@@ -467,17 +543,18 @@ def _report_exit(echo: Echo, gone: tuple[str, int]) -> int:
 def main(
     env_file: Path | None,
     project: str | None,
+    execution_backend: str | None,
     no_services: bool,
     telemetry: bool,
     ready_timeout: float,
 ) -> None:
-    """Run the worker and the API together for local development.
+    """Run the backend for local development.
 
-    Starts postgres, temporal and the telemetry stack (unless --no-services
-    or --no-telemetry), applies migrations,
-    then runs retail-analytics-worker and retail-analytics-api with prefixed
-    logs. Ctrl-C stops both. Not for production: there the two are separate
-    services.
+    Starts postgres and the telemetry stack (unless --no-services or
+    --no-telemetry), applies migrations, then runs retail-analytics-api,
+    which hosts the investigations (local execution, the default). With
+    Temporal execution it also starts temporal and retail-analytics-worker.
+    Ctrl-C stops everything it started. Not for production.
     """
     ctx = local_setup.SetupContext(
         root=local_setup.ROOT,
@@ -486,6 +563,7 @@ def main(
         or os.environ.get("COMPOSE_PROJECT_NAME")
         or local_setup.DEFAULT_PROJECT,
         telemetry=telemetry,
+        execution_backend=execution_backend,
     )
     try:
         code = run_dev(ctx, services=not no_services, ready_timeout=ready_timeout)

@@ -86,7 +86,7 @@ so that a slow start can be told apart from a long answer:
   to the backup.
 - **Fallback.** When the primary has spent its attempts, or rejects the key
   or the model (401/403/404), the request goes to the backup. The primary
-  then cools down: for that period, requests from every run in the worker go
+  then cools down: for that period, requests from every run in the process go
   straight to the backup without probing it again.
 - **No retry.** Other rejections (for example 400) fall back once and are
   not retried.
@@ -156,9 +156,10 @@ RETAIL_ANALYTICS_OPENAI_API_KEY=<OpenAI key>   # optional: enables the backup
 ```
 
 The keys need the `RETAIL_ANALYTICS_` prefix; unprefixed `OPENAI_API_KEY` or
-`GEMINI_API_KEY` variables are not read. In live mode, `retail-analytics-worker`
-builds the chain, discovery and guarded query execution. Fixture mode keeps the
-offline model.
+`GEMINI_API_KEY` variables are not read. In live mode, the process that runs
+investigations (`retail-analytics-api` with local execution, the default, or
+`retail-analytics-worker` with Temporal execution) builds the chain, discovery
+and guarded query execution. Fixture mode keeps the offline model.
 
 ## Tests
 

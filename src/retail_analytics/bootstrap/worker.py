@@ -1,4 +1,10 @@
-"""Composition root for the Temporal investigation worker."""
+"""Composition root for the Temporal investigation worker.
+
+Used only with ``RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal``. With local
+execution (the default) investigations run inside ``retail-analytics-api``,
+so this command exits at once with an instruction instead of starting
+duplicate work.
+"""
 
 from __future__ import annotations
 
@@ -6,24 +12,24 @@ import asyncio
 
 import click
 
-from retail_analytics.adapters.models.fixture import fixture_model
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.investigation_recovery import (
     PostgresRecoveryCandidates,
 )
 from retail_analytics.application.investigation_recovery import InvestigationRecovery
 from retail_analytics.bootstrap.access import build_access, local_token_authority
-from retail_analytics.bootstrap.artifacts import build_artifacts
-from retail_analytics.bootstrap.budgets import build_run_budgets
-from retail_analytics.bootstrap.config import BackendSettings, ConfigError, RuntimeMode
-from retail_analytics.bootstrap.discovery import build_discovery
-from retail_analytics.bootstrap.entrypoint import settings_or_exit
+from retail_analytics.bootstrap.config import BackendSettings, ConfigError
+from retail_analytics.bootstrap.entrypoint import (
+    CONFIG_ERROR_EXIT_CODE,
+    settings_or_exit,
+)
+from retail_analytics.bootstrap.execution import (
+    WORKER_NOT_USED_MESSAGE,
+    investigation_model,
+    investigation_wiring,
+)
 from retail_analytics.bootstrap.investigations import build_investigations
-from retail_analytics.bootstrap.knowledge import build_knowledge
-from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import persistence_from_settings
-from retail_analytics.bootstrap.query import build_query_execution
-from retail_analytics.bootstrap.retrieval import build_retrieval
 from retail_analytics.bootstrap.telemetry import install_from_settings
 from retail_analytics.bootstrap.temporal import (
     connect,
@@ -32,6 +38,10 @@ from retail_analytics.bootstrap.temporal import (
 from retail_analytics.bootstrap.temporal import (
     scheduler as temporal_scheduler,
 )
+from retail_analytics.domain.runs import ExecutionBackend
+
+# Exit status when the worker is not part of the selected execution backend.
+NOT_USED_EXIT_CODE = 3
 
 
 async def run_worker(settings: BackendSettings) -> None:
@@ -39,46 +49,20 @@ async def run_worker(settings: BackendSettings) -> None:
         raise ConfigError(["RETAIL_ANALYTICS_TEMPORAL_ADDRESS: required for worker"])
     install_from_settings(settings, "worker")
     # Fail on configuration problems before connecting to anything.
-    live_model = provider_chain(settings) if settings.mode is RuntimeMode.LIVE else None
+    model = investigation_model(settings)
     client = await connect(settings.temporal_address, settings.temporal_namespace)
     persistence = persistence_from_settings(settings)
     try:
         access = build_access(persistence, local_token_authority(settings))
         scheduler = temporal_scheduler(client, settings.temporal_task_queue)
-        artifacts = build_artifacts(settings, persistence)
-        retriever = build_retrieval(
-            settings, build_knowledge(persistence, artifacts, access.resolver)
+        services = build_investigations(
+            settings,
+            persistence,
+            access,
+            scheduler,
+            model,
+            **investigation_wiring(settings, persistence, access).kwargs(),
         )
-        if live_model is None:
-            services = build_investigations(
-                settings,
-                persistence,
-                access,
-                scheduler,
-                fixture_model(),
-                artifacts=artifacts,
-                retriever=retriever,
-            )
-        else:
-            discovery = build_discovery(settings)
-            queries = build_query_execution(
-                settings,
-                persistence,
-                access.resolver,
-                discovery,
-                budgets=build_run_budgets(settings, persistence.budgets),
-            )
-            services = build_investigations(
-                settings,
-                persistence,
-                access,
-                scheduler,
-                live_model,
-                discovery=discovery,
-                queries=queries,
-                artifacts=artifacts,
-                retriever=retriever,
-            )
         recovery = InvestigationRecovery(
             PostgresRecoveryCandidates(Database(persistence.engine)),
             services.launcher,
@@ -107,19 +91,22 @@ async def run_worker(settings: BackendSettings) -> None:
 @click.command()
 @click.option("--check-config", is_flag=True, help="Validate settings and exit.")
 def main(check_config: bool) -> None:
-    """Run the durable-execution worker.
+    """Run the Temporal worker (only with Temporal execution).
 
     Fixture mode uses the offline model and no warehouse tools; live mode
     uses the Gemini/GPT provider chain with discovery and query tools. Both
     register Golden methods, preferences, reports, deletion proposals and
-    currency conversion.
+    currency conversion. With local execution it exits with status 3.
     """
     settings = settings_or_exit(check_config)
+    if settings.execution_backend is not ExecutionBackend.TEMPORAL:
+        click.echo(WORKER_NOT_USED_MESSAGE, err=True)
+        raise SystemExit(NOT_USED_EXIT_CODE)
     try:
         asyncio.run(run_worker(settings))
     except ConfigError as error:
         click.echo(str(error), err=True)
-        raise SystemExit(2) from None
+        raise SystemExit(CONFIG_ERROR_EXIT_CODE) from None
     except KeyboardInterrupt:
         pass
 

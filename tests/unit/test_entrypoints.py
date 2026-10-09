@@ -33,6 +33,7 @@ def test_api_health_in_fixture_mode() -> None:
     assert response.json() == {
         "status": "ok",
         "mode": "fixture",
+        "execution_backend": "local",
         "version": __version__,
     }
 
@@ -58,8 +59,17 @@ def test_live_mode_without_settings_exits_with_config_error() -> None:
     assert "RETAIL_ANALYTICS_DATABASE_URL" in result.output
 
 
-def test_worker_requires_temporal_configuration() -> None:
+def test_worker_exits_promptly_with_local_execution() -> None:
     result = CliRunner().invoke(worker.main, [])
+    assert result.exit_code == worker.NOT_USED_EXIT_CODE == 3
+    assert "RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal" in result.output
+    assert "retail-analytics-api" in result.output
+
+
+def test_worker_requires_temporal_configuration() -> None:
+    result = CliRunner().invoke(
+        worker.main, [], env={"RETAIL_ANALYTICS_EXECUTION_BACKEND": "temporal"}
+    )
     assert result.exit_code == 2
     assert "RETAIL_ANALYTICS_TEMPORAL_ADDRESS" in result.output
 
@@ -126,8 +136,19 @@ def test_demo_executives_have_disjoint_products_and_no_admin() -> None:
     assert all(Role.ADMIN not in demo.roles for demo in (a, b))
 
 
-def test_api_requires_database_temporal_and_signing_key() -> None:
+def test_api_requires_database_and_signing_key_but_not_temporal() -> None:
     result = CliRunner().invoke(api.main, [], env={})
+    assert result.exit_code == 2
+    for name in ("RETAIL_ANALYTICS_DATABASE_URL", "RETAIL_ANALYTICS_AUTH_SIGNING_KEY"):
+        assert name in result.output
+    assert "TEMPORAL" not in result.output
+    assert "local execution" in result.output
+
+
+def test_api_with_temporal_execution_also_requires_temporal() -> None:
+    result = CliRunner().invoke(
+        api.main, [], env={"RETAIL_ANALYTICS_EXECUTION_BACKEND": "temporal"}
+    )
     assert result.exit_code == 2
     for name in (
         "RETAIL_ANALYTICS_DATABASE_URL",

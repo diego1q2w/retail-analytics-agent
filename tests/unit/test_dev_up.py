@@ -15,6 +15,7 @@ import pytest
 
 from retail_analytics.bootstrap import dev_up, local_env, local_setup
 from retail_analytics.bootstrap.dev_up import ChildSpec, DevUpError, Supervisor
+from retail_analytics.domain.runs import ExecutionBackend
 
 SECRET = "s3cret-value-1234567890"
 
@@ -160,8 +161,49 @@ def test_unreachable_backing_services_fail_fast(tmp_path: Path) -> None:
     )
     ctx.refresh_values()
     settings = dev_up.load_settings(ctx.child_env())
+    # Local execution: an old Temporal address is not checked.
+    with pytest.raises(DevUpError) as local:
+        dev_up.check_backing_services(settings)
+    assert "PostgreSQL is not reachable" in str(local.value)
+    assert "Temporal" not in str(local.value)
+    ctx.execution_backend = "temporal"
+    settings = dev_up.load_settings(ctx.child_env())
     with pytest.raises(DevUpError, match=r"PostgreSQL is not reachable.*Temporal"):
         dev_up.check_backing_services(settings)
+
+
+def test_temporal_execution_requires_the_temporal_address(tmp_path: Path) -> None:
+    path = tmp_path / "t.env"
+    path.write_text(
+        "RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal\n"
+        "RETAIL_ANALYTICS_DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:1/db\n"
+        f"RETAIL_ANALYTICS_AUTH_SIGNING_KEY={'k' * 40}\n",
+        encoding="utf-8",
+    )
+    ctx = local_setup.SetupContext(
+        root=local_setup.ROOT, env_file=path, project="ra-unit"
+    )
+    ctx.refresh_values()
+    with pytest.raises(DevUpError, match="TEMPORAL_ADDRESS"):
+        dev_up.load_settings(ctx.child_env())
+    # The same file with local execution for this run needs no Temporal.
+    ctx.execution_backend = "local"
+    assert dev_up.load_settings(ctx.child_env()).temporal_address is None
+
+
+def test_adoption_hint_explains_the_local_default_once(tmp_path: Path) -> None:
+    ctx = local_setup.SetupContext(
+        root=local_setup.ROOT, env_file=_env_file(tmp_path), project="ra-unit"
+    )
+    ctx.refresh_values()
+    hint = dev_up.adoption_hint(ctx)
+    assert hint is not None and "local execution" in hint and "temporal" in hint
+    explicit = _env_file(tmp_path, "RETAIL_ANALYTICS_EXECUTION_BACKEND=local\n")
+    ctx = local_setup.SetupContext(
+        root=local_setup.ROOT, env_file=explicit, project="ra-unit"
+    )
+    ctx.refresh_values()
+    assert dev_up.adoption_hint(ctx) is None
 
 
 def test_missing_env_file_points_at_bootstrap(tmp_path: Path) -> None:
@@ -178,12 +220,14 @@ def test_ready_marker_matches_the_worker() -> None:
 
 
 def test_child_specs_run_the_real_entry_points() -> None:
-    modules = {spec.name: spec.argv[2:] for spec in dev_up.child_specs()}
-    assert modules == {
+    local = {spec.name: spec.argv[2:] for spec in dev_up.child_specs()}
+    assert local == {"api": ("retail_analytics.bootstrap.api",)}
+    temporal = dev_up.child_specs(ExecutionBackend.TEMPORAL)
+    assert {spec.name: spec.argv[2:] for spec in temporal} == {
         "worker": ("retail_analytics.bootstrap.worker",),
         "api": ("retail_analytics.bootstrap.api",),
     }
-    assert all(spec.argv[1] == "-m" for spec in dev_up.child_specs())
+    assert all(spec.argv[1] == "-m" for spec in temporal)
 
 
 def test_token_hint_points_at_a_custom_env_file_without_a_token(
@@ -222,7 +266,7 @@ def test_dev_starts_the_services_and_prints_the_urls(
     """Default run: the telemetry step executes and the URLs print; no Docker."""
     ran: list[str] = []
     monkeypatch.setattr(dev_up, "check_port_free", lambda *_: None)
-    monkeypatch.setattr(dev_up, "healthz_ok", lambda _url: True)
+    monkeypatch.setattr(dev_up, "healthz_ok", lambda *_: True)
     env = tmp_path / "d.env"
     env.write_text(
         f"{local_env.PREFIX}DATABASE_URL=postgresql://u:p@127.0.0.1:1/db\n"
@@ -279,6 +323,47 @@ def test_dev_starts_the_services_and_prints_the_urls(
     assert ran == ["docker", "services", "telemetry", "migrate"]
     assert any("Grafana: http://127.0.0.1:53000" in line for line in on)
     assert any("MLflow: http://127.0.0.1:55500" in line for line in on)
+    assert any("execution: local" in line for line in on)
+    assert any("no Temporal, no worker" in line for line in on)
+    # The file predates the selector and still names Temporal: explained.
+    assert any("is not set: using local execution" in line for line in on)
     off = run_once(False)
     assert ran == ["docker", "services", "migrate"]
     assert not any("Grafana" in line for line in off)
+
+
+def test_temporal_readiness_waits_for_the_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With Temporal execution the API alone is not ready: the worker must
+    report its connection; local execution needs no worker at all."""
+    monkeypatch.setattr(dev_up, "check_port_free", lambda *_: None)
+    monkeypatch.setattr(dev_up, "check_backing_services", lambda _settings: None)
+    seen: list[ExecutionBackend | None] = []
+
+    def healthz(_url: str, backend: ExecutionBackend | None = None) -> bool:
+        seen.append(backend)
+        return True
+
+    monkeypatch.setattr(dev_up, "healthz_ok", healthz)
+    lines: list[str] = []
+    ctx = local_setup.SetupContext(
+        root=local_setup.ROOT,
+        env_file=_env_file(tmp_path),
+        project="ra-unit",
+        execution_backend="temporal",
+        echo=lines.append,
+    )
+    silent = py("import time; time.sleep(60)")
+    code = dev_up.run_dev(
+        ctx,
+        services=False,
+        ready_timeout=1.5,
+        specs=[ChildSpec("worker", silent), ChildSpec("api", silent)],
+        install_signals=False,
+        supervisor_out=io.StringIO(),
+        stop_grace=2,
+    )
+    assert code == 1
+    assert any("still waiting for worker (Temporal connection)" in x for x in lines)
+    assert set(seen) == {ExecutionBackend.TEMPORAL}

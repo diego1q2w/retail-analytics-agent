@@ -1,7 +1,8 @@
 """The ``analytics`` CLI as a real subprocess against a real API and worker.
 
 Same stack as the HTTP API test (PostgreSQL + Temporal in Docker, uvicorn in
-this process, a worker subprocess with the scripted model). No live model
+this process, a worker subprocess with the scripted model);
+``test_local_cli`` runs the same tests with local execution. No live model
 calls. The CLI is exercised only through its public commands; a small TCP
 proxy lets one test drop the event stream in the middle of a run.
 """
@@ -29,6 +30,7 @@ from retail_analytics.application.contracts.authorization import Principal
 from tests.integration.test_http_api import (  # noqa: F401  (fixtures reused)
     Api,
     api,
+    backend,
     bearer,
     world,
 )

@@ -8,7 +8,7 @@ credentials and imports nothing from the backend beyond its own settings.
 
 ```sh
 ./scripts/bootstrap.sh
-retail-analytics-worker &  retail-analytics-api &
+./scripts/dev.sh &        # the API (local execution: it runs the investigations)
 retail-analytics-dev-access token demo-a > ~/.analytics-token && chmod 600 ~/.analytics-token
 export ANALYTICS_CLI_TOKEN_FILE=~/.analytics-token     # or ANALYTICS_CLI_TOKEN=...
 analytics chat

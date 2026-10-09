@@ -4,6 +4,10 @@ Runs the ordered, idempotent ``STEPS`` below: environment file, Docker check,
 local services, migrations, demo executives, Golden seeds, verification. Safe to
 rerun; a rerun changes nothing that is already in place.
 
+The services follow the execution backend (``RETAIL_ANALYTICS_EXECUTION_BACKEND``
+or ``--execution-backend``): PostgreSQL only with ``local`` (the default), plus
+Temporal and its namespace with ``temporal``. Nothing is ever stopped or removed.
+
 To make a later feature part of the bootstrap, append a ``BootstrapStep`` to
 ``STEPS`` (README, "How to add a bootstrap step"); do not add a separate setup
 script. Steps shell out to the project's own commands (``python -m ...``,
@@ -64,6 +68,8 @@ class SetupContext:
     interactive: bool = False
     postgres_port: str | None = None
     temporal_port: str | None = None
+    # ``--execution-backend``: this run's choice, over the environment file.
+    execution_backend: str | None = None
     echo: Echo = click.echo
     values: dict[str, str] = field(default_factory=dict)
 
@@ -84,6 +90,8 @@ class SetupContext:
             k: v for k, v in os.environ.items() if not k.startswith(_CONFIG_PREFIXES)
         }
         env.update({k: v for k, v in self.values.items() if v != ""})
+        if self.execution_backend:
+            env[local_env.EXECUTION_BACKEND_KEY] = self.execution_backend
         env[ENV_FILE_VARIABLE] = str(self.env_file)
         return env
 
@@ -192,6 +200,8 @@ def step_environment(ctx: SetupContext) -> StepResult:
             # on a new or completed environment file writes false; an explicit
             # value already in the file is never overwritten.
             (local_env.PREFIX + "TELEMETRY_ENABLED", "" if ctx.telemetry else "false"),
+            # Written only to a new key; an explicit choice is never changed.
+            (local_env.EXECUTION_BACKEND_KEY, ctx.execution_backend),
         )
         if v
     }
@@ -220,6 +230,13 @@ def step_environment(ctx: SetupContext) -> StepResult:
         ctx.echo(f"    {report.key}: {report.render()}")
     for warning in result.warnings:
         ctx.echo(f"    warning: {warning}")
+    configured = ctx.values.get(local_env.EXECUTION_BACKEND_KEY, "")
+    if ctx.execution_backend and configured and configured != ctx.execution_backend:
+        ctx.echo(
+            f"    note: this run uses {ctx.execution_backend} execution "
+            f"(--execution-backend); the environment file keeps {configured}. "
+            f"Edit {local_env.EXECUTION_BACKEND_KEY} there to switch for good."
+        )
     created = "created" if existing is None else "updated"
     return StepResult(
         "done", f"{created} environment file" if result.changed else "no changes"
@@ -237,10 +254,32 @@ def step_docker(ctx: SetupContext) -> StepResult:
     return StepResult("done", "Docker and Compose are available")
 
 
+def selected_backend(ctx: SetupContext) -> str:
+    """``local`` or ``temporal``: the option, else the file, else ``local``."""
+    chosen = (
+        ctx.execution_backend
+        or ctx.values.get(local_env.EXECUTION_BACKEND_KEY)
+        or local_env.DEFAULT_EXECUTION_BACKEND
+    )
+    if chosen not in local_env.EXECUTION_BACKENDS:
+        raise StepFailed(
+            f"{local_env.EXECUTION_BACKEND_KEY} must be one of "
+            + ", ".join(local_env.EXECUTION_BACKENDS)
+        )
+    return chosen
+
+
+def uses_temporal(ctx: SetupContext) -> bool:
+    return selected_backend(ctx) == "temporal"
+
+
 def step_services(ctx: SetupContext) -> StepResult:
+    if not uses_temporal(ctx):
+        ctx.compose("up", "-d", "--wait", "postgres")
+        return StepResult("done", "postgres is healthy (local execution: no Temporal)")
     ctx.compose("up", "-d", "--wait", "postgres", "temporal")
     ctx.compose("run", "--rm", "temporal-namespace")
-    return StepResult("done", "postgres and temporal are healthy")
+    return StepResult("done", "postgres and temporal are healthy (Temporal execution)")
 
 
 GRAFANA_PORT_KEY = "COMPOSE_GRAFANA_PORT"
@@ -325,7 +364,11 @@ STEPS: tuple[BootstrapStep, ...] = (
         "environment", "create/complete the environment file", step_environment
     ),
     BootstrapStep("docker", "check Docker and Compose", step_docker),
-    BootstrapStep("services", "start postgres and temporal", step_services),
+    BootstrapStep(
+        "services",
+        "start postgres (and temporal with Temporal execution)",
+        step_services,
+    ),
     BootstrapStep(
         "telemetry",
         "start mlflow, prometheus and grafana (on by default; --no-telemetry skips)",
@@ -383,6 +426,16 @@ def next_steps(ctx: SetupContext) -> list[str]:
     if custom:
         dev += f" --env-file {ctx.env_file}"
         issue_cmd = f"RETAIL_ANALYTICS_ENV_FILE={ctx.env_file} {issue_cmd}"
+    temporal = uses_temporal(ctx)
+    if temporal and ctx.execution_backend:
+        dev += " --execution-backend temporal"
+    lines += [
+        "Execution: Temporal (opt-in): durable workflows run by "
+        "retail-analytics-worker."
+        if temporal
+        else "Execution: local (default): investigations run inside the API "
+        "process; stopping the API interrupts them (no Temporal, no worker)."
+    ]
     if telemetry_wanted(ctx):
         lines += [
             "Telemetry is on: "
@@ -391,13 +444,15 @@ def next_steps(ctx: SetupContext) -> list[str]:
     lines += [
         "Next:",
         f"  {dev}",
-        "      # worker + API together, prefixed logs, Ctrl-C stops both",
+        "      # worker + API together, prefixed logs, Ctrl-C stops both"
+        if temporal
+        else "      # the API (hosting the investigations), Ctrl-C stops it",
         f"  {issue_cmd}   # a dev token (stdout only)",
         "  (see docs/http-api.md: send the token as Authorization: Bearer)",
         "  analytics status                           # CLI check against the API",
         "  ./scripts/bootstrap.sh                     # rerun any time (idempotent)",
-        "  (production runs retail-analytics-api and retail-analytics-worker "
-        "as separate services)",
+        "  (the production design runs the API and Temporal workers as "
+        "separate services; see README, 'Temporal execution')",
     ]
     return lines
 
@@ -416,6 +471,15 @@ def next_steps(ctx: SetupContext) -> list[str]:
 )
 @click.option("--postgres-port", help="Host port for PostgreSQL (new env file only).")
 @click.option("--temporal-port", help="Host port for Temporal (new env file only).")
+@click.option(
+    "--execution-backend",
+    type=click.Choice(local_env.EXECUTION_BACKENDS),
+    default=None,
+    help=(
+        "Where investigations execute for this run: local (default) or temporal "
+        "(also starts Temporal). Written to the env file only when the key is new."
+    ),
+)
 @click.option(
     "--telemetry/--no-telemetry",
     default=True,
@@ -437,6 +501,7 @@ def main(
     project: str | None,
     postgres_port: str | None,
     temporal_port: str | None,
+    execution_backend: str | None,
     telemetry: bool,
     interactive: bool,
     env_only: bool,
@@ -455,6 +520,7 @@ def main(
         interactive=interactive,
         postgres_port=postgres_port,
         temporal_port=temporal_port,
+        execution_backend=execution_backend,
     )
     steps = [s for s in STEPS if s.name == "environment"] if env_only else STEPS
     try:

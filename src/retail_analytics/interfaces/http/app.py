@@ -1,7 +1,7 @@
 """FastAPI application factory. Routes stay thin and call application use cases.
 
 Bootstrap passes a ``services`` provider: an async context manager entered at
-start-up (connections, Temporal client) whose ``HttpServices`` serve every
+start-up (connections, the investigation scheduler) whose ``HttpServices`` serve every
 ``/v1`` request. Without it only ``/healthz`` answers; ``/v1`` routes return
 503 ``unavailable``.
 """
@@ -24,6 +24,9 @@ from retail_analytics.interfaces.http.telemetry import TelemetryMiddleware
 class HealthResponse(BaseModel):
     status: str
     mode: str
+    # Where investigations execute ("local" or "temporal"); answered only
+    # once that backend has started.
+    execution_backend: str | None = None
     version: str
 
 
@@ -31,6 +34,7 @@ def create_app(
     *,
     mode: str,
     version: str,
+    execution_backend: str | None = None,
     services: ServicesProvider | None = None,
     stream: StreamSettings | None = None,
 ) -> FastAPI:
@@ -59,7 +63,12 @@ def create_app(
 
     @app.get("/healthz")
     def healthz() -> HealthResponse:
-        return HealthResponse(status="ok", mode=mode, version=version)
+        return HealthResponse(
+            status="ok",
+            mode=mode,
+            execution_backend=execution_backend,
+            version=version,
+        )
 
     app.include_router(build_router(stream or StreamSettings()))
     return app

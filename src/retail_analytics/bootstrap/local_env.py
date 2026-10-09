@@ -47,6 +47,19 @@ DEFAULT_POSTGRES_PORT = "55442"
 DEFAULT_TEMPORAL_PORT = "57233"
 DATABASE_URL_KEY = PREFIX + "DATABASE_URL"
 TEMPORAL_ADDRESS_KEY = PREFIX + "TEMPORAL_ADDRESS"
+EXECUTION_BACKEND_KEY = PREFIX + "EXECUTION_BACKEND"
+EXECUTION_BACKENDS = ("local", "temporal")
+DEFAULT_EXECUTION_BACKEND = "local"
+# Shown once, when an existing environment file (from before the selector
+# existed) gets the key: it adopts the new local default.
+LOCAL_ADOPTED_NOTE = (
+    f"{EXECUTION_BACKEND_KEY} was added as local, the new default: "
+    "investigations now run inside the API process with PostgreSQL only, and "
+    "Temporal and the worker are no longer started. Existing Temporal settings, "
+    "containers and data are kept, unused. To keep Temporal execution, set it "
+    "to temporal (finish or cancel active investigations before switching; "
+    "see README, 'Temporal execution')."
+)
 # External credentials: never generated; the action says what the user does.
 EXTERNAL_CREDENTIALS: dict[str, tuple[str, bool]] = {
     # key -> (action, secret input)
@@ -244,6 +257,12 @@ def reconcile(
     )
     for key in ordered:
         settle(key)
+    if (
+        existing is not None
+        and EXECUTION_BACKEND_KEY in new_keys
+        and values.get(EXECUTION_BACKEND_KEY) == DEFAULT_EXECUTION_BACKEND
+    ):
+        warnings.append(LOCAL_ADOPTED_NOTE)
     if not new_postgres_volume and not any(
         values.get(k) for k in COMPOSE_VOLUME_PASSWORDS
     ):

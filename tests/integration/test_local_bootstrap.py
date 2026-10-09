@@ -1,5 +1,10 @@
 """One-command bootstrap against an isolated Compose project and a temp env file.
 
+The default (local execution) provisions PostgreSQL only; Temporal and its
+namespace come up only when Temporal execution is selected. An environment
+file from before the selector adopts local execution and keeps its Temporal
+values, volumes and containers.
+
 Never touches the repository's own ``.env``: the run uses ``--env-file`` in a
 temporary directory, a unique ``ra-test-*`` Compose project and free ports.
 Children read only that file (``RETAIL_ANALYTICS_ENV_FILE``), never the
@@ -147,6 +152,12 @@ def test_one_command_builds_a_seeded_stack_and_rerun_is_a_noop(run: Run) -> None
     assert "<missing:" in output and "docs/google-access.md" in output
     assert "skipped" in output  # credential check, fixture mode
     assert "exec-demo-a" in output
+    # Local execution is the default: PostgreSQL, no Temporal.
+    assert values[local_env.EXECUTION_BACKEND_KEY] == "local"
+    assert "Execution: local (default)" in output
+    running = _running_services(run.project)
+    assert "postgres" in running
+    assert not running & {"temporal", "temporal-schema", "temporal-namespace"}
 
     # Telemetry is on by default: the key is true, the stack is up, URLs printed.
     assert values[local_env.PREFIX + "TELEMETRY_ENABLED"] == "true"
@@ -173,6 +184,47 @@ def test_no_telemetry_skips_the_stack_and_records_false(run: Run) -> None:
     values = local_env.parse_values(run.env_file.read_text())
     assert values[local_env.PREFIX + "TELEMETRY_ENABLED"] == "false"
     running = _running_services(run.project)
-    assert {"postgres", "temporal"} <= running
+    assert "postgres" in running and "temporal" not in running
     assert not running & {"mlflow", "prometheus", "grafana"}
     assert "Grafana" not in result.stdout
+
+
+def test_temporal_opt_in_then_an_old_env_file_adopts_local_keeping_data(
+    run: Run,
+) -> None:
+    first = run.bootstrap("--execution-backend", "temporal", "--no-telemetry")
+    assert first.returncode == 0, first.stdout + first.stderr
+    values = local_env.parse_values(run.env_file.read_text())
+    assert values[local_env.EXECUTION_BACKEND_KEY] == "temporal"
+    assert {"postgres", "temporal"} <= _running_services(run.project)
+    assert "Execution: Temporal (opt-in)" in first.stdout
+    counts = _counts(run.env_file)
+
+    # An explicit choice survives a rerun without the option, byte for byte.
+    before = run.env_file.read_bytes()
+    again = run.bootstrap("--no-telemetry")
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert run.env_file.read_bytes() == before
+    assert "Execution: Temporal (opt-in)" in again.stdout
+
+    # A file from before the selector existed (same Temporal values).
+    old = "".join(
+        line
+        for line in run.env_file.read_text().splitlines(keepends=True)
+        if not line.startswith(local_env.EXECUTION_BACKEND_KEY + "=")
+    )
+    run.env_file.write_text(old)
+    adopted = run.bootstrap("--no-telemetry")
+    assert adopted.returncode == 0, adopted.stdout + adopted.stderr
+    values = local_env.parse_values(run.env_file.read_text())
+    assert values[local_env.EXECUTION_BACKEND_KEY] == "local"
+    assert values[local_env.TEMPORAL_ADDRESS_KEY]  # kept, unused
+    assert run.env_file.read_text().startswith(old)
+    assert "was added as local, the new default" in adopted.stdout
+    assert "Execution: local (default)" in adopted.stdout
+    # Nothing was stopped or removed: data and the Temporal container remain.
+    assert _counts(run.env_file) == counts
+    assert "temporal" in _running_services(run.project)
+    rerun = run.bootstrap("--no-telemetry")
+    assert rerun.returncode == 0
+    assert "was added as local" not in rerun.stdout

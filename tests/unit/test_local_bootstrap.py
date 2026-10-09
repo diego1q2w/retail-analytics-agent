@@ -409,3 +409,136 @@ def test_next_steps_print_the_grafana_and_mlflow_urls(tmp_path: Path) -> None:
     assert "127.0.0.1:53111" in shown and "127.0.0.1:55111" in shown
     off = "\n".join(local_setup.next_steps(_tele_ctx(tmp_path, "", telemetry=False)))
     assert "Grafana" not in off
+
+
+# --- execution backend (local default, Temporal opt-in) ---------------------
+
+BACKEND_KEY = local_env.EXECUTION_BACKEND_KEY
+# An environment file written by bootstrap before the selector existed.
+OLD_ENV = (
+    f"{P}MODE=fixture\n"
+    f"{P}DATABASE_URL=postgresql+psycopg://retail_app:x@127.0.0.1:55442/retail_app\n"
+    f"{local_env.TEMPORAL_ADDRESS_KEY}=127.0.0.1:57233\n"
+)
+
+
+def test_template_and_settings_default_to_local_execution() -> None:
+    assert local_env.parse_values(TEMPLATE)[BACKEND_KEY] == "local"
+    assert config.BackendSettings().execution_backend.value == "local"
+
+
+def test_existing_file_without_selector_adopts_local_and_explains() -> None:
+    result = local_env.reconcile(TEMPLATE, OLD_ENV)
+    values = local_env.parse_values(result.text)
+    assert values[BACKEND_KEY] == "local"
+    # Old Temporal values stay as they were: nothing is removed.
+    assert values[local_env.TEMPORAL_ADDRESS_KEY] == "127.0.0.1:57233"
+    assert result.text.startswith(OLD_ENV)
+    assert local_env.LOCAL_ADOPTED_NOTE in result.warnings
+    again = local_env.reconcile(TEMPLATE, result.text)
+    assert not again.changed and again.text == result.text
+    assert local_env.LOCAL_ADOPTED_NOTE not in again.warnings
+
+
+def test_explicit_temporal_is_preserved() -> None:
+    existing = OLD_ENV + f"{BACKEND_KEY}=temporal\n"
+    result = local_env.reconcile(TEMPLATE, existing, overrides={BACKEND_KEY: "local"})
+    assert local_env.parse_values(result.text)[BACKEND_KEY] == "temporal"
+    assert local_env.LOCAL_ADOPTED_NOTE not in result.warnings
+
+
+def test_option_selects_temporal_only_for_a_new_key(tmp_path: Path) -> None:
+    old = tmp_path / "old.env"
+    old.write_text(OLD_ENV, encoding="utf-8")
+    output = _env_only(old, "--execution-backend", "temporal")
+    assert local_env.parse_values(old.read_text())[BACKEND_KEY] == "temporal"
+    assert "was added as local" not in output
+    snapshot = old.read_bytes()
+    output = _env_only(old, "--execution-backend", "local")
+    # An explicit choice is never rewritten; the run says so.
+    assert old.read_bytes() == snapshot
+    assert "this run uses local execution" in output
+
+
+def test_rerun_on_an_old_file_explains_the_transition(tmp_path: Path) -> None:
+    old = tmp_path / "old.env"
+    old.write_text(OLD_ENV, encoding="utf-8")
+    first = _env_only(old)
+    assert "was added as local, the new default" in first
+    snapshot = old.read_bytes()
+    second = _env_only(old)
+    assert old.read_bytes() == snapshot
+    assert "was added as local" not in second
+
+
+def _backend_ctx(
+    tmp_path: Path, env_text: str, option: str | None = None
+) -> tuple[SetupContext, list[tuple[str, ...]]]:
+    env_file = tmp_path / "b.env"
+    env_file.write_text(env_text, encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    class Recording(SetupContext):
+        def compose(self, *args: str, timeout: int = 0) -> str:
+            calls.append(args)
+            return ""
+
+    ctx = Recording(
+        root=local_setup.ROOT,
+        env_file=env_file,
+        project="ra-unit",
+        echo=lambda _line: None,
+        execution_backend=option,
+    )
+    ctx.refresh_values()
+    return ctx, calls
+
+
+def test_services_step_starts_only_postgres_with_local_execution(
+    tmp_path: Path,
+) -> None:
+    ctx, calls = _backend_ctx(tmp_path, OLD_ENV)  # no selector: local
+    result = local_setup.step_services(ctx)
+    assert calls == [("up", "-d", "--wait", "postgres")]
+    assert "no Temporal" in result.message
+    assert "temporal" not in " ".join(" ".join(c) for c in calls)
+
+
+def test_services_step_starts_temporal_when_selected(tmp_path: Path) -> None:
+    for text, option in (
+        (OLD_ENV + f"{BACKEND_KEY}=temporal\n", None),
+        (OLD_ENV, "temporal"),
+    ):
+        ctx, calls = _backend_ctx(tmp_path, text, option)
+        local_setup.step_services(ctx)
+        assert calls == [
+            ("up", "-d", "--wait", "postgres", "temporal"),
+            ("run", "--rm", "temporal-namespace"),
+        ]
+
+
+def test_option_overrides_the_file_for_child_commands(tmp_path: Path) -> None:
+    ctx, _ = _backend_ctx(tmp_path, f"{BACKEND_KEY}=temporal\n", "local")
+    assert ctx.child_env()[BACKEND_KEY] == "local"
+    assert local_setup.selected_backend(ctx) == "local"
+    plain, _ = _backend_ctx(tmp_path, f"{BACKEND_KEY}=temporal\n")
+    assert plain.child_env()[BACKEND_KEY] == "temporal"
+
+
+def test_invalid_selector_in_the_file_fails_the_services_step(
+    tmp_path: Path,
+) -> None:
+    ctx, calls = _backend_ctx(tmp_path, f"{BACKEND_KEY}=kubernetes\n")
+    with pytest.raises(StepFailed, match=BACKEND_KEY):
+        local_setup.step_services(ctx)
+    assert calls == []
+
+
+def test_next_steps_name_the_execution_backend(tmp_path: Path) -> None:
+    local, _ = _backend_ctx(tmp_path, OLD_ENV)
+    text = "\n".join(local_setup.next_steps(local))
+    assert "Execution: local (default)" in text
+    temporal, _ = _backend_ctx(tmp_path, OLD_ENV, "temporal")
+    shown = "\n".join(local_setup.next_steps(temporal))
+    assert "Execution: Temporal (opt-in)" in shown
+    assert "--execution-backend temporal" in shown
