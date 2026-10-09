@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from retail_analytics.adapters.auth.local_jwt import LocalJwtAuthority
+from retail_analytics.adapters.postgres.access_audit import PostgresAccessChangeHistory
+from retail_analytics.adapters.postgres.database import Database
+from retail_analytics.application.access_audit import AccessAuditService
 from retail_analytics.application.authentication import Authenticator
 from retail_analytics.application.authorization import AccessResolver, OwnershipGuard
 from retail_analytics.application.ports.authentication import TokenVerifier
@@ -44,4 +47,13 @@ def build_access(persistence: Persistence, verifier: TokenVerifier) -> AccessSer
         authenticator=Authenticator(verifier, persistence.executives),
         guard=guard,
         resolver=AccessResolver(persistence.executives, guard),
+    )
+
+
+def build_access_audit(
+    persistence: Persistence, resolver: AccessResolver
+) -> AccessAuditService:
+    """Admin-only (``access:admin``) history of access changes per executive."""
+    return AccessAuditService(
+        PostgresAccessChangeHistory(Database(persistence.engine)), resolver
     )

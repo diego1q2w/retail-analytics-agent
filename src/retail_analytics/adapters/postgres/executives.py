@@ -2,21 +2,27 @@
 
 Reads take the executive row and its product set in one statement, so the
 version and the products always belong to the same committed state. Writes
-lock the executive row, apply the change and increment
-``authorization_version`` in one transaction; identical repeats change
-nothing.
+lock the executive row, apply the change, increment
+``authorization_version`` and append one ``access.*`` audit event in one
+transaction (an audit failure rolls the change back); identical repeats
+change and record nothing.
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable
 
 import sqlalchemy as sa
 from sqlalchemy import exc
 from sqlalchemy.dialects.postgresql import insert
 
+from retail_analytics.adapters.postgres.audit import append_audit
 from retail_analytics.adapters.postgres.database import Database, violated_constraint
 from retail_analytics.adapters.postgres.schema import executives, product_entitlements
+from retail_analytics.application.contracts import access_audit
+from retail_analytics.application.contracts.access_audit import SYSTEM_ACTOR
+from retail_analytics.application.contracts.audit import AuditEvent
 from retail_analytics.application.contracts.authorization import ExecutiveRegistration
 from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
@@ -73,6 +79,12 @@ def _lock(connection: sa.Connection, executive_id: str) -> sa.Row[tuple[object, 
     return row
 
 
+def _digest(product_ids: Iterable[str]) -> str:
+    """Stable fingerprint of a product set; the IDs themselves are not stored."""
+    joined = "\n".join(sorted(product_ids))
+    return hashlib.sha256(joined.encode()).hexdigest()[:16]
+
+
 class PostgresExecutiveDirectory:
     def __init__(self, db: Database) -> None:
         self._db = db
@@ -104,10 +116,10 @@ class PostgresExecutiveDirectory:
         return None if row is None else _access(row)
 
     async def register_executive(
-        self, registration: ExecutiveRegistration
+        self, registration: ExecutiveRegistration, *, actor_id: str = SYSTEM_ACTOR
     ) -> ExecutiveAccess:
         try:
-            return await self._db.transaction(self._register, registration)
+            return await self._db.transaction(self._register, registration, actor_id)
         except exc.IntegrityError as error:
             if violated_constraint(error) == "uq_executives_identity":
                 raise IdempotencyConflict(
@@ -116,11 +128,14 @@ class PostgresExecutiveDirectory:
             raise
 
     def _register(
-        self, connection: sa.Connection, registration: ExecutiveRegistration
+        self,
+        connection: sa.Connection,
+        registration: ExecutiveRegistration,
+        actor_id: str,
     ) -> ExecutiveAccess:
         now = self._db.clock()
         roles = sorted(role.value for role in registration.roles)
-        connection.execute(
+        created = connection.execute(
             insert(executives)
             .values(
                 executive_id=registration.executive_id,
@@ -134,35 +149,69 @@ class PostgresExecutiveDirectory:
                 updated_at=now,
             )
             .on_conflict_do_nothing(index_elements=["executive_id"])
-        )
+            .returning(executives.c.executive_id)
+        ).one_or_none()
         current = _lock(connection, registration.executive_id)._mapping
         if (current["issuer"], current["subject"]) != (
             registration.issuer,
             registration.subject,
         ):
             raise IdempotencyConflict("executive", registration.executive_id)
-        if (sorted(current["roles"]), current["label"]) != (roles, registration.label):
+        if created is not None:
+            self._audit(
+                connection,
+                actor_id,
+                registration.executive_id,
+                access_audit.REGISTERED,
+                old_version=None,
+                new_version=1,
+                roles=roles,
+            )
+        elif (sorted(current["roles"]), current["label"]) != (
+            roles,
+            registration.label,
+        ):
+            old_roles = set(current["roles"])
+            label_changed = current["label"] != registration.label
             self._bump(
                 connection,
+                actor_id,
                 registration.executive_id,
+                current["authorization_version"],
+                access_audit.ROLES_CHANGED
+                if old_roles != set(roles)
+                else access_audit.PROFILE_CHANGED,
+                {
+                    "roles_granted": sorted(set(roles) - old_roles),
+                    "roles_revoked": sorted(old_roles - set(roles)),
+                    "label_changed": label_changed,
+                },
                 roles=roles,
                 label=registration.label,
             )
         return _load(connection, registration.executive_id)
 
     async def replace_products(
-        self, executive_id: str, product_ids: Iterable[str]
+        self,
+        executive_id: str,
+        product_ids: Iterable[str],
+        *,
+        actor_id: str = SYSTEM_ACTOR,
     ) -> ExecutiveAccess:
         wanted = frozenset(product_ids)
         invalid = [p for p in wanted if not is_valid_product_id(p)]
         if invalid:
             raise ValueError(f"{len(invalid)} invalid product IDs")
-        return await self._db.transaction(self._replace, executive_id, wanted)
+        return await self._db.transaction(self._replace, executive_id, wanted, actor_id)
 
     def _replace(
-        self, connection: sa.Connection, executive_id: str, wanted: frozenset[str]
+        self,
+        connection: sa.Connection,
+        executive_id: str,
+        wanted: frozenset[str],
+        actor_id: str,
     ) -> ExecutiveAccess:
-        _lock(connection, executive_id)
+        version = _lock(connection, executive_id)._mapping["authorization_version"]
         current = frozenset(
             connection.execute(
                 sa.select(product_entitlements.c.product_id).where(
@@ -188,28 +237,108 @@ class PostgresExecutiveDirectory:
                 ],
             )
         if removed or added:
-            self._bump(connection, executive_id)
+            self._bump(
+                connection,
+                actor_id,
+                executive_id,
+                version,
+                access_audit.ENTITLEMENTS_CHANGED,
+                {
+                    "products_added": len(added),
+                    "products_removed": len(removed),
+                    "added_digest": _digest(added),
+                    "removed_digest": _digest(removed),
+                    "products_before": len(current),
+                    "products_after": len(wanted),
+                    "products_after_digest": _digest(wanted),
+                },
+            )
         return _load(connection, executive_id)
 
-    async def set_active(self, executive_id: str, active: bool) -> ExecutiveAccess:
-        return await self._db.transaction(self._set_active, executive_id, active)
+    async def set_active(
+        self, executive_id: str, active: bool, *, actor_id: str = SYSTEM_ACTOR
+    ) -> ExecutiveAccess:
+        return await self._db.transaction(
+            self._set_active, executive_id, active, actor_id
+        )
 
     def _set_active(
-        self, connection: sa.Connection, executive_id: str, active: bool
+        self,
+        connection: sa.Connection,
+        executive_id: str,
+        active: bool,
+        actor_id: str,
     ) -> ExecutiveAccess:
-        if _lock(connection, executive_id)._mapping["active"] != active:
-            self._bump(connection, executive_id, active=active)
+        current = _lock(connection, executive_id)._mapping
+        if current["active"] != active:
+            self._bump(
+                connection,
+                actor_id,
+                executive_id,
+                current["authorization_version"],
+                access_audit.ACTIVATED if active else access_audit.DEACTIVATED,
+                {},
+                active=active,
+            )
         return _load(connection, executive_id)
 
     def _bump(
-        self, connection: sa.Connection, executive_id: str, **changes: object
+        self,
+        connection: sa.Connection,
+        actor_id: str,
+        executive_id: str,
+        old_version: int,
+        action: str,
+        details: dict[str, object],
+        **changes: object,
     ) -> None:
+        """Apply the change, bump the version and audit it, atomically."""
         connection.execute(
             sa.update(executives)
             .where(executives.c.executive_id == executive_id)
             .values(
                 **changes,
-                authorization_version=executives.c.authorization_version + 1,
+                authorization_version=old_version + 1,
                 updated_at=self._db.clock(),
             )
+        )
+        self._audit(
+            connection,
+            actor_id,
+            executive_id,
+            action,
+            old_version=old_version,
+            new_version=old_version + 1,
+            **details,
+        )
+
+    def _audit(
+        self,
+        connection: sa.Connection,
+        actor_id: str,
+        executive_id: str,
+        action: str,
+        *,
+        old_version: int | None,
+        new_version: int,
+        **details: object,
+    ) -> None:
+        append_audit(
+            connection,
+            AuditEvent(
+                audit_id=self._db.new_id(),
+                occurred_at=self._db.clock(),
+                actor_id=actor_id,
+                action=action,
+                subject_type=access_audit.SUBJECT_TYPE,
+                subject_id=executive_id,
+                details={
+                    "actor_id": actor_id,
+                    "executive_id": executive_id,
+                    "change_kind": action.removeprefix("access."),
+                    "old_authorization_version": old_version,
+                    "new_authorization_version": new_version,
+                    **details,
+                },
+            ),
         )

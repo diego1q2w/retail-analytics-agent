@@ -39,6 +39,10 @@ from retail_analytics.bootstrap.persistence import (
 )
 from retail_analytics.domain.access import ExecutiveAccess, Role
 
+# Recorded as the actor of every audited change made by this command (and by
+# the bootstrap "executives" step, which runs it).
+DEV_ACTOR = "system:dev-access"
+
 
 @dataclass(frozen=True)
 class DemoExecutive:
@@ -89,10 +93,13 @@ async def provision_demo_executives(
                 subject=demo.subject,
                 roles=demo.roles,
                 label=demo.label,
-            )
+            ),
+            actor_id=DEV_ACTOR,
         )
         provisioned.append(
-            await admin.replace_products(demo.executive_id, demo.product_ids)
+            await admin.replace_products(
+                demo.executive_id, demo.product_ids, actor_id=DEV_ACTOR
+            )
         )
     return provisioned
 
