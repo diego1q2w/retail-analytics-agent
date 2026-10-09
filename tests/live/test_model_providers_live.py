@@ -51,7 +51,7 @@ class Deps:
 def _settings() -> BackendSettings:
     settings = load_backend_settings(environ={}, env_file=ENV_FILE)
     if settings.gemini_api_key is None or settings.openai_api_key is None:
-        pytest.skip("RETAIL_ANALYTICS_GEMINI_API_KEY/OPENAI_API_KEY not set")
+        pytest.skip("GEMINI_API_KEY/OPENAI_API_KEY not set")
     return settings
 
 

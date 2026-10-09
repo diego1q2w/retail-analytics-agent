@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from retail_analytics.bootstrap import dev_up, local_env, local_setup
+from retail_analytics.bootstrap import dev_up, local_setup
 from retail_analytics.bootstrap.dev_up import ChildSpec, DevUpError, Supervisor
 from retail_analytics.domain.runs import ExecutionBackend
 
@@ -121,9 +121,9 @@ def test_port_in_use_is_refused_with_an_actionable_message() -> None:
 def _env_file(tmp_path: Path, extra: str = "") -> Path:
     path = tmp_path / "dev.env"
     path.write_text(
-        "RETAIL_ANALYTICS_DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:1/db\n"
-        "RETAIL_ANALYTICS_TEMPORAL_ADDRESS=127.0.0.1:1\n"
-        f"RETAIL_ANALYTICS_AUTH_SIGNING_KEY={'k' * 40}\n" + extra,
+        "APP_DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:1/db\n"
+        "TEMPORAL_ADDRESS=127.0.0.1:1\n"
+        f"AUTH_SIGNING_KEY={'k' * 40}\n" + extra,
         encoding="utf-8",
     )
     return path
@@ -132,10 +132,10 @@ def _env_file(tmp_path: Path, extra: str = "") -> Path:
 def test_settings_come_only_from_the_env_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("RETAIL_ANALYTICS_API_PORT", "9999")  # stray shell variable
+    monkeypatch.setenv("APP_API_PORT", "9999")  # stray shell variable
     ctx = local_setup.SetupContext(
         root=local_setup.ROOT,
-        env_file=_env_file(tmp_path, "RETAIL_ANALYTICS_API_PORT=18080\n"),
+        env_file=_env_file(tmp_path, "APP_API_PORT=18080\n"),
         project="ra-unit",
     )
     ctx.refresh_values()
@@ -146,12 +146,12 @@ def test_settings_come_only_from_the_env_file(
 
 def test_missing_required_settings_name_the_variables(tmp_path: Path) -> None:
     path = tmp_path / "bare.env"
-    path.write_text("RETAIL_ANALYTICS_MODE=fixture\n", encoding="utf-8")
+    path.write_text("APP_MODE=fixture\n", encoding="utf-8")
     ctx = local_setup.SetupContext(
         root=local_setup.ROOT, env_file=path, project="ra-unit"
     )
     ctx.refresh_values()
-    with pytest.raises(DevUpError, match=r"DATABASE_URL.*AUTH_SIGNING_KEY"):
+    with pytest.raises(DevUpError, match=r"APP_DATABASE_URL.*AUTH_SIGNING_KEY"):
         dev_up.load_settings(ctx.child_env())
 
 
@@ -175,9 +175,9 @@ def test_unreachable_backing_services_fail_fast(tmp_path: Path) -> None:
 def test_temporal_execution_requires_the_temporal_address(tmp_path: Path) -> None:
     path = tmp_path / "t.env"
     path.write_text(
-        "RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal\n"
-        "RETAIL_ANALYTICS_DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:1/db\n"
-        f"RETAIL_ANALYTICS_AUTH_SIGNING_KEY={'k' * 40}\n",
+        "EXECUTION_BACKEND=temporal\n"
+        "APP_DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:1/db\n"
+        f"AUTH_SIGNING_KEY={'k' * 40}\n",
         encoding="utf-8",
     )
     ctx = local_setup.SetupContext(
@@ -198,7 +198,7 @@ def test_adoption_hint_explains_the_local_default_once(tmp_path: Path) -> None:
     ctx.refresh_values()
     hint = dev_up.adoption_hint(ctx)
     assert hint is not None and "local execution" in hint and "temporal" in hint
-    explicit = _env_file(tmp_path, "RETAIL_ANALYTICS_EXECUTION_BACKEND=local\n")
+    explicit = _env_file(tmp_path, "EXECUTION_BACKEND=local\n")
     ctx = local_setup.SetupContext(
         root=local_setup.ROOT, env_file=explicit, project="ra-unit"
     )
@@ -249,7 +249,7 @@ def test_next_steps_recommend_the_one_command(tmp_path: Path) -> None:
     )
     text = "\n".join(local_setup.next_steps(ctx))
     assert "./scripts/dev.sh --env-file " + str(tmp_path / "x.env") in text
-    assert local_env.PREFIX + "ENV_FILE=" in text
+    assert "APP_ENV_FILE=" in text
 
 
 def test_dev_runs_the_telemetry_step_with_the_services_by_default() -> None:
@@ -269,9 +269,9 @@ def test_dev_starts_the_services_and_prints_the_urls(
     monkeypatch.setattr(dev_up, "healthz_ok", lambda *_: True)
     env = tmp_path / "d.env"
     env.write_text(
-        f"{local_env.PREFIX}DATABASE_URL=postgresql://u:p@127.0.0.1:1/db\n"
-        f"{local_env.PREFIX}TEMPORAL_ADDRESS=127.0.0.1:1\n"
-        f"{local_env.PREFIX}AUTH_SIGNING_KEY={'k' * 40}\n",
+        "APP_DATABASE_URL=postgresql://u:p@127.0.0.1:1/db\n"
+        "TEMPORAL_ADDRESS=127.0.0.1:1\n"
+        f"AUTH_SIGNING_KEY={'k' * 40}\n",
         encoding="utf-8",
     )
 

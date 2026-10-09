@@ -8,8 +8,8 @@ accounting; the model cannot choose a provider or relax any policy.
 
 | Role | Default | API | Setting |
 | --- | --- | --- | --- |
-| Primary | `gemini-3.8-flash` | Gemini Interactions API (`POST /v1beta/interactions`) | `RETAIL_ANALYTICS_AGENT_GEMINI_MODEL` |
-| Backup | `gpt-5-mini` | OpenAI Responses API | `RETAIL_ANALYTICS_AGENT_OPENAI_MODEL` |
+| Primary | `gemini-3.8-flash` | Gemini Interactions API (`POST /v1beta/interactions`) | `AGENT_GEMINI_MODEL` |
+| Backup | `gpt-5-mini` | OpenAI Responses API | `AGENT_OPENAI_MODEL` |
 
 - **Gemini 3.8 Flash** is listed as stable in Google's model catalog
   ("our most intelligent Flash model, engineered for long-horizon software
@@ -29,7 +29,7 @@ accounting; the model cannot choose a provider or relax any policy.
 Changing either model is a configuration change. The Interactions adapter
 works for any Gemini model that the Interactions API serves (for example
 `gemini-3-flash-preview`). The backup is enabled only when
-`RETAIL_ANALYTICS_OPENAI_API_KEY` is set. Without that key there is no
+`OPENAI_API_KEY` is set. Without that key there is no
 fallback, and a primary outage stops the run with its verified findings.
 
 ### Why a custom Gemini adapter
@@ -63,11 +63,11 @@ so that a slow start can be told apart from a long answer:
 
 | Limit | Default | Setting |
 | --- | --- | --- |
-| First streamed token | 60 s | `RETAIL_ANALYTICS_MODEL_FIRST_TOKEN_SECONDS` (5–600) |
-| Stall between streamed events | 30 s | `RETAIL_ANALYTICS_MODEL_STREAM_STALL_SECONDS` (5–600) |
-| Whole request | 180 s | `RETAIL_ANALYTICS_MODEL_REQUEST_MAX_SECONDS` (30–1800) |
-| Output tokens per request (reasoning included) | 8192 | `RETAIL_ANALYTICS_MODEL_MAX_OUTPUT_TOKENS` |
-| Primary skipped after it failed | 60 s | `RETAIL_ANALYTICS_MODEL_PRIMARY_COOLDOWN_SECONDS` |
+| First streamed token | 60 s | `MODEL_FIRST_TOKEN_SECONDS` (5–600) |
+| Stall between streamed events | 30 s | `MODEL_STREAM_STALL_SECONDS` (5–600) |
+| Whole request | 180 s | `MODEL_REQUEST_MAX_SECONDS` (30–1800) |
+| Output tokens per request (reasoning included) | 8192 | `MODEL_MAX_OUTPUT_TOKENS` |
+| Primary skipped after it failed | 60 s | `MODEL_PRIMARY_COOLDOWN_SECONDS` |
 
 - **Timeouts.** A response that keeps streaming is not cut off at 60 seconds;
   only the stall and total limits apply after the first token. Any streamed
@@ -79,10 +79,10 @@ so that a slow start can be told apart from a long answer:
   streaming; the partial answer is discarded) and the timeouts above. They
   use the run budget's
   backoff with jitter and honour the provider's retry hint. There are at most
-  `RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS` (3) attempts per provider for one
+  `MAX_TRANSIENT_ATTEMPTS` (3) attempts per provider for one
   model request, and none once the run's active time is nearly spent.
 - **Long retry hints.** If the hint is longer than
-  `RETAIL_ANALYTICS_RETRY_MAX_SECONDS`, the request does not wait. It moves
+  `RETRY_MAX_SECONDS`, the request does not wait. It moves
   to the backup.
 - **Fallback.** When the primary has spent its attempts, or rejects the key
   or the model (401/403/404), the request goes to the backup. The primary
@@ -150,13 +150,17 @@ retries, fallback attempts and Temporal activity retries.
 Set these in `.env` (live mode):
 
 ```sh
-RETAIL_ANALYTICS_MODE=live
-RETAIL_ANALYTICS_GEMINI_API_KEY=<AI Studio key>
-RETAIL_ANALYTICS_OPENAI_API_KEY=<OpenAI key>   # optional: enables the backup
+APP_MODE=live
+GEMINI_API_KEY=<AI Studio key>
+OPENAI_API_KEY=<OpenAI key>   # optional: enables the backup
 ```
 
-The keys need the `RETAIL_ANALYTICS_` prefix; unprefixed `OPENAI_API_KEY` or
-`GEMINI_API_KEY` variables are not read. In live mode, the process that runs
+These are the same names the provider SDKs use: a `GEMINI_API_KEY` or
+`OPENAI_API_KEY` exported in your shell is read too (the process environment
+overrides `.env`), so a shell `OPENAI_API_KEY` enables the fallback. At
+startup the API and the worker print one line naming the enabled providers
+(never key values), e.g. `model providers: gemini (primary), openai (fallback,
+OPENAI_API_KEY set)`. In live mode, the process that runs
 investigations (`retail-analytics-api` with local execution, the default, or
 `retail-analytics-worker` with Temporal execution) builds the chain, discovery
 and guarded query execution. Fixture mode keeps the offline model.

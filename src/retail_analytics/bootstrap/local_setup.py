@@ -4,7 +4,7 @@ Runs the ordered, idempotent ``STEPS`` below: environment file, Docker check,
 local services, migrations, demo executives, Golden seeds, verification. Safe to
 rerun; a rerun changes nothing that is already in place.
 
-The services follow the execution backend (``RETAIL_ANALYTICS_EXECUTION_BACKEND``
+The services follow the execution backend (``EXECUTION_BACKEND``
 or ``--execution-backend``): PostgreSQL only with ``local`` (the default), plus
 Temporal and its namespace with ``temporal``. Nothing is ever stopped or removed.
 
@@ -34,9 +34,10 @@ import click
 
 from retail_analytics.bootstrap import local_env
 from retail_analytics.bootstrap.config import (
-    BACKEND_ENV_PREFIX,
-    CLI_ENV_PREFIX,
+    BARE_GENERIC_NAMES,
     ENV_FILE_VARIABLE,
+    KNOWN_ENV_NAMES,
+    is_legacy_name,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -44,7 +45,12 @@ DEFAULT_PROJECT = "retail-analytics-local"  # the `name:` in compose.yaml
 SERVICES_TIMEOUT = 900
 STEP_TIMEOUT = 300
 
-_CONFIG_PREFIXES = (BACKEND_ENV_PREFIX, CLI_ENV_PREFIX)
+
+def is_config_name(key: str) -> bool:
+    """A variable the application reads, its bare generic form (for example
+    ``DATABASE_URL`` for ``APP_DATABASE_URL``), or an older prefixed one."""
+    return key in KNOWN_ENV_NAMES or key in BARE_GENERIC_NAMES or is_legacy_name(key)
+
 
 Echo = Callable[[str], None]
 
@@ -80,16 +86,19 @@ class SetupContext:
     def child_env(self) -> dict[str, str]:
         """Environment for child commands, isolated from stray configuration.
 
-        Parent-shell ``RETAIL_ANALYTICS_*`` / ``ANALYTICS_CLI_*`` variables are
-        dropped, the environment file's non-empty values are added, and
-        ``RETAIL_ANALYTICS_ENV_FILE`` points the typed loader at that file so
-        the repository ``.env`` is never read. Other variables (PATH, DOCKER_*,
-        COMPOSE_*) pass through.
+        Parent-shell configuration (every setting name the application reads,
+        the bare forms of the ``APP_`` names such as ``DATABASE_URL``, and the
+        older ``RETAIL_ANALYTICS_*`` / ``ANALYTICS_CLI_*`` names) is
+        dropped, the environment file's non-empty values are added (except
+        older names, which the loader reports from the file itself), and
+        ``APP_ENV_FILE`` points the typed loader at that file so the repository
+        ``.env`` is never read. Other variables (PATH, DOCKER_*, COMPOSE_*)
+        pass through.
         """
-        env = {
-            k: v for k, v in os.environ.items() if not k.startswith(_CONFIG_PREFIXES)
-        }
-        env.update({k: v for k, v in self.values.items() if v != ""})
+        env = {k: v for k, v in os.environ.items() if not is_config_name(k)}
+        env.update(
+            {k: v for k, v in self.values.items() if v != "" and not is_legacy_name(k)}
+        )
         if self.execution_backend:
             env[local_env.EXECUTION_BACKEND_KEY] = self.execution_backend
         env[ENV_FILE_VARIABLE] = str(self.env_file)
@@ -191,6 +200,9 @@ def step_environment(ctx: SetupContext) -> StepResult:
     existing = (
         ctx.env_file.read_text(encoding="utf-8") if ctx.env_file.is_file() else None
     )
+    migrated = local_env.migrate_legacy(existing) if existing is not None else None
+    if migrated is not None and migrated.changed:
+        existing = migrated.text
     overrides = {
         k: v
         for k, v in (
@@ -199,7 +211,7 @@ def step_environment(ctx: SetupContext) -> StepResult:
             # Telemetry is on by default (.env.example says true). Opting out
             # on a new or completed environment file writes false; an explicit
             # value already in the file is never overwritten.
-            (local_env.PREFIX + "TELEMETRY_ENABLED", "" if ctx.telemetry else "false"),
+            (local_env.TELEMETRY_ENABLED_KEY, "" if ctx.telemetry else "false"),
             # Written only to a new key; an explicit choice is never changed.
             (local_env.EXECUTION_BACKEND_KEY, ctx.execution_backend),
         )
@@ -223,9 +235,29 @@ def step_environment(ctx: SetupContext) -> StepResult:
         overrides={k: str(v) for k, v in overrides.items()},
         prompt=ask if ctx.interactive else None,
     )
-    if result.changed:
+    renamed = migrated is not None and migrated.changed
+    if result.changed or renamed:
         local_env.write_env_file(ctx.env_file, result.text)
     ctx.refresh_values()
+    if migrated is not None and migrated.changed:
+        ctx.echo(
+            f"    renamed {len(migrated.renamed)} variable(s) to the current "
+            "names (values kept; see README, 'Environment variables')"
+        )
+        for old, new in migrated.renamed:
+            ctx.echo(f"    {old} -> {new}")
+        for old, new in migrated.conflicts:
+            ctx.echo(
+                f"    conflict: {old} and {new} were both set; kept {new}, "
+                f"commented out {old} (check which value you want)"
+            )
+    shell_legacy = local_env.legacy_in(os.environ)
+    if shell_legacy:
+        ctx.echo(
+            "    warning: your shell exports older variable names the application "
+            "refuses: " + ", ".join(shell_legacy) + ". Unset them or export the "
+            "new names (README, 'Environment variables')."
+        )
     for report in result.reports:
         ctx.echo(f"    {report.key}: {report.render()}")
     for warning in result.warnings:
@@ -239,7 +271,8 @@ def step_environment(ctx: SetupContext) -> StepResult:
         )
     created = "created" if existing is None else "updated"
     return StepResult(
-        "done", f"{created} environment file" if result.changed else "no changes"
+        "done",
+        f"{created} environment file" if result.changed or renamed else "no changes",
     )
 
 
@@ -303,7 +336,7 @@ def telemetry_urls(ctx: SetupContext) -> dict[str, str]:
 
 def telemetry_wanted(ctx: SetupContext) -> bool:
     """Start the stack unless opted out or the environment file turns it off."""
-    explicit = ctx.values.get(local_env.PREFIX + "TELEMETRY_ENABLED", "").lower()
+    explicit = ctx.values.get(local_env.TELEMETRY_ENABLED_KEY, "").lower()
     return ctx.telemetry and explicit not in {"false", "0", "no", "off"}
 
 
@@ -341,10 +374,7 @@ def _has_external_credentials(ctx: SetupContext) -> bool:
     return all(ctx.values.get(key) for key in _CREDENTIAL_KEYS)
 
 
-_CREDENTIAL_KEYS = (
-    local_env.PREFIX + "BIGQUERY_PROJECT",
-    local_env.PREFIX + "GEMINI_API_KEY",
-)
+_CREDENTIAL_KEYS = (local_env.BIGQUERY_PROJECT_KEY, local_env.GEMINI_API_KEY_KEY)
 
 
 def step_check_credentials(ctx: SetupContext) -> StepResult:
@@ -425,7 +455,7 @@ def next_steps(ctx: SetupContext) -> list[str]:
     issue_cmd = "retail-analytics-dev-access token demo-a"
     if custom:
         dev += f" --env-file {ctx.env_file}"
-        issue_cmd = f"RETAIL_ANALYTICS_ENV_FILE={ctx.env_file} {issue_cmd}"
+        issue_cmd = f"{ENV_FILE_VARIABLE}={ctx.env_file} {issue_cmd}"
     temporal = uses_temporal(ctx)
     if temporal and ctx.execution_backend:
         dev += " --execution-backend temporal"

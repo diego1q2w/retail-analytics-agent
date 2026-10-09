@@ -142,3 +142,25 @@ def test_telemetry_redaction_and_memory_screen() -> None:
         DisclosureKind.OPAQUE_REFERENCE,
     }
     assert screen_for_memory("Revenue means completed item sales") == ()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "set RETAIL_ANALYTICS_REFERENCE_KEY first",
+        "set retail_analytics_reference_key first",
+        "set Retail_Analytics_Reference_Key first",
+        "the REFERENCE_KEY variable",
+        "REFERENCE_KEY=abc",
+    ],
+)
+def test_reference_key_variable_names_are_internal_secrets(text: str) -> None:
+    assert DisclosureKind.INTERNAL_SECRET in kinds(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["the reference key rotates", "a reference_key column", "Reference Key"],
+)
+def test_reference_key_prose_is_not_an_internal_secret(text: str) -> None:
+    assert DisclosureKind.INTERNAL_SECRET not in kinds(text)

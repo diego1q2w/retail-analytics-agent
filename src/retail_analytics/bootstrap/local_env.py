@@ -11,6 +11,9 @@ Guarantees:
   identical), existing non-empty values are never changed, and lines are never
   reordered. Missing keys are appended; empty values are filled in place.
 - Reports and messages carry key names and statuses only, never values.
+
+``migrate_legacy`` renames the older prefixed keys (``RETAIL_ANALYTICS_*``,
+``ANALYTICS_CLI_*``) of an existing file in place before it is reconciled.
 """
 
 from __future__ import annotations
@@ -25,14 +28,19 @@ from enum import StrEnum
 from pathlib import Path
 from urllib.parse import quote
 
-PREFIX = "RETAIL_ANALYTICS_"
+from retail_analytics.bootstrap.config import (
+    backend_env_name,
+    is_legacy_name,
+    legacy_replacement,
+)
+
 _LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$")
 
 # Local-only secrets that are safe to generate (the keys must be >= 32 bytes).
 GENERATED_SECRETS: frozenset[str] = frozenset(
-    {PREFIX + "AUTH_SIGNING_KEY", PREFIX + "REFERENCE_KEY"}
+    {backend_env_name("auth_signing_key"), backend_env_name("reference_key")}
 )
-REFERENCE_KEY = PREFIX + "REFERENCE_KEY"
+REFERENCE_KEY = backend_env_name("reference_key")
 REFERENCE_KEY_NOTE = "never regenerate: rotating it invalidates existing references"
 # Passwords of the Compose PostgreSQL volume. Generated only for a new volume:
 # the server applies them once, when it first initialises an empty volume.
@@ -45,9 +53,13 @@ POSTGRES_PORT_KEY = "COMPOSE_POSTGRES_PORT"
 TEMPORAL_PORT_KEY = "COMPOSE_TEMPORAL_PORT"
 DEFAULT_POSTGRES_PORT = "55442"
 DEFAULT_TEMPORAL_PORT = "57233"
-DATABASE_URL_KEY = PREFIX + "DATABASE_URL"
-TEMPORAL_ADDRESS_KEY = PREFIX + "TEMPORAL_ADDRESS"
-EXECUTION_BACKEND_KEY = PREFIX + "EXECUTION_BACKEND"
+DATABASE_URL_KEY = backend_env_name("database_url")
+TEMPORAL_ADDRESS_KEY = backend_env_name("temporal_address")
+EXECUTION_BACKEND_KEY = backend_env_name("execution_backend")
+TELEMETRY_ENABLED_KEY = backend_env_name("telemetry_enabled")
+BIGQUERY_PROJECT_KEY = backend_env_name("bigquery_project")
+GEMINI_API_KEY_KEY = backend_env_name("gemini_api_key")
+OPENAI_API_KEY_KEY = backend_env_name("openai_api_key")
 EXECUTION_BACKENDS = ("local", "temporal")
 DEFAULT_EXECUTION_BACKEND = "local"
 # Shown once, when an existing environment file (from before the selector
@@ -63,20 +75,20 @@ LOCAL_ADOPTED_NOTE = (
 # External credentials: never generated; the action says what the user does.
 EXTERNAL_CREDENTIALS: dict[str, tuple[str, bool]] = {
     # key -> (action, secret input)
-    PREFIX + "BIGQUERY_PROJECT": (
+    BIGQUERY_PROJECT_KEY: (
         "set your Google Cloud project, see docs/google-access.md",
         False,
     ),
-    PREFIX + "GEMINI_API_KEY": (
+    GEMINI_API_KEY_KEY: (
         "create a Gemini key in Google AI Studio, see docs/google-access.md",
         True,
     ),
-    PREFIX + "OPENAI_API_KEY": (
+    OPENAI_API_KEY_KEY: (
         "optional fallback provider key, see docs/google-access.md",
         True,
     ),
 }
-OPTIONAL_EXTERNAL: frozenset[str] = frozenset({PREFIX + "OPENAI_API_KEY"})
+OPTIONAL_EXTERNAL: frozenset[str] = frozenset({OPENAI_API_KEY_KEY})
 _SECRET_NAME = re.compile(r"(KEY|PASSWORD|SECRET|TOKEN|URL)$")
 
 
@@ -274,6 +286,58 @@ def reconcile(
     text = "\n".join(lines) + "\n" if changed or existing is None else existing
     ordered_reports = tuple(reports[key] for key in template_values)
     return Reconciled(text, changed, ordered_reports, tuple(warnings))
+
+
+@dataclass(frozen=True)
+class Migrated:
+    """Result of ``migrate_legacy``: key names only, never values."""
+
+    text: str
+    changed: bool
+    renamed: tuple[tuple[str, str], ...] = ()
+    # (legacy key, current key) where the file already had the current key:
+    # the current one is kept and the legacy line is commented out.
+    conflicts: tuple[tuple[str, str], ...] = ()
+
+
+SUPERSEDED_MARK = "# superseded by {new} (kept), legacy line disabled: "
+
+
+def migrate_legacy(text: str) -> Migrated:
+    """Rename older prefixed keys in place; idempotent.
+
+    Order, comments, values, quoting and ``export`` prefixes are preserved: only
+    the key token of each legacy assignment changes. When the file already
+    assigns the current name, that assignment wins and the legacy line is
+    commented out (its value stays in the file, inactive) and reported as a
+    conflict. ``COMPOSE_*`` and current keys are never touched.
+    """
+    lines = text.splitlines(keepends=True)
+    current = {
+        key for raw in lines if (key := _key_of(raw)) and not is_legacy_name(key)
+    }
+    renamed: list[tuple[str, str]] = []
+    conflicts: list[tuple[str, str]] = []
+    for index, raw in enumerate(lines):
+        match = _LINE.match(raw)
+        if match is None or not is_legacy_name(match.group(1)):
+            continue
+        old = match.group(1)
+        new = legacy_replacement(old) or old
+        if new in current:
+            lines[index] = SUPERSEDED_MARK.format(new=new) + raw
+            conflicts.append((old, new))
+        else:
+            lines[index] = raw[: match.start(1)] + new + raw[match.end(1) :]
+            renamed.append((old, new))
+    if not renamed and not conflicts:
+        return Migrated(text, False)
+    return Migrated("".join(lines), True, tuple(renamed), tuple(conflicts))
+
+
+def legacy_in(values: Mapping[str, str]) -> list[str]:
+    """Older prefixed names among ``values``' keys (for warnings)."""
+    return sorted(key for key in values if is_legacy_name(key))
 
 
 def _key_of(raw: str) -> str | None:

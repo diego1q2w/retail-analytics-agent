@@ -22,7 +22,7 @@ pytestmark = pytest.mark.live
 async def test_gemini_embeddings_rank_a_paraphrase_above_an_unrelated_text() -> None:
     settings = load_backend_settings(environ={}, env_file=ROOT / ".env")
     if settings.gemini_api_key is None:
-        pytest.skip("RETAIL_ANALYTICS_GEMINI_API_KEY not set")
+        pytest.skip("GEMINI_API_KEY not set")
     embedder = GeminiEmbedder(
         settings.gemini_api_key.get_secret_value(),
         model=settings.embedding_model,

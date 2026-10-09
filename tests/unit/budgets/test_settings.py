@@ -25,10 +25,10 @@ def test_default_settings_are_the_accepted_limits() -> None:
 def test_settings_override_limits_for_new_runs() -> None:
     settings = load_backend_settings(
         {
-            "RETAIL_ANALYTICS_RUN_MAX_QUERIES": "4",
-            "RETAIL_ANALYTICS_QUERY_MAX_BYTES": str(64 * 1024 * 1024),
-            "RETAIL_ANALYTICS_RESULT_MAX_ROWS": "50",
-            "RETAIL_ANALYTICS_QUERY_DEADLINE_SECONDS": "30",
+            "RUN_MAX_QUERIES": "4",
+            "QUERY_MAX_BYTES": str(64 * 1024 * 1024),
+            "RESULT_MAX_ROWS": "50",
+            "QUERY_DEADLINE_SECONDS": "30",
         },
         env_file=None,
     )
@@ -53,10 +53,10 @@ def test_settings_override_limits_for_new_runs() -> None:
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("RETAIL_ANALYTICS_RUN_MAX_QUERIES", "0"),
-        ("RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS", "0"),
-        ("RETAIL_ANALYTICS_QUERY_DEADLINE_SECONDS", "5"),
-        ("RETAIL_ANALYTICS_RESULT_MAX_BYTES", "10"),
+        ("RUN_MAX_QUERIES", "0"),
+        ("MAX_TRANSIENT_ATTEMPTS", "0"),
+        ("QUERY_DEADLINE_SECONDS", "5"),
+        ("RESULT_MAX_BYTES", "10"),
     ],
 )
 def test_out_of_range_limits_are_rejected_by_name(name: str, value: str) -> None:
@@ -68,8 +68,8 @@ def test_query_scan_limit_cannot_exceed_the_run_limit() -> None:
     with pytest.raises(ConfigError, match="QUERY_MAX_BYTES"):
         load_backend_settings(
             {
-                "RETAIL_ANALYTICS_QUERY_MAX_BYTES": str(2 * 1024**3),
-                "RETAIL_ANALYTICS_RUN_MAX_BYTES": str(1024**3),
+                "QUERY_MAX_BYTES": str(2 * 1024**3),
+                "RUN_MAX_BYTES": str(1024**3),
             },
             env_file=None,
         )

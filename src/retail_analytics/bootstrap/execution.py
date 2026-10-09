@@ -1,6 +1,6 @@
 """Execution-backend selection shared by the API, the worker and dev tooling.
 
-``RETAIL_ANALYTICS_EXECUTION_BACKEND`` picks where investigations execute,
+``EXECUTION_BACKEND`` picks where investigations execute,
 independently of fixture/live ``mode``:
 
 - ``local`` (default): the API process hosts the local manager
@@ -48,10 +48,10 @@ from retail_analytics.bootstrap.access import (
 from retail_analytics.bootstrap.artifacts import ArtifactServices, build_artifacts
 from retail_analytics.bootstrap.budgets import build_run_budgets
 from retail_analytics.bootstrap.config import (
-    BACKEND_ENV_PREFIX,
     BackendSettings,
     ConfigError,
     RuntimeMode,
+    backend_env_name,
     missing_api_settings,
 )
 from retail_analytics.bootstrap.discovery import build_discovery
@@ -65,7 +65,7 @@ from retail_analytics.bootstrap.query import build_query_execution
 from retail_analytics.bootstrap.retrieval import build_retrieval
 from retail_analytics.domain.runs import ExecutionBackend
 
-BACKEND_VARIABLE = BACKEND_ENV_PREFIX + "EXECUTION_BACKEND"
+BACKEND_VARIABLE = backend_env_name("execution_backend")
 InvestigationModel = Model | Callable[[RunBudgets], Model]
 
 LOCK_HELD_MESSAGE = (

@@ -18,7 +18,6 @@ from retail_analytics.bootstrap.local_setup import (
 )
 
 TEMPLATE = (local_setup.ROOT / ".env.example").read_text(encoding="utf-8")
-P = local_env.PREFIX
 
 
 def _generated_values(text: str) -> list[str]:
@@ -38,11 +37,11 @@ def test_fresh_file_has_every_template_key_and_generated_secrets() -> None:
     # The connection string uses the generated password for the new volume.
     assert values["COMPOSE_APP_DB_PASSWORD"] in values[local_env.DATABASE_URL_KEY]
     rendered = {r.key: r.render() for r in result.reports}
-    assert rendered[P + "AUTH_SIGNING_KEY"] == "<generated>"
-    assert rendered[P + "GEMINI_API_KEY"].startswith("<missing: ")
-    assert "docs/google-access.md" in rendered[P + "GEMINI_API_KEY"]
-    assert rendered[P + "OPENAI_API_KEY"] == "<empty: optional>"
-    assert rendered[P + "MODE"] == "<kept>"
+    assert rendered["AUTH_SIGNING_KEY"] == "<generated>"
+    assert rendered["GEMINI_API_KEY"].startswith("<missing: ")
+    assert "docs/google-access.md" in rendered["GEMINI_API_KEY"]
+    assert rendered["OPENAI_API_KEY"] == "<empty: optional>"
+    assert rendered["APP_MODE"] == "<kept>"
 
 
 def test_reports_never_contain_secret_values() -> None:
@@ -63,25 +62,25 @@ def test_rerun_is_byte_identical() -> None:
 def test_existing_values_are_never_changed_or_reordered() -> None:
     existing = (
         "# my notes\n"
-        f"{P}REFERENCE_KEY=my-own-reference-key-that-is-long-enough-xx\n"
+        "REFERENCE_KEY=my-own-reference-key-that-is-long-enough-xx\n"
         "ZZZ_CUSTOM=keep me\n"
-        f"{P}GEMINI_API_KEY='abc def'\n"
-        f"{P}AUTH_SIGNING_KEY=\n"
+        "GEMINI_API_KEY='abc def'\n"
+        "AUTH_SIGNING_KEY=\n"
     )
     result = local_env.reconcile(TEMPLATE, existing)
     assert result.changed
     old_lines = existing.splitlines()
     new_lines = result.text.splitlines()
     for old in old_lines:
-        if old != f"{P}AUTH_SIGNING_KEY=":
+        if old != "AUTH_SIGNING_KEY=":
             assert new_lines.index(old) is not None
     positions = [new_lines.index(line) for line in old_lines[:4]]
     assert positions == sorted(positions)
     values = local_env.parse_values(result.text)
-    assert values[P + "REFERENCE_KEY"].startswith("my-own-reference")
-    assert values[P + "GEMINI_API_KEY"] == "abc def"
-    assert len(values[P + "AUTH_SIGNING_KEY"]) >= 32
-    reference = next(r for r in result.reports if r.key == P + "REFERENCE_KEY")
+    assert values["REFERENCE_KEY"].startswith("my-own-reference")
+    assert values["GEMINI_API_KEY"] == "abc def"
+    assert len(values["AUTH_SIGNING_KEY"]) >= 32
+    reference = next(r for r in result.reports if r.key == "REFERENCE_KEY")
     assert reference.status is local_env.Status.KEPT
     assert "invalidates" in reference.detail
 
@@ -95,17 +94,17 @@ def test_existing_volume_keeps_compose_defaults() -> None:
 
 
 def test_keys_are_read_from_the_template_not_hardcoded() -> None:
-    template = TEMPLATE + f"{P}FUTURE_SETTING=on\n{P}FUTURE_EMPTY=\n"
+    template = TEMPLATE + "FUTURE_SETTING=on\nFUTURE_EMPTY=\n"
     first = local_env.reconcile(template, None)
     values = local_env.parse_values(first.text)
-    assert values[P + "FUTURE_SETTING"] == "on"
-    assert P + "FUTURE_EMPTY" in values
+    assert values["FUTURE_SETTING"] == "on"
+    assert "FUTURE_EMPTY" in values
     # An older environment file gains the new keys without losing anything.
     older = local_env.reconcile(TEMPLATE, None).text
     upgraded = local_env.reconcile(template, older)
     assert upgraded.changed
     assert upgraded.text.startswith(older.rstrip("\n"))
-    assert local_env.parse_values(upgraded.text)[P + "FUTURE_SETTING"] == "on"
+    assert local_env.parse_values(upgraded.text)["FUTURE_SETTING"] == "on"
 
 
 def test_port_overrides_apply_to_a_new_file_and_the_connection_defaults() -> None:
@@ -129,14 +128,14 @@ def test_interactive_prompt_fills_only_empty_external_credentials() -> None:
 
     result = local_env.reconcile(TEMPLATE, None, prompt=prompt)
     values = local_env.parse_values(result.text)
-    assert values[P + "GEMINI_API_KEY"] == "typed-value"
-    assert (P + "GEMINI_API_KEY", True) in asked
-    assert (P + "BIGQUERY_PROJECT", False) in asked
-    assert P + "AUTH_SIGNING_KEY" not in [k for k, _ in asked]
+    assert values["GEMINI_API_KEY"] == "typed-value"
+    assert ("GEMINI_API_KEY", True) in asked
+    assert ("BIGQUERY_PROJECT", False) in asked
+    assert "AUTH_SIGNING_KEY" not in [k for k, _ in asked]
 
 
 def test_redaction_scrubs_secret_values() -> None:
-    values = {P + "GEMINI_API_KEY": "sekret-value-123", "OTHER": "visible-value"}
+    values = {"GEMINI_API_KEY": "sekret-value-123", "OTHER": "visible-value"}
     hidden = local_env.secret_values(values)
     text = local_env.redact("boom sekret-value-123 visible-value", hidden)
     assert "sekret" not in text and "visible-value" in text
@@ -151,14 +150,14 @@ def _ctx(tmp_path: Path, **kwargs: object) -> SetupContext:
         echo=lines.append,
         **kwargs,  # type: ignore[arg-type]
     )
-    ctx.env_file.write_text(f"{P}GEMINI_API_KEY=very-secret-value-xyz\n")
+    ctx.env_file.write_text("GEMINI_API_KEY=very-secret-value-xyz\n")
     ctx.refresh_values()
     return ctx
 
 
 def test_child_output_is_scrubbed_and_failures_are_reported(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
-    out = ctx.python("-c", "import os;print(os.environ['" + P + "GEMINI_API_KEY'])")
+    out = ctx.python("-c", "import os;print(os.environ['GEMINI_API_KEY'])")
     assert "very-secret" not in out and "<redacted>" in out
     with pytest.raises(StepFailed) as raised:
         ctx.python("-c", "import sys;print('very-secret-value-xyz');sys.exit(3)")
@@ -245,7 +244,7 @@ def _isolation_ctx(tmp_path: Path, env_text: str) -> SetupContext:
     root = tmp_path / "repo"
     root.mkdir()
     (root / ".env").write_text(
-        f"{P}BIGQUERY_LOCATION=SENTINEL-FROM-REPO-ENV\n", encoding="utf-8"
+        "BIGQUERY_LOCATION=SENTINEL-FROM-REPO-ENV\n", encoding="utf-8"
     )
     env_file = tmp_path / "isolated.env"
     env_file.write_text(env_text, encoding="utf-8")
@@ -257,27 +256,35 @@ def _isolation_ctx(tmp_path: Path, env_text: str) -> SetupContext:
 
 
 def test_child_commands_never_read_the_repository_env(tmp_path: Path) -> None:
-    ctx = _isolation_ctx(tmp_path, f"{P}BIGQUERY_LOCATION=\n")
+    ctx = _isolation_ctx(tmp_path, "BIGQUERY_LOCATION=\n")
     out = ctx.python("-c", _PRINT_LOCATION)
     assert "SENTINEL" not in out
     assert out == "US"  # the default, not the repository value
 
 
 def test_child_commands_use_the_env_file_values(tmp_path: Path) -> None:
-    ctx = _isolation_ctx(tmp_path, f"{P}BIGQUERY_LOCATION=EU\n")
+    ctx = _isolation_ctx(tmp_path, "BIGQUERY_LOCATION=EU\n")
     assert ctx.python("-c", _PRINT_LOCATION) == "EU"
 
 
 def test_child_env_drops_stray_parent_configuration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(P + "BIGQUERY_LOCATION", "SENTINEL-FROM-SHELL")
-    monkeypatch.setenv("ANALYTICS_CLI_API_URL", "http://stray.invalid")
+    monkeypatch.setenv("BIGQUERY_LOCATION", "SENTINEL-FROM-SHELL")
+    monkeypatch.setenv("CLI_API_URL", "http://stray.invalid")
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", "kept")
-    ctx = _isolation_ctx(tmp_path, f"{P}BIGQUERY_LOCATION=\n")
+    monkeypatch.setenv("RETAIL_ANALYTICS_BIGQUERY_LOCATION", "LEGACY-FROM-SHELL")
+    monkeypatch.setenv("ANALYTICS_CLI_TOKEN", "legacy-token-from-shell")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://other-project/db")
+    monkeypatch.setenv("UNRELATED_TOOL_SETTING", "kept")
+    ctx = _isolation_ctx(tmp_path, "BIGQUERY_LOCATION=\n")
     env = ctx.child_env()
-    assert P + "BIGQUERY_LOCATION" not in env
-    assert "ANALYTICS_CLI_API_URL" not in env
+    assert "BIGQUERY_LOCATION" not in env
+    assert "CLI_API_URL" not in env
+    assert "RETAIL_ANALYTICS_BIGQUERY_LOCATION" not in env
+    assert "ANALYTICS_CLI_TOKEN" not in env
+    assert "DATABASE_URL" not in env
+    assert env["UNRELATED_TOOL_SETTING"] == "kept"
     assert env["COMPOSE_PROJECT_NAME"] == "kept"
     assert env[config.ENV_FILE_VARIABLE] == str(ctx.env_file)
     assert ctx.python("-c", _PRINT_LOCATION) == "US"
@@ -286,15 +293,15 @@ def test_child_env_drops_stray_parent_configuration(
 def test_loader_pointer_replaces_the_default_dotenv(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / ".env").write_text(f"{P}BIGQUERY_LOCATION=SENTINEL\n")
+    (tmp_path / ".env").write_text("BIGQUERY_LOCATION=SENTINEL\n")
     pointed = tmp_path / "other.env"
-    pointed.write_text(f"{P}API_PORT=9191\n")
+    pointed.write_text("APP_API_PORT=9191\n")
     monkeypatch.setenv(config.ENV_FILE_VARIABLE, str(pointed))
     settings = config.load_backend_settings()
     assert settings.api_port == 9191
     assert settings.bigquery_location == "US"
     # A process variable still overrides the pointed file.
-    monkeypatch.setenv(P + "API_PORT", "9292")
+    monkeypatch.setenv("APP_API_PORT", "9292")
     assert config.load_backend_settings().api_port == 9292
 
 
@@ -307,12 +314,12 @@ def test_loader_pointer_to_a_missing_file_is_an_error(
 
 
 def test_default_loading_without_the_pointer_is_unchanged(tmp_path: Path) -> None:
-    (tmp_path / ".env").write_text(f"{P}API_PORT=9393\n")
+    (tmp_path / ".env").write_text("APP_API_PORT=9393\n")
     assert config.load_backend_settings().api_port == 9393
 
 
 def test_declared_source_currency_defaults_to_usd_without_overwriting() -> None:
-    key = P + "SOURCE_CURRENCY_DECLARED"
+    key = "SOURCE_CURRENCY_DECLARED"
     fresh = local_env.parse_values(local_env.reconcile(TEMPLATE, None).text)
     assert fresh[key] == "USD"
     kept = local_env.reconcile(TEMPLATE, f"{key}=EUR\n")
@@ -321,7 +328,7 @@ def test_declared_source_currency_defaults_to_usd_without_overwriting() -> None:
 
 # --- telemetry on by default (T30-F1) ---------------------------------------
 
-TELEMETRY_KEY = P + "TELEMETRY_ENABLED"
+TELEMETRY_KEY = "TELEMETRY_ENABLED"
 
 
 def _env_only(env_file: Path, *extra: str) -> str:
@@ -341,7 +348,7 @@ def test_telemetry_defaults_to_on_in_settings_and_template() -> None:
 
 def test_env_only_adds_the_key_as_true_to_an_existing_file(tmp_path: Path) -> None:
     env_file = tmp_path / "old.env"
-    env_file.write_text(f"{P}MODE=fixture\n", encoding="utf-8")
+    env_file.write_text("APP_MODE=fixture\n", encoding="utf-8")
     _env_only(env_file)
     assert local_env.parse_values(env_file.read_text())[TELEMETRY_KEY] == "true"
 
@@ -416,8 +423,8 @@ def test_next_steps_print_the_grafana_and_mlflow_urls(tmp_path: Path) -> None:
 BACKEND_KEY = local_env.EXECUTION_BACKEND_KEY
 # An environment file written by bootstrap before the selector existed.
 OLD_ENV = (
-    f"{P}MODE=fixture\n"
-    f"{P}DATABASE_URL=postgresql+psycopg://retail_app:x@127.0.0.1:55442/retail_app\n"
+    f"APP_MODE=fixture\n"
+    f"APP_DATABASE_URL=postgresql+psycopg://retail_app:x@127.0.0.1:55442/retail_app\n"
     f"{local_env.TEMPORAL_ADDRESS_KEY}=127.0.0.1:57233\n"
 )
 
@@ -542,3 +549,88 @@ def test_next_steps_name_the_execution_backend(tmp_path: Path) -> None:
     shown = "\n".join(local_setup.next_steps(temporal))
     assert "Execution: Temporal (opt-in)" in shown
     assert "--execution-backend temporal" in shown
+
+
+# --- migration of older prefixed names (A05) ----------------------------------
+
+LEGACY_SECRET = "legacy-secret-value-0123456789-abcdef"
+LEGACY_FILE = (
+    "# my local settings\n"
+    "RETAIL_ANALYTICS_MODE=fixture\n"
+    "\n"
+    "# the key\n"
+    f"export RETAIL_ANALYTICS_GEMINI_API_KEY='{LEGACY_SECRET}'\n"
+    "RETAIL_ANALYTICS_API_PORT=8181  # inline comment\n"
+    "COMPOSE_POSTGRES_PORT=55442\n"
+    "ANALYTICS_CLI_TOKEN_FILE=/tmp/token\n"
+    "RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal\n"
+)
+
+
+def test_migration_renames_keys_preserving_order_comments_and_values() -> None:
+    result = local_env.migrate_legacy(LEGACY_FILE)
+    assert result.changed
+    assert result.text == (
+        "# my local settings\n"
+        "APP_MODE=fixture\n"
+        "\n"
+        "# the key\n"
+        f"export GEMINI_API_KEY='{LEGACY_SECRET}'\n"
+        "APP_API_PORT=8181  # inline comment\n"
+        "COMPOSE_POSTGRES_PORT=55442\n"
+        "CLI_TOKEN_FILE=/tmp/token\n"
+        "EXECUTION_BACKEND=temporal\n"
+    )
+    assert ("ANALYTICS_CLI_TOKEN_FILE", "CLI_TOKEN_FILE") in result.renamed
+    assert result.conflicts == ()
+    again = local_env.migrate_legacy(result.text)
+    assert not again.changed
+    assert again.text == result.text
+
+
+def test_migration_conflict_keeps_the_current_key() -> None:
+    text = (
+        "GEMINI_API_KEY=current-value\n"
+        f"RETAIL_ANALYTICS_GEMINI_API_KEY={LEGACY_SECRET}\n"
+    )
+    result = local_env.migrate_legacy(text)
+    assert result.conflicts == (("RETAIL_ANALYTICS_GEMINI_API_KEY", "GEMINI_API_KEY"),)
+    values = local_env.parse_values(result.text)
+    assert values == {"GEMINI_API_KEY": "current-value"}
+    assert local_env.migrate_legacy(result.text).changed is False
+
+
+def test_env_only_migrates_an_existing_file_in_place(tmp_path: Path) -> None:
+    env_file = tmp_path / "legacy.env"
+    env_file.write_text(
+        LEGACY_FILE
+        + "GEMINI_API_KEY=x\n"
+        + f"RETAIL_ANALYTICS_GEMINI_API_KEY={LEGACY_SECRET}2\n",
+        encoding="utf-8",
+    )
+    env_file.chmod(0o600)
+    output = _env_only(env_file)
+    assert LEGACY_SECRET not in output
+    assert "RETAIL_ANALYTICS_MODE -> APP_MODE" in output
+    assert "conflict: RETAIL_ANALYTICS_GEMINI_API_KEY and GEMINI_API_KEY" in output
+    text = env_file.read_text(encoding="utf-8")
+    values = local_env.parse_values(text)
+    assert not [k for k in values if config.is_legacy_name(k)]
+    assert values["APP_API_PORT"] == "8181"
+    assert values["EXECUTION_BACKEND"] == "temporal"
+    assert values["GEMINI_API_KEY"] == "x"  # the current key wins
+    assert text.startswith("# my local settings\nAPP_MODE=fixture\n")
+    assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+    # The migrated file loads, and a rerun changes nothing.
+    config.load_backend_settings(environ={}, env_file=env_file)
+    assert "no changes" in _env_only(env_file)
+    assert env_file.read_text(encoding="utf-8") == text
+
+
+def test_env_only_warns_about_legacy_names_exported_by_the_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RETAIL_ANALYTICS_DATABASE_URL", LEGACY_SECRET)
+    output = _env_only(tmp_path / "new.env")
+    assert "RETAIL_ANALYTICS_DATABASE_URL" in output
+    assert LEGACY_SECRET not in output

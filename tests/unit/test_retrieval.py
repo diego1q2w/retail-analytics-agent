@@ -320,8 +320,8 @@ def test_unset_thresholds_resolve_per_embedding_provider() -> None:
     fixture = retrieval_config(load_backend_settings(environ={}, env_file=None))
     assert (fixture.min_similarity, fixture.min_lexical_coverage) == (0.55, 0.5)
     environ = {
-        "RETAIL_ANALYTICS_EMBEDDING_PROVIDER": "gemini",
-        "RETAIL_ANALYTICS_GEMINI_API_KEY": "x",
+        "EMBEDDING_PROVIDER": "gemini",
+        "GEMINI_API_KEY": "x",
     }
     gemini = retrieval_config(load_backend_settings(environ=environ, env_file=None))
     assert (gemini.min_similarity, gemini.min_lexical_coverage) == (0.70, 0.75)
@@ -330,8 +330,8 @@ def test_unset_thresholds_resolve_per_embedding_provider() -> None:
         load_backend_settings(
             environ={
                 **environ,
-                "RETAIL_ANALYTICS_RETRIEVAL_MIN_SIMILARITY": "0.6",
-                "RETAIL_ANALYTICS_RETRIEVAL_SEMANTIC_WEIGHT": "4",
+                "RETRIEVAL_MIN_SIMILARITY": "0.6",
+                "RETRIEVAL_SEMANTIC_WEIGHT": "4",
             },
             env_file=None,
         )
@@ -367,7 +367,7 @@ def test_bootstrap_builds_fixture_retriever_and_rejects_gemini_without_key() -> 
     assert isinstance(build_embedder(fixture), HashingEmbedder)
     assert retrieval_config(fixture).max_results == 3
     gemini = load_backend_settings(
-        environ={"RETAIL_ANALYTICS_EMBEDDING_PROVIDER": "gemini"}, env_file=None
+        environ={"EMBEDDING_PROVIDER": "gemini"}, env_file=None
     )
     with pytest.raises(ConfigError):
         build_embedder(gemini)

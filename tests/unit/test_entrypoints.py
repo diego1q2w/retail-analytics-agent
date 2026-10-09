@@ -43,35 +43,31 @@ def test_check_config_prints_redacted_summary(command: click.Command) -> None:
     result = CliRunner().invoke(
         command,
         ["--check-config"],
-        env={"RETAIL_ANALYTICS_GEMINI_API_KEY": "sk-hidden"},
+        env={"GEMINI_API_KEY": "sk-hidden"},
     )
     assert result.exit_code == 0, result.output
-    assert "RETAIL_ANALYTICS_MODE=fixture" in result.output
-    assert "RETAIL_ANALYTICS_GEMINI_API_KEY=<set>" in result.output
+    assert "APP_MODE=fixture" in result.output
+    assert "GEMINI_API_KEY=<set>" in result.output
     assert "sk-hidden" not in result.output
 
 
 def test_live_mode_without_settings_exits_with_config_error() -> None:
-    result = CliRunner().invoke(
-        api.main, ["--check-config"], env={"RETAIL_ANALYTICS_MODE": "live"}
-    )
+    result = CliRunner().invoke(api.main, ["--check-config"], env={"APP_MODE": "live"})
     assert result.exit_code == 2
-    assert "RETAIL_ANALYTICS_DATABASE_URL" in result.output
+    assert "APP_DATABASE_URL" in result.output
 
 
 def test_worker_exits_promptly_with_local_execution() -> None:
     result = CliRunner().invoke(worker.main, [])
     assert result.exit_code == worker.NOT_USED_EXIT_CODE == 3
-    assert "RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal" in result.output
+    assert "EXECUTION_BACKEND=temporal" in result.output
     assert "retail-analytics-api" in result.output
 
 
 def test_worker_requires_temporal_configuration() -> None:
-    result = CliRunner().invoke(
-        worker.main, [], env={"RETAIL_ANALYTICS_EXECUTION_BACKEND": "temporal"}
-    )
+    result = CliRunner().invoke(worker.main, [], env={"EXECUTION_BACKEND": "temporal"})
     assert result.exit_code == 2
-    assert "RETAIL_ANALYTICS_TEMPORAL_ADDRESS" in result.output
+    assert "TEMPORAL_ADDRESS" in result.output
 
 
 def test_cli_status_against_backend() -> None:
@@ -115,16 +111,16 @@ def test_cli_version_and_default_settings() -> None:
 def test_dev_access_commands_need_explicit_configuration() -> None:
     token = CliRunner().invoke(dev_access.main, ["token", "demo-a"], env={})
     assert token.exit_code == 2
-    assert "RETAIL_ANALYTICS_AUTH_SIGNING_KEY" in token.output
+    assert "AUTH_SIGNING_KEY" in token.output
 
     provision = CliRunner().invoke(dev_access.main, ["provision"], env={})
     assert provision.exit_code == 2
-    assert "RETAIL_ANALYTICS_DATABASE_URL" in provision.output
+    assert "APP_DATABASE_URL" in provision.output
 
     unknown = CliRunner().invoke(
         dev_access.main,
         ["token", "someone-else"],
-        env={"RETAIL_ANALYTICS_AUTH_SIGNING_KEY": "k" * 40},
+        env={"AUTH_SIGNING_KEY": "k" * 40},
     )
     assert unknown.exit_code == 2
 
@@ -139,28 +135,24 @@ def test_demo_executives_have_disjoint_products_and_no_admin() -> None:
 def test_api_requires_database_and_signing_key_but_not_temporal() -> None:
     result = CliRunner().invoke(api.main, [], env={})
     assert result.exit_code == 2
-    for name in ("RETAIL_ANALYTICS_DATABASE_URL", "RETAIL_ANALYTICS_AUTH_SIGNING_KEY"):
+    for name in ("APP_DATABASE_URL", "AUTH_SIGNING_KEY"):
         assert name in result.output
     assert "TEMPORAL" not in result.output
     assert "local execution" in result.output
 
 
 def test_api_with_temporal_execution_also_requires_temporal() -> None:
-    result = CliRunner().invoke(
-        api.main, [], env={"RETAIL_ANALYTICS_EXECUTION_BACKEND": "temporal"}
-    )
+    result = CliRunner().invoke(api.main, [], env={"EXECUTION_BACKEND": "temporal"})
     assert result.exit_code == 2
     for name in (
-        "RETAIL_ANALYTICS_DATABASE_URL",
-        "RETAIL_ANALYTICS_TEMPORAL_ADDRESS",
-        "RETAIL_ANALYTICS_AUTH_SIGNING_KEY",
+        "APP_DATABASE_URL",
+        "TEMPORAL_ADDRESS",
+        "AUTH_SIGNING_KEY",
     ):
         assert name in result.output
 
 
 def test_live_mode_requires_the_signing_key() -> None:
-    result = CliRunner().invoke(
-        api.main, ["--check-config"], env={"RETAIL_ANALYTICS_MODE": "live"}
-    )
+    result = CliRunner().invoke(api.main, ["--check-config"], env={"APP_MODE": "live"})
     assert result.exit_code == 2
-    assert "RETAIL_ANALYTICS_AUTH_SIGNING_KEY" in result.output
+    assert "AUTH_SIGNING_KEY" in result.output

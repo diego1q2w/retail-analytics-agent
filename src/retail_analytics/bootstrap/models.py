@@ -24,9 +24,32 @@ from retail_analytics.adapters.models.gemini_interactions import (
 )
 from retail_analytics.adapters.models.routing import ProviderAttempts, ProviderRouting
 from retail_analytics.application.budgets import RunBudgets
-from retail_analytics.bootstrap.config import BackendSettings, ConfigError
+from retail_analytics.bootstrap.config import (
+    BackendSettings,
+    ConfigError,
+    RuntimeMode,
+    backend_env_name,
+)
 
 type ModelFactory = Callable[[RunBudgets], Model]
+
+
+def provider_summary(settings: BackendSettings) -> str:
+    """One startup line naming the enabled model providers (never values).
+
+    The keys use the providers' own variable names, so a key exported in the
+    shell (for example ``OPENAI_API_KEY``) can switch the fallback on; this
+    line makes that visible.
+    """
+    if settings.mode is not RuntimeMode.LIVE:
+        return "model providers: none (fixture mode: offline scripted model)"
+    openai = backend_env_name("openai_api_key")
+    fallback = (
+        f"openai (fallback, {openai} set)"
+        if settings.openai_api_key is not None
+        else f"no fallback ({openai} unset)"
+    )
+    return f"model providers: gemini (primary), {fallback}"
 
 
 def response_limits(settings: BackendSettings) -> ResponseLimits:
@@ -47,7 +70,7 @@ def gemini_model(
     settings: BackendSettings, *, http_client: httpx.AsyncClient | None = None
 ) -> GeminiInteractionsModel:
     if settings.gemini_api_key is None:
-        raise ConfigError(["RETAIL_ANALYTICS_GEMINI_API_KEY: required for the agent"])
+        raise ConfigError(["GEMINI_API_KEY: required for the agent"])
     return GeminiInteractionsModel(
         settings.agent_gemini_model,
         api_key=settings.gemini_api_key.get_secret_value(),

@@ -29,7 +29,7 @@ def live_settings() -> BackendSettings:
 def test_bigquery_access(live_settings: BackendSettings) -> None:
     warehouse = build_warehouse(live_settings)
     if warehouse is None:
-        pytest.skip("RETAIL_ANALYTICS_BIGQUERY_PROJECT not set")
+        pytest.skip("BIGQUERY_PROJECT not set")
     results = check_warehouse(warehouse)
     if results[0].name == "bigquery credentials" and not results[0].ok:
         pytest.skip("application default credentials not configured")
@@ -40,6 +40,6 @@ def test_bigquery_access(live_settings: BackendSettings) -> None:
 def test_gemini_access(live_settings: BackendSettings) -> None:
     model = build_model(live_settings)
     if model is None:
-        pytest.skip("RETAIL_ANALYTICS_GEMINI_API_KEY not set")
+        pytest.skip("GEMINI_API_KEY not set")
     result = check_model(model)
     assert result.ok, f"{result.detail} ({result.remedy})"

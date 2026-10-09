@@ -84,7 +84,7 @@ Ambiguous questions score 0 recall with the tuned settings because the retriever
 
 The sweep scores each setting by the mean of recall@3, precision@3 (0 when nothing is returned for a question that expects a match) and no-match rate, subject to zero exposure, and breaks ties toward stricter thresholds. Best settings: fused min similarity 0.70 with min lexical coverage 0.75 (0.67 scored the same on tuning); semantic-only min similarity 0.70; keyword-only min lexical coverage 0.5. The held-out result at these settings is above.
 
-**Recommendation** (T36; adopted in T36-F1, see the last section): for `gemini-embedding-2` at 768 dimensions, set `RETAIL_ANALYTICS_RETRIEVAL_MIN_SIMILARITY` near 0.70; the 0.55 placeholder admits everything. Cosine thresholds depend on the embedding model and the corpus, so recompute them if the model, dimensions or corpus change. The lexical coverage threshold barely matters once the similarity threshold is set. Do not choose fusion over semantic-only on these numbers: fused matched but did not beat semantic-only at tuned thresholds and ranked lower at open thresholds. A reranker was not tested: the remaining losses at the tuned settings are declines (threshold trade-off), not wrong order within returned results, and a rerank step would add latency and cost to a corpus of 18 deliverable examples. Revisit if the corpus grows by an order of magnitude or MRR falls.
+**Recommendation** (T36; adopted in T36-F1, see the last section): for `gemini-embedding-2` at 768 dimensions, set `RETRIEVAL_MIN_SIMILARITY` near 0.70; the 0.55 placeholder admits everything. Cosine thresholds depend on the embedding model and the corpus, so recompute them if the model, dimensions or corpus change. The lexical coverage threshold barely matters once the similarity threshold is set. Do not choose fusion over semantic-only on these numbers: fused matched but did not beat semantic-only at tuned thresholds and ranked lower at open thresholds. A reranker was not tested: the remaining losses at the tuned settings are declines (threshold trade-off), not wrong order within returned results, and a rerank step would add latency and cost to a corpus of 18 deliverable examples. Revisit if the corpus grows by an order of magnitude or MRR falls.
 
 ## Limits
 
@@ -101,7 +101,7 @@ The sweep scores each setting by the mean of recall@3, precision@3 (0 when nothi
 ```sh
 docker compose -p ra-retrieval-eval up -d --wait postgres      # throwaway database (set COMPOSE_POSTGRES_PORT and passwords)
 alembic upgrade head
-export RETAIL_ANALYTICS_EMBEDDING_PROVIDER=gemini               # plus the Gemini key; keyword-only needs none
+export EMBEDDING_PROVIDER=gemini               # plus the Gemini key; keyword-only needs none
 python -m retail_analytics.bootstrap.retrieval_eval prepare      # executives + corpus (embeds each digest once)
 python -m retail_analytics.bootstrap.retrieval_eval sweep --channels fused   # tuning split only
 python -m retail_analytics.bootstrap.retrieval_eval benchmark    # runner result files in evaluation-results/retrieval/
@@ -137,4 +137,4 @@ What the held-out numbers say, honestly:
 - Access violations: 0 in every variant on both splits.
 - The semantic-only variant ranks as well as the fused one at these defaults; fusion is kept because the keyword channel costs nothing and could help exact-term questions, which this small benchmark cannot show. Revisit if the corpus grows.
 
-The thresholds belong to `gemini-embedding-2` at 768 dimensions. The offline hashing embedder keeps 0.55 / 0.5 (unset settings resolve per provider in `bootstrap/retrieval.py`) because its cosine scale is different and it is not measured here; set the `RETAIL_ANALYTICS_RETRIEVAL_*` variables to override either.
+The thresholds belong to `gemini-embedding-2` at 768 dimensions. The offline hashing embedder keeps 0.55 / 0.5 (unset settings resolve per provider in `bootstrap/retrieval.py`) because its cosine scale is different and it is not measured here; set the `RETRIEVAL_*` variables to override either.

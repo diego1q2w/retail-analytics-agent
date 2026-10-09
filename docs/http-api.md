@@ -16,12 +16,12 @@ TOKEN="$(retail-analytics-dev-access token demo-a)"
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/sessions
 ```
 
-The API needs `RETAIL_ANALYTICS_DATABASE_URL` and
-`RETAIL_ANALYTICS_AUTH_SIGNING_KEY` in every mode, and exits with status 2
+The API needs `APP_DATABASE_URL` and
+`AUTH_SIGNING_KEY` in every mode, and exits with status 2
 naming whichever is missing. The signing key is also a required setting of
 live mode.
 
-With local execution (`RETAIL_ANALYTICS_EXECUTION_BACKEND=local`, the
+With local execution (`EXECUTION_BACKEND=local`, the
 default) the API process itself runs the investigations; no other service but
 PostgreSQL is needed. A run continues when its client disconnects; if the API
 stops, its running investigations end as interrupted (see
@@ -30,7 +30,7 @@ message if another local-execution API already uses the database, or if
 Temporal runs are still active.
 
 With Temporal execution (opt-in, `temporal`) the API also needs
-`RETAIL_ANALYTICS_TEMPORAL_ADDRESS` and only schedules; `retail-analytics-worker`
+`TEMPORAL_ADDRESS` and only schedules; `retail-analytics-worker`
 executes (`./scripts/dev.sh --execution-backend temporal` starts both).
 Temporal is connected lazily: the API starts before Temporal is ready, and a
 request that cannot be scheduled yet answers 503 (retry it with the same

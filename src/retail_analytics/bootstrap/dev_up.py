@@ -2,7 +2,7 @@
 
 Local development only; a small foreground supervisor for a laptop, not a
 process manager to deploy. What it runs follows the execution backend
-(``RETAIL_ANALYTICS_EXECUTION_BACKEND``, or ``--execution-backend`` for this
+(``EXECUTION_BACKEND``, or ``--execution-backend`` for this
 run):
 
 - ``local`` (default): one ``retail-analytics-api`` process that hosts the
@@ -13,14 +13,14 @@ run):
 What it does, in order:
 
 1. loads the environment file with the same isolation as the bootstrap (only
-   that file, never a stray ``.env`` or parent-shell ``RETAIL_ANALYTICS_*``);
+   that file, never a stray ``.env`` or parent-shell setting variables);
 2. checks the API port is free (refuses with an actionable message otherwise);
 3. unless ``--no-services``, reuses the bootstrap steps to make sure Docker,
    PostgreSQL (and Temporal with its namespace, for the Temporal backend) and
    the migrations are in place (compose project from
    ``--project``; unrelated containers are never touched). MLflow, Prometheus
    and Grafana start too unless ``--no-telemetry`` (or the environment file
-   sets ``RETAIL_ANALYTICS_TELEMETRY_ENABLED=false``);
+   sets ``TELEMETRY_ENABLED=false``);
 4. starts ``retail_analytics.bootstrap.api`` (and, for Temporal,
    ``...bootstrap.worker``) as child processes, prefixes their output with
    ``[api]`` / ``[worker]`` and waits until ``/healthz`` answers for the
@@ -57,6 +57,7 @@ from sqlalchemy.engine import make_url
 
 from retail_analytics.bootstrap import local_env, local_setup
 from retail_analytics.bootstrap.config import (
+    ENV_FILE_VARIABLE,
     BackendSettings,
     ConfigError,
     load_backend_settings,
@@ -263,7 +264,7 @@ def check_port_free(host: str, port: int) -> None:
     raise DevUpError(
         f"port {port} on {target} is already in use by another process (maybe "
         "an API from an earlier run). Stop it, or choose another port with "
-        "RETAIL_ANALYTICS_API_PORT in the environment file."
+        "APP_API_PORT in the environment file."
     )
 
 
@@ -356,7 +357,7 @@ def adoption_hint(ctx: local_setup.SetupContext) -> str | None:
 def token_hint(ctx: local_setup.SetupContext) -> str:
     prefix = ""
     if ctx.env_file.resolve() != (ctx.root / ".env").resolve():
-        prefix = f"{local_env.PREFIX}ENV_FILE={ctx.env_file} "
+        prefix = f"{ENV_FILE_VARIABLE}={ctx.env_file} "
     return f"{prefix}retail-analytics-dev-access token demo-a"
 
 
@@ -513,7 +514,7 @@ def _report_exit(echo: Echo, gone: tuple[str, int]) -> int:
     type=click.Choice(local_env.EXECUTION_BACKENDS),
     default=None,
     help=(
-        "Override RETAIL_ANALYTICS_EXECUTION_BACKEND for this run: local (the "
+        "Override EXECUTION_BACKEND for this run: local (the "
         "default; API only) or temporal (Temporal, worker and API)."
     ),
 )

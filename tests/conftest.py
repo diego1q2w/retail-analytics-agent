@@ -9,7 +9,12 @@ import pytest
 from hypothesis import HealthCheck, settings
 
 from retail_analytics.application.telemetry import Telemetry
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import (
+    BARE_GENERIC_NAMES,
+    KNOWN_ENV_NAMES,
+    BackendSettings,
+    is_legacy_name,
+)
 
 # Stable by default: a fixed seed keeps CI/local runs reproducible, and fuzzing is an
 # explicit opt-in (HYPOTHESIS_PROFILE=explore) whose findings become @example cases.
@@ -24,17 +29,16 @@ settings.register_profile(
 )
 settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "default"))
 
-CONFIG_PREFIXES = ("RETAIL_ANALYTICS_", "ANALYTICS_CLI_")
-
 
 @pytest.fixture(autouse=True)
 def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Drop prefixed env vars and run from an empty directory (no stray .env)."""
+    """Drop setting env vars (and older prefixed names) and run from an empty
+    directory (no stray .env)."""
     for key in list(os.environ):
-        if key.startswith(CONFIG_PREFIXES):
+        if key in KNOWN_ENV_NAMES or key in BARE_GENERIC_NAMES or is_legacy_name(key):
             monkeypatch.delenv(key)
     # Telemetry is on by default for local runs; tests never export (no network).
-    monkeypatch.setenv("RETAIL_ANALYTICS_TELEMETRY_ENABLED", "false")
+    monkeypatch.setenv("TELEMETRY_ENABLED", "false")
     monkeypatch.chdir(tmp_path)
 
 

@@ -10,15 +10,15 @@ credentials and imports nothing from the backend beyond its own settings.
 ./scripts/bootstrap.sh
 ./scripts/dev.sh &        # the API (local execution: it runs the investigations)
 retail-analytics-dev-access token demo-a > ~/.analytics-token && chmod 600 ~/.analytics-token
-export ANALYTICS_CLI_TOKEN_FILE=~/.analytics-token     # or ANALYTICS_CLI_TOKEN=...
+export CLI_TOKEN_FILE=~/.analytics-token     # or CLI_TOKEN=...
 analytics chat
 ```
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `ANALYTICS_CLI_API_URL` | `http://127.0.0.1:8080` | Backend address |
-| `ANALYTICS_CLI_TOKEN` / `ANALYTICS_CLI_TOKEN_FILE` | none | Bearer token; the file wins and is re-read on every start. The token is only ever sent as the `Authorization` header and is never printed or put in error text. |
-| `ANALYTICS_CLI_TIMEOUT_SECONDS` | `10` | Per-request timeout (event streams use their own stall limit) |
+| `CLI_API_URL` | `http://127.0.0.1:8080` | Backend address |
+| `CLI_TOKEN` / `CLI_TOKEN_FILE` | none | Bearer token; the file wins and is re-read on every start. The token is only ever sent as the `Authorization` header and is never printed or put in error text. |
+| `CLI_TIMEOUT_SECONDS` | `10` | Per-request timeout (event streams use their own stall limit) |
 
 ## Interactive chat
 

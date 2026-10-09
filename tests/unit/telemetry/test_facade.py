@@ -187,6 +187,6 @@ def test_the_test_suite_never_builds_a_real_sink_from_default_settings() -> None
     from retail_analytics.bootstrap.config import BackendSettings
     from retail_analytics.bootstrap.telemetry import build_telemetry
 
-    assert os.environ["RETAIL_ANALYTICS_TELEMETRY_ENABLED"] == "false"
+    assert os.environ["TELEMETRY_ENABLED"] == "false"
     assert BackendSettings().telemetry_enabled is True
     assert not build_telemetry(BackendSettings(), "api").enabled

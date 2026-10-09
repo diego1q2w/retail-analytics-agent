@@ -16,13 +16,11 @@ def test_live_discovery_requires_a_bigquery_project() -> None:
 
 def test_refresh_interval_setting_is_bounded() -> None:
     settings = load_backend_settings(
-        environ={"RETAIL_ANALYTICS_SCHEMA_REFRESH_SECONDS": "600"}, env_file=None
+        environ={"SCHEMA_REFRESH_SECONDS": "600"}, env_file=None
     )
     assert settings.schema_refresh_seconds == 600
     with pytest.raises(ConfigError):
-        load_backend_settings(
-            environ={"RETAIL_ANALYTICS_SCHEMA_REFRESH_SECONDS": "5"}, env_file=None
-        )
+        load_backend_settings(environ={"SCHEMA_REFRESH_SECONDS": "5"}, env_file=None)
 
 
 @pytest.mark.asyncio

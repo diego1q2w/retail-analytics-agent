@@ -39,7 +39,7 @@ On a new machine with Docker (Compose v2) and Python 3.12 (or [uv](https://docs.
 That one command is idempotent and does everything needed for a working, seeded local environment in fixture mode (offline, no credentials):
 
 1. creates `.venv` and installs the pinned dependencies if no virtualenv is active;
-2. creates `.env` from `.env.example`, or only adds the keys an existing `.env` lacks. It never overwrites or reorders a value, generates local-only secrets (`RETAIL_ANALYTICS_AUTH_SIGNING_KEY`, `RETAIL_ANALYTICS_REFERENCE_KEY`, and the database passwords for a new Compose volume) with `secrets`, and fills the connection defaults. It prints `<generated>`, `<kept>`, `<default>` or `<missing: action>` per key, never a value;
+2. creates `.env` from `.env.example`, or only adds the keys an existing `.env` lacks. It never overwrites or reorders a value, generates local-only secrets (`AUTH_SIGNING_KEY`, `REFERENCE_KEY`, and the database passwords for a new Compose volume) with `secrets`, and fills the connection defaults. It prints `<generated>`, `<kept>`, `<default>` or `<missing: action>` per key, never a value;
 3. checks Docker, starts PostgreSQL and waits until it is healthy (Temporal only when [selected](#temporal-execution-opt-in));
 4. runs `alembic upgrade head`;
 5. provisions the demo executives and seeds the Golden knowledge library;
@@ -53,17 +53,17 @@ Then start the backend with one command and call it with a dev token; see [HTTP 
 
 By default investigations run inside the API process (local execution): `dev.sh` needs only PostgreSQL, and no Temporal server or worker is started. A run keeps going when the CLI disconnects; stopping the API ends running investigations as interrupted (they are not resumed; send the request again). Durable Temporal execution is [opt-in](#temporal-execution-opt-in).
 
-`dev.sh` makes sure PostgreSQL, the telemetry stack (MLflow, Prometheus, Grafana; skip with `--no-telemetry`) and the migrations are in place (the same bootstrap steps; unrelated containers are never touched), starts `retail-analytics-api` with the same environment file and `[api]`-prefixed logs, waits until `/healthz` answers for the selected execution backend, then prints the API URL, the Grafana and MLflow URLs and the command that issues a dev token (the token and secrets are never printed). Ctrl-C or SIGTERM stops what it started (SIGTERM, then SIGKILL after 10 s; with local execution after `RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS` + 5 s, so the API first ends its running investigations as interrupted) and exits 0; if a process exits on its own, the command exits 1 naming it. It refuses to start if the API port is taken by something else. Options: `--env-file FILE` (the same isolation as bootstrap: only that file is read, parent-shell `RETAIL_ANALYTICS_*` variables are dropped), `--project NAME` (Compose project), `--execution-backend local|temporal` (this run only), `--no-services` (do not touch Docker; only check that the needed services are reachable), `--no-telemetry` (do not start the telemetry stack; `--telemetry` is accepted and does nothing), `--ready-timeout SECONDS`. It is a local-development convenience, not a supervisor.
+`dev.sh` makes sure PostgreSQL, the telemetry stack (MLflow, Prometheus, Grafana; skip with `--no-telemetry`) and the migrations are in place (the same bootstrap steps; unrelated containers are never touched), starts `retail-analytics-api` with the same environment file and `[api]`-prefixed logs, waits until `/healthz` answers for the selected execution backend, then prints the API URL, the Grafana and MLflow URLs and the command that issues a dev token (the token and secrets are never printed). Ctrl-C or SIGTERM stops what it started (SIGTERM, then SIGKILL after 10 s; with local execution after `LOCAL_SHUTDOWN_GRACE_SECONDS` + 5 s, so the API first ends its running investigations as interrupted) and exits 0; if a process exits on its own, the command exits 1 naming it. It refuses to start if the API port is taken by something else. Options: `--env-file FILE` (the same isolation as bootstrap: only that file is read, parent-shell setting variables are dropped), `--project NAME` (Compose project), `--execution-backend local|temporal` (this run only), `--no-services` (do not touch Docker; only check that the needed services are reachable), `--no-telemetry` (do not start the telemetry stack; `--telemetry` is accepted and does nothing), `--ready-timeout SECONDS`. It is a local-development convenience, not a supervisor.
 
-External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `RETAIL_ANALYTICS_REFERENCE_KEY`: rotating it invalidates every existing customer reference.
+External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `REFERENCE_KEY`: rotating it invalidates every existing customer reference.
 
-Options: MLflow, Prometheus and Grafana start by default and the next steps print their URLs; `--no-telemetry` skips them (and writes `RETAIL_ANALYTICS_TELEMETRY_ENABLED=false` when that key is new), `--telemetry` is accepted and does nothing; an existing env file without the key gets `true`, and an explicit `false` is never overwritten (the stack is then not started either); `--env-file FILE` works on another environment file (the Compose and every child command then use only its values; the repository's `.env` is never read or changed); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--execution-backend local|temporal` selects the backend for this run (written to the env file only when the key is new); `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
+Options: MLflow, Prometheus and Grafana start by default and the next steps print their URLs; `--no-telemetry` skips them (and writes `TELEMETRY_ENABLED=false` when that key is new), `--telemetry` is accepted and does nothing; an existing env file without the key gets `true`, and an explicit `false` is never overwritten (the stack is then not started either); `--env-file FILE` works on another environment file (the Compose and every child command then use only its values; the repository's `.env` is never read or changed); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--execution-backend local|temporal` selects the backend for this run (written to the env file only when the key is new); `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
 
 ### Temporal execution (opt-in)
 
-`RETAIL_ANALYTICS_EXECUTION_BACKEND` selects where investigations execute, independently of fixture/live mode: `local` (default) runs them in the API process over PostgreSQL; `temporal` runs them as durable Temporal workflows on `retail-analytics-worker`, which resume after a process restart. To use Temporal, set `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal` in `.env` (or pass `--execution-backend temporal` to `bootstrap.sh`/`dev.sh` for one run). Bootstrap and `dev.sh` then also start the Temporal server and its namespace, and `dev.sh` runs the worker next to the API with `[worker]`/`[api]` logs and waits for the worker's Temporal connection; `RETAIL_ANALYTICS_TEMPORAL_ADDRESS` is required (bootstrap fills the local default). With local execution `retail-analytics-worker` exits at once with an instruction.
+`EXECUTION_BACKEND` selects where investigations execute, independently of fixture/live mode: `local` (default) runs them in the API process over PostgreSQL; `temporal` runs them as durable Temporal workflows on `retail-analytics-worker`, which resume after a process restart. To use Temporal, set `EXECUTION_BACKEND=temporal` in `.env` (or pass `--execution-backend temporal` to `bootstrap.sh`/`dev.sh` for one run). Bootstrap and `dev.sh` then also start the Temporal server and its namespace, and `dev.sh` runs the worker next to the API with `[worker]`/`[api]` logs and waits for the worker's Temporal connection; `TEMPORAL_ADDRESS` is required (bootstrap fills the local default). With local execution `retail-analytics-worker` exits at once with an instruction.
 
-Existing environment files: one without the setting runs local, even if it still has a Temporal address; the next `./scripts/bootstrap.sh` adds `RETAIL_ANALYTICS_EXECUTION_BACKEND=local` and explains it, keeping Temporal values, containers and volumes. An explicit `temporal` is never changed. Runs are never moved between backends: if the other backend still has active investigations or queued requests, the API refuses to start, lists them and says how to finish or cancel them with their original backend. Details, guarantees and limits: [investigation runtime](docs/investigation-runtime.md). The production design keeps Temporal with separately scaled workers; local execution is the single-process local topology.
+Existing environment files: one without the setting runs local, even if it still has a Temporal address; the next `./scripts/bootstrap.sh` adds `EXECUTION_BACKEND=local` and explains it, keeping Temporal values, containers and volumes. An explicit `temporal` is never changed. Runs are never moved between backends: if the other backend still has active investigations or queued requests, the API refuses to start, lists them and says how to finish or cancel them with their original backend. Details, guarantees and limits: [investigation runtime](docs/investigation-runtime.md). The production design keeps Temporal with separately scaled workers; local execution is the single-process local topology.
 
 ### How to add a bootstrap step
 
@@ -105,7 +105,7 @@ uv venv --python 3.12              # or: python3.12 -m venv .venv
 | Types (strict) | `mypy` |
 | Tests, including architecture | `python -m pytest` |
 
-Architecture checks alone: `python -m pytest tests/architecture`. Tests run offline in fixture mode, and `tests/conftest.py` hides any local `RETAIL_ANALYTICS_*`/`ANALYTICS_CLI_*` variables and `.env` from them. Tests that need real BigQuery or model credentials use the `live` marker and skip when credentials are absent; a skipped test is never reported as passing.
+Architecture checks alone: `python -m pytest tests/architecture`. Tests run offline in fixture mode, and `tests/conftest.py` hides any local setting variables (and older `RETAIL_ANALYTICS_*`/`ANALYTICS_CLI_*` names) and `.env` from them. Tests that need real BigQuery or model credentials use the `live` marker and skip when credentials are absent; a skipped test is never reported as passing.
 
 ### Entry points
 
@@ -114,25 +114,101 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 | `analytics` | `retail_analytics.bootstrap.cli` | CLI client and prototype UI; talks to the backend over HTTP only (`analytics chat`). See [CLI guide](docs/cli.md) |
 | `retail-analytics-api` | `retail_analytics.bootstrap.api` | Authenticated HTTP/SSE investigation API; needs PostgreSQL and the signing key, and runs the investigations itself with local execution (Temporal execution: also Temporal and the worker). See [HTTP and SSE API](docs/http-api.md) |
 | `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
-| `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker, only with `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal` (fixture model, or the live Gemini/GPT chain); exits with status 3 otherwise |
+| `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker, only with `EXECUTION_BACKEND=temporal` (fixture model, or the live Gemini/GPT chain); exits with status 3 otherwise |
 | `retail-analytics-dev-access` | `retail_analytics.bootstrap.dev_access` | Development only: provision the two synthetic executives and issue local tokens; see [Authentication and entitlements](#authentication-and-entitlements) |
 
-Live mode (`RETAIL_ANALYTICS_MODE=live`) also requires `RETAIL_ANALYTICS_AUTH_SIGNING_KEY`, and the API requires it in every mode (no route skips authentication).
+Live mode (`APP_MODE=live`) also requires `AUTH_SIGNING_KEY`, and the API requires it in every mode (no route skips authentication).
 
 Backend entry points accept `--check-config`: validate settings, print them with secrets shown only as `<set>`/`<unset>`, and exit. Invalid configuration exits with status 2.
 
 ### Configuration
 
-`./scripts/bootstrap.sh` creates `.env` for you (see Quick start); to do it by hand, copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; `RETAIL_ANALYTICS_ENV_FILE=/path/file` makes the loader read that one file instead of `.env` (it must exist; it is a pointer, not a setting). Bootstrap sets it for every child command and drops stray `RETAIL_ANALYTICS_*`/`ANALYTICS_CLI_*` variables from your shell, so child commands see exactly: the env file's non-empty values, then everything else unprefixed (PATH, `COMPOSE_*`, `DOCKER_*`); empty values count as unset. Backend settings use the `RETAIL_ANALYTICS_` prefix and the CLI uses `ANALYTICS_CLI_`. Unknown prefixed variables are rejected by name to catch typos.
+`./scripts/bootstrap.sh` creates `.env` for you (see Quick start); to do it by hand, copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; `APP_ENV_FILE=/path/file` makes the loader read that one file instead of `.env` (it must exist; it is a pointer, not a setting). Bootstrap sets it for every child command and drops every setting variable (and older `RETAIL_ANALYTICS_*`/`ANALYTICS_CLI_*` names) from your shell, so child commands see exactly: the env file's non-empty values, then everything else (PATH, `COMPOSE_*`, `DOCKER_*`); empty values count as unset. Names and the migration from the older prefixed names: see [Environment variables](#environment-variables).
 
-- `RETAIL_ANALYTICS_MODE=fixture` (default) runs offline with no credentials.
-- `RETAIL_ANALYTICS_GEMINI_MODEL` is the default model name used by the credential check.
-- The investigation agent uses `RETAIL_ANALYTICS_AGENT_GEMINI_MODEL` (default `gemini-3.8-flash`, Gemini Interactions API) as primary and `RETAIL_ANALYTICS_AGENT_OPENAI_MODEL` (default `gpt-5-mini`, OpenAI Responses API) as backup when `RETAIL_ANALYTICS_OPENAI_API_KEY` is set. First-token (60 s), streaming-stall (30 s) and per-request (180 s) limits, retries, fallback and per-attempt budget accounting are described in [docs/model-providers.md](docs/model-providers.md).
-- `RETAIL_ANALYTICS_MODE=live` requires the database URL, BigQuery project and Gemini API key (and the Temporal address with Temporal execution); all missing settings are reported together.
-- `RETAIL_ANALYTICS_EXECUTION_BACKEND=local` (default) or `temporal`: see [Temporal execution (opt-in)](#temporal-execution-opt-in). `RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS` (4) and `RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS` (10) bound local execution.
-- `RETAIL_ANALYTICS_REFERENCE_KEY` (at least 32 bytes) is the master key for opaque customer, order and item references. It is optional: when it is unset, queries that need references fail closed. Never commit or log it.
+- `APP_MODE=fixture` (default) runs offline with no credentials.
+- `GEMINI_MODEL` is the default model name used by the credential check.
+- The investigation agent uses `AGENT_GEMINI_MODEL` (default `gemini-3.8-flash`, Gemini Interactions API) as primary and `AGENT_OPENAI_MODEL` (default `gpt-5-mini`, OpenAI Responses API) as backup when `OPENAI_API_KEY` is set. First-token (60 s), streaming-stall (30 s) and per-request (180 s) limits, retries, fallback and per-attempt budget accounting are described in [docs/model-providers.md](docs/model-providers.md).
+- `APP_MODE=live` requires the database URL, BigQuery project and Gemini API key (and the Temporal address with Temporal execution); all missing settings are reported together.
+- `EXECUTION_BACKEND=local` (default) or `temporal`: see [Temporal execution (opt-in)](#temporal-execution-opt-in). `LOCAL_MAX_CONCURRENT_RUNS` (4) and `LOCAL_SHUTDOWN_GRACE_SECONDS` (10) bound local execution.
+- `REFERENCE_KEY` (at least 32 bytes) is the master key for opaque customer, order and item references. It is optional: when it is unset, queries that need references fail closed. Never commit or log it.
 
 Errors name the variable and the problem, never the value. All settings are declared in `src/retail_analytics/bootstrap/config.py`; add new ones there and to `.env.example` (a test keeps them in sync). Only bootstrap reads configuration; inner layers receive typed values.
+
+#### Environment variables
+
+Settings use plain names: the backend reads each setting from its own variable (for example `GEMINI_API_KEY`, `EXECUTION_BACKEND`, `AUTH_SIGNING_KEY`), the CLI uses `CLI_*`, and Docker Compose keys keep `COMPOSE_*`. Names that would be too generic in a shell get an `APP_` prefix (`APP_MODE`, `APP_DATABASE_URL`, `APP_API_HOST`, `APP_API_PORT`, `APP_ENV_FILE`); so a `DATABASE_URL` exported for another project never redirects the app or its migrations (bootstrap and `dev.sh` also drop these bare forms from child commands). The process environment is read only for these names; any other key in the env file (except `COMPOSE_*`) is rejected by name as a probable typo, with the closest known name suggested. `GEMINI_API_KEY`, `OPENAI_API_KEY` and `TEMPORAL_ADDRESS` are the names the provider SDKs and Temporal tools also use: a value exported in your shell overrides `.env`, as for every setting. A shell `OPENAI_API_KEY` therefore enables the GPT fallback; the API (and the worker) print the enabled providers once at startup, names only, for example `model providers: gemini (primary), openai (fallback, OPENAI_API_KEY set)`.
+
+The older prefixed names (`RETAIL_ANALYTICS_*`, `ANALYTICS_CLI_*`) are no longer read and are refused, naming each key and its new name. To migrate an existing environment file in place, run `./scripts/bootstrap.sh --env-only` (add `--env-file FILE` for another file): it renames each old key, keeping values, order and comments; if a file sets both the old and the new name, the new one is kept, the old line is commented out and the conflict is reported (names only, never values). It is idempotent and never touches `COMPOSE_*` keys; a full `./scripts/bootstrap.sh` does the same. Old names exported in your shell must be unset or renamed by hand (bootstrap warns about them). Full mapping:
+
+| Before | Now |
+| --- | --- |
+| `RETAIL_ANALYTICS_MODE` | `APP_MODE` |
+| `RETAIL_ANALYTICS_API_HOST` | `APP_API_HOST` |
+| `RETAIL_ANALYTICS_API_PORT` | `APP_API_PORT` |
+| `RETAIL_ANALYTICS_ARTIFACT_DIR` | `ARTIFACT_DIR` |
+| `RETAIL_ANALYTICS_ARTIFACT_MAX_MARKDOWN_BYTES` | `ARTIFACT_MAX_MARKDOWN_BYTES` |
+| `RETAIL_ANALYTICS_ARTIFACT_MAX_BINARY_BYTES` | `ARTIFACT_MAX_BINARY_BYTES` |
+| `RETAIL_ANALYTICS_DATABASE_URL` | `APP_DATABASE_URL` |
+| `RETAIL_ANALYTICS_EXECUTION_BACKEND` | `EXECUTION_BACKEND` |
+| `RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS` | `LOCAL_MAX_CONCURRENT_RUNS` |
+| `RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS` | `LOCAL_SHUTDOWN_GRACE_SECONDS` |
+| `RETAIL_ANALYTICS_TEMPORAL_ADDRESS` | `TEMPORAL_ADDRESS` |
+| `RETAIL_ANALYTICS_TEMPORAL_NAMESPACE` | `TEMPORAL_NAMESPACE` |
+| `RETAIL_ANALYTICS_TEMPORAL_TASK_QUEUE` | `TEMPORAL_TASK_QUEUE` |
+| `RETAIL_ANALYTICS_BIGQUERY_PROJECT` | `BIGQUERY_PROJECT` |
+| `RETAIL_ANALYTICS_BIGQUERY_LOCATION` | `BIGQUERY_LOCATION` |
+| `RETAIL_ANALYTICS_SCHEMA_REFRESH_SECONDS` | `SCHEMA_REFRESH_SECONDS` |
+| `RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS` | `EVIDENCE_CURRENT_FRESHNESS_SECONDS` |
+| `RETAIL_ANALYTICS_AUDIT_RETENTION_DAYS` | `AUDIT_RETENTION_DAYS` |
+| `RETAIL_ANALYTICS_CLEANUP_BATCH_SIZE` | `CLEANUP_BATCH_SIZE` |
+| `RETAIL_ANALYTICS_GEMINI_API_KEY` | `GEMINI_API_KEY` |
+| `RETAIL_ANALYTICS_GEMINI_MODEL` | `GEMINI_MODEL` |
+| `RETAIL_ANALYTICS_OPENAI_API_KEY` | `OPENAI_API_KEY` |
+| `RETAIL_ANALYTICS_AGENT_GEMINI_MODEL` | `AGENT_GEMINI_MODEL` |
+| `RETAIL_ANALYTICS_AGENT_OPENAI_MODEL` | `AGENT_OPENAI_MODEL` |
+| `RETAIL_ANALYTICS_MODEL_FIRST_TOKEN_SECONDS` | `MODEL_FIRST_TOKEN_SECONDS` |
+| `RETAIL_ANALYTICS_MODEL_STREAM_STALL_SECONDS` | `MODEL_STREAM_STALL_SECONDS` |
+| `RETAIL_ANALYTICS_MODEL_REQUEST_MAX_SECONDS` | `MODEL_REQUEST_MAX_SECONDS` |
+| `RETAIL_ANALYTICS_MODEL_PRIMARY_COOLDOWN_SECONDS` | `MODEL_PRIMARY_COOLDOWN_SECONDS` |
+| `RETAIL_ANALYTICS_MODEL_MAX_OUTPUT_TOKENS` | `MODEL_MAX_OUTPUT_TOKENS` |
+| `RETAIL_ANALYTICS_EMBEDDING_PROVIDER` | `EMBEDDING_PROVIDER` |
+| `RETAIL_ANALYTICS_EMBEDDING_MODEL` | `EMBEDDING_MODEL` |
+| `RETAIL_ANALYTICS_EMBEDDING_DIMENSIONS` | `EMBEDDING_DIMENSIONS` |
+| `RETAIL_ANALYTICS_EXCHANGE_RATE_BASE_URL` | `EXCHANGE_RATE_BASE_URL` |
+| `RETAIL_ANALYTICS_SOURCE_CURRENCY_DECLARED` | `SOURCE_CURRENCY_DECLARED` |
+| `RETAIL_ANALYTICS_RETRIEVAL_MAX_RESULTS` | `RETRIEVAL_MAX_RESULTS` |
+| `RETAIL_ANALYTICS_RETRIEVAL_CHANNEL_CANDIDATES` | `RETRIEVAL_CHANNEL_CANDIDATES` |
+| `RETAIL_ANALYTICS_RETRIEVAL_MIN_SIMILARITY` | `RETRIEVAL_MIN_SIMILARITY` |
+| `RETAIL_ANALYTICS_RETRIEVAL_MIN_LEXICAL_COVERAGE` | `RETRIEVAL_MIN_LEXICAL_COVERAGE` |
+| `RETAIL_ANALYTICS_RETRIEVAL_SEMANTIC_WEIGHT` | `RETRIEVAL_SEMANTIC_WEIGHT` |
+| `RETAIL_ANALYTICS_RUN_ACTIVE_SECONDS` | `RUN_ACTIVE_SECONDS` |
+| `RETAIL_ANALYTICS_RUN_MAX_PROVIDER_REQUESTS` | `RUN_MAX_PROVIDER_REQUESTS` |
+| `RETAIL_ANALYTICS_RUN_MAX_TOKENS` | `RUN_MAX_TOKENS` |
+| `RETAIL_ANALYTICS_RUN_MAX_QUERIES` | `RUN_MAX_QUERIES` |
+| `RETAIL_ANALYTICS_QUERY_MAX_BYTES` | `QUERY_MAX_BYTES` |
+| `RETAIL_ANALYTICS_RUN_MAX_BYTES` | `RUN_MAX_BYTES` |
+| `RETAIL_ANALYTICS_QUERY_MAX_CORRECTIONS` | `QUERY_MAX_CORRECTIONS` |
+| `RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS` | `MAX_TRANSIENT_ATTEMPTS` |
+| `RETAIL_ANALYTICS_RETRY_BASE_SECONDS` | `RETRY_BASE_SECONDS` |
+| `RETAIL_ANALYTICS_RETRY_MAX_SECONDS` | `RETRY_MAX_SECONDS` |
+| `RETAIL_ANALYTICS_QUERY_DEADLINE_SECONDS` | `QUERY_DEADLINE_SECONDS` |
+| `RETAIL_ANALYTICS_RESULT_MAX_ROWS` | `RESULT_MAX_ROWS` |
+| `RETAIL_ANALYTICS_RESULT_MAX_BYTES` | `RESULT_MAX_BYTES` |
+| `RETAIL_ANALYTICS_AUTH_ISSUER` | `AUTH_ISSUER` |
+| `RETAIL_ANALYTICS_AUTH_AUDIENCE` | `AUTH_AUDIENCE` |
+| `RETAIL_ANALYTICS_AUTH_SIGNING_KEY` | `AUTH_SIGNING_KEY` |
+| `RETAIL_ANALYTICS_TELEMETRY_ENABLED` | `TELEMETRY_ENABLED` |
+| `RETAIL_ANALYTICS_TELEMETRY_TRACES_ENDPOINT` | `TELEMETRY_TRACES_ENDPOINT` |
+| `RETAIL_ANALYTICS_TELEMETRY_METRICS_ENDPOINT` | `TELEMETRY_METRICS_ENDPOINT` |
+| `RETAIL_ANALYTICS_TELEMETRY_EXPERIMENT_ID` | `TELEMETRY_EXPERIMENT_ID` |
+| `RETAIL_ANALYTICS_TELEMETRY_EXPORT_TIMEOUT_SECONDS` | `TELEMETRY_EXPORT_TIMEOUT_SECONDS` |
+| `RETAIL_ANALYTICS_TELEMETRY_METRIC_INTERVAL_SECONDS` | `TELEMETRY_METRIC_INTERVAL_SECONDS` |
+| `RETAIL_ANALYTICS_REFERENCE_KEY` | `REFERENCE_KEY` |
+| `RETAIL_ANALYTICS_ENV_FILE` | `APP_ENV_FILE` |
+| `ANALYTICS_CLI_API_URL` | `CLI_API_URL` |
+| `ANALYTICS_CLI_TIMEOUT_SECONDS` | `CLI_TIMEOUT_SECONDS` |
+| `ANALYTICS_CLI_TOKEN` | `CLI_TOKEN` |
+| `ANALYTICS_CLI_TOKEN_FILE` | `CLI_TOKEN_FILE` |
 
 ### Source data profile
 
@@ -156,7 +232,7 @@ retail-analytics-eval summary evaluation-results/run.json
 
 #### Agent runtime target
 
-`retail_analytics.bootstrap.agent_evaluation` provides the `agent_runtime` target: every scenario runs as real investigations (guarded model steps, permission-filtered tools, compiler, result privacy boundary, evidence, reports and the output gate) against an offline DuckDB warehouse instead of BigQuery. It uses the configured execution backend: with local execution (default) it needs only the local PostgreSQL (migrated); with `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal`, or the explicit `heldout_scripted_temporal` / `realdata_scripted_temporal` factories, it runs Temporal workflows on an in-process worker and also needs Temporal. The result records the backend in its target ID (`agent_runtime:local` or `agent_runtime:temporal`). If the services are unreachable, or another local-execution process holds the database, every case is `blocked`. Each scenario gets its own evaluation executive (stable per scenario, so opaque references are reproducible) and a new session.
+`retail_analytics.bootstrap.agent_evaluation` provides the `agent_runtime` target: every scenario runs as real investigations (guarded model steps, permission-filtered tools, compiler, result privacy boundary, evidence, reports and the output gate) against an offline DuckDB warehouse instead of BigQuery. It uses the configured execution backend: with local execution (default) it needs only the local PostgreSQL (migrated); with `EXECUTION_BACKEND=temporal`, or the explicit `heldout_scripted_temporal` / `realdata_scripted_temporal` factories, it runs Temporal workflows on an in-process worker and also needs Temporal. The result records the backend in its target ID (`agent_runtime:local` or `agent_runtime:temporal`). If the services are unreachable, or another local-execution process holds the database, every case is `blocked`. Each scenario gets its own evaluation executive (stable per scenario, so opaque references are reproducible) and a new session.
 
 ```sh
 retail-analytics-eval run --manifest evaluation/heldout/manifest.json \
@@ -186,7 +262,7 @@ retail-analytics-eval run --manifest evaluation/realdata/manifest.json \
 docker compose up -d --wait postgres               # project retail-analytics-local (local execution)
 docker compose up -d --wait temporal               # Temporal execution only
 docker compose run --rm temporal-namespace         #   and its namespace (7-day closed-history retention)
-export RETAIL_ANALYTICS_DATABASE_URL=postgresql+psycopg://retail_app:local-only-app@127.0.0.1:55442/retail_app
+export APP_DATABASE_URL=postgresql+psycopg://retail_app:local-only-app@127.0.0.1:55442/retail_app
 alembic upgrade head                               # application schema; safe to rerun
 docker compose down                                # keeps the volume; add -v to delete data
 ```
@@ -200,7 +276,7 @@ docker compose down                                # keeps the volume; add -v to
 
 Temporal and the application never share a database or role: each role is the only one allowed to connect to its own databases, so the application cannot read Temporal's internal tables. Use `docker compose -p <name>` (and different ports) for a second isolated stack. Roles and databases are created on first start of an empty volume; the Temporal schema is applied by the one-shot `temporal-schema` service on every start.
 
-Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL comes from `RETAIL_ANALYTICS_DATABASE_URL` or `.env`). The baseline revision creates `app_meta`; revision `0002` adds sessions, messages, runs, tool executions (with BigQuery job detail) and the append-only execution and run event histories; revision `0003` adds executives and product entitlements. Add new revisions with `alembic revision -m "..."` chained after the current head; a test keeps the history a single linear chain.
+Migrations live in `migrations/` (Alembic, configured by `alembic.ini`; the URL comes from `APP_DATABASE_URL` or `.env`). The baseline revision creates `app_meta`; revision `0002` adds sessions, messages, runs, tool executions (with BigQuery job detail) and the append-only execution and run event histories; revision `0003` adds executives and product entitlements. Add new revisions with `alembic revision -m "..."` chained after the current head; a test keeps the history a single linear chain.
 
 Application state is reached through the narrow ports in `retail_analytics.application.ports.persistence`, implemented with SQLAlchemy Core in `retail_analytics.adapters.postgres` and wired by `retail_analytics.bootstrap.persistence`. Retried writes are idempotent on application-generated keys (the operation ID for tool executions, the submission key for runs); reusing a key for different content raises a typed conflict. A session has at most one active run, enforced by a row lock and a partial unique index. Run events carry a gap-free per-run sequence for replay after a client's last received event ID.
 
@@ -218,11 +294,11 @@ Every change to an executive's roles, products or active status increments `auth
 
 Each effective change also appends one `access.*` event to `audit_events` in that same transaction (`executive_registered`, `roles_changed`, `profile_changed`, `entitlements_changed`, `activated`, `deactivated`); if the event cannot be written the change rolls back, and identical repeats record nothing. Details hold the actor, change kind, role names, product counts and digests, and the old and new `authorization_version`, never product lists, labels or subjects. `AccessAdministration` methods take `actor_id` (default `system:operator`; the dev provisioning command and bootstrap record `system:dev-access`). `AccessAuditService.history(principal, executive_id)` (`bootstrap.access.build_access_audit`) lists an executive's changes newest first and requires `access:admin`.
 
-**Local (simulated) authentication.** Tokens are HS256 JWTs signed with `RETAIL_ANALYTICS_AUTH_SIGNING_KEY` (at least 32 bytes; held only by the backend and the developer) for `RETAIL_ANALYTICS_AUTH_ISSUER` and `RETAIL_ANALYTICS_AUTH_AUDIENCE`. Verification accepts only HS256 and requires `iss`, `aud`, `sub`, `iat` and `exp`. It allows 30 seconds of clock skew and a lifetime of at most 24 hours. Forged, tampered, unsigned, expired, future-dated, wrong-issuer and wrong-audience tokens all fail with one uniform error that never includes the token. There is no setting or route that skips authentication, in either mode.
+**Local (simulated) authentication.** Tokens are HS256 JWTs signed with `AUTH_SIGNING_KEY` (at least 32 bytes; held only by the backend and the developer) for `AUTH_ISSUER` and `AUTH_AUDIENCE`. Verification accepts only HS256 and requires `iss`, `aud`, `sub`, `iat` and `exp`. It allows 30 seconds of clock skew and a lifetime of at most 24 hours. Forged, tampered, unsigned, expired, future-dated, wrong-issuer and wrong-audience tokens all fail with one uniform error that never includes the token. There is no setting or route that skips authentication, in either mode.
 
 ```sh
-export RETAIL_ANALYTICS_AUTH_SIGNING_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-retail-analytics-dev-access provision          # needs RETAIL_ANALYTICS_DATABASE_URL and migrations at head
+export AUTH_SIGNING_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+retail-analytics-dev-access provision          # needs APP_DATABASE_URL and migrations at head
 retail-analytics-dev-access token demo-a --minutes 60   # prints a token to stdout only
 ```
 
@@ -232,7 +308,7 @@ retail-analytics-dev-access token demo-a --minutes 60   # prints a token to stdo
 
 ### Artifact storage
 
-Report bodies (Markdown now; PNG/JPEG/PDF reserved) are stored as immutable files, not in PostgreSQL. `ArtifactService` (`application/artifacts.py`) is the interface other features use: `save`, `read`, `describe`, `versions`. Files live under `RETAIL_ANALYTICS_ARTIFACT_DIR` (default `data/local/artifacts`, gitignored; mount a Docker volume there) as `blobs/<artifact_id>/<sha256>`; table `artifact_versions` holds owner, version, media type, checksum, size and key. Limits: `RETAIL_ANALYTICS_ARTIFACT_MAX_MARKDOWN_BYTES` (1 MiB) and `..._MAX_BINARY_BYTES` (10 MiB); failures are `ArtifactError` with a code (`too_large`, `unsupported_media_type`, `invalid_content`, ...).
+Report bodies (Markdown now; PNG/JPEG/PDF reserved) are stored as immutable files, not in PostgreSQL. `ArtifactService` (`application/artifacts.py`) is the interface other features use: `save`, `read`, `describe`, `versions`. Files live under `ARTIFACT_DIR` (default `data/local/artifacts`, gitignored; mount a Docker volume there) as `blobs/<artifact_id>/<sha256>`; table `artifact_versions` holds owner, version, media type, checksum, size and key. Limits: `ARTIFACT_MAX_MARKDOWN_BYTES` (1 MiB) and `..._MAX_BINARY_BYTES` (10 MiB); failures are `ArtifactError` with a code (`too_large`, `unsupported_media_type`, `invalid_content`, ...).
 
 A save writes and fsyncs a temporary file, links it into place without overwriting, then commits the metadata row, so a crash never publishes a partial reference. Saves take an idempotency key (for example the operation ID); a retry returns the original version. Reads check ownership (not-found and not-owned are the same `AccessDenied`) and verify the checksum. `ArtifactMaintenance.reconcile()` removes old temporary files and unreferenced blobs (failed metadata commits) and reports metadata whose file is missing; `purge()` deletes an artifact's metadata, then its files.
 
@@ -246,7 +322,7 @@ The model sees a reviewed logical catalog (`domain/logical_catalog.py`, versione
 
 `list_relations` and `describe_relation` (`capabilities/discovery.py`) render the same `CatalogView` that SQL validation consumes (`DiscoveryService.view_for(context)` in `application/discovery.py`), so shown fields and types are the usable ones.
 
-- **Source schema cache.** One shared cache of column names and types (metadata only, no rows). It refreshes after `RETAIL_ANALYTICS_SCHEMA_REFRESH_SECONDS` (default 3600: the public dataset's schema changes rarely, and metadata reads are free) and on demand through `invalidate()` after a schema-mismatch error.
+- **Source schema cache.** One shared cache of column names and types (metadata only, no rows). It refreshes after `SCHEMA_REFRESH_SECONDS` (default 3600: the public dataset's schema changes rarely, and metadata reads are free) and on demand through `invalidate()` after a schema-mismatch error.
 - **Per-executive filtering is never cached.** Each call builds the view from the freshly resolved `ExecutionContext`; no permission or an empty product scope gives an empty view, so entitlement changes apply immediately despite a warm cache. Results carry the catalog and entitlement versions.
 - **Drift.** A missing column or table, or an incompatible type, disables the affected logical fields (the whole relation if the field is essential, such as a key) and any joins that need them. Other fields keep working. Errors name logical relations only, never warehouse tables or columns.
 - **Outage.** If a refresh fails, the last validated snapshot is served (flagged stale) for up to 24 hours, retrying at most every 30 seconds; after that discovery fails closed with a temporary-failure error.
@@ -255,7 +331,7 @@ The model sees a reviewed logical catalog (`domain/logical_catalog.py`, versione
 
 ### Golden retrieval
 
-`bootstrap.retrieval.build_retrieval` returns a `GoldenRetriever`: eligibility prefilter on index entries (product scope, schema/metric applicability) before any scoring, then BM25 and vector channels fused by weighted reciprocal rank (k=60, semantic weight 2, keyword weight 1), at most 3 examples, none when no channel clears its threshold. Delivery goes only through `GoldenKnowledgeReader.deliver`, so stale index entries (retired, suspended, erased, changed) are refused and the next-ranked candidate is used. The index is in-process and rebuilt from `KnowledgeIndexSource` when the invalidation feed moves; vectors are cached by content digest. pgvector is not used: the pinned `postgres:17.11-alpine` image does not ship it and the corpus is tens of examples, so exact brute-force cosine is enough. Embeddings sit behind the `TextEmbedder` port: `hashing` (offline, deterministic, lexical only; the fixture default) or `gemini` (`gemini-embedding-2`, free-tier retries with backoff). Settings: `RETAIL_ANALYTICS_EMBEDDING_*` and `RETAIL_ANALYTICS_RETRIEVAL_*`. Defaults were measured in T36/T36-F1 for `gemini-embedding-2` (min similarity 0.70, min lexical coverage 0.75, semantic weight 2; see `evaluation/retrieval/README.md`); with the offline `hashing` embedder, unset thresholds keep the unmeasured 0.55 / 0.5 because cosine scales differ by model. Override with `RETAIL_ANALYTICS_RETRIEVAL_MIN_SIMILARITY`, `..._MIN_LEXICAL_COVERAGE` and `..._SEMANTIC_WEIGHT`.
+`bootstrap.retrieval.build_retrieval` returns a `GoldenRetriever`: eligibility prefilter on index entries (product scope, schema/metric applicability) before any scoring, then BM25 and vector channels fused by weighted reciprocal rank (k=60, semantic weight 2, keyword weight 1), at most 3 examples, none when no channel clears its threshold. Delivery goes only through `GoldenKnowledgeReader.deliver`, so stale index entries (retired, suspended, erased, changed) are refused and the next-ranked candidate is used. The index is in-process and rebuilt from `KnowledgeIndexSource` when the invalidation feed moves; vectors are cached by content digest. pgvector is not used: the pinned `postgres:17.11-alpine` image does not ship it and the corpus is tens of examples, so exact brute-force cosine is enough. Embeddings sit behind the `TextEmbedder` port: `hashing` (offline, deterministic, lexical only; the fixture default) or `gemini` (`gemini-embedding-2`, free-tier retries with backoff). Settings: `EMBEDDING_*` and `RETRIEVAL_*`. Defaults were measured in T36/T36-F1 for `gemini-embedding-2` (min similarity 0.70, min lexical coverage 0.75, semantic weight 2; see `evaluation/retrieval/README.md`); with the offline `hashing` embedder, unset thresholds keep the unmeasured 0.55 / 0.5 because cosine scales differ by model. Override with `RETRIEVAL_MIN_SIMILARITY`, `..._MIN_LEXICAL_COVERAGE` and `..._SEMANTIC_WEIGHT`.
 
 ### Restricted SQL compiler
 
@@ -276,7 +352,7 @@ Tests in `tests/unit/sql_compiler/` include allowed queries checked against a Du
 
 The project's privacy interpretation: names, email addresses, street-level addresses, fine location and raw customer/order/item keys never reach the model. Customers, orders and items are explored through opaque references. Demographics (country, state, age band) are allowed for individual customers and for populations, with no minimum group size. Exact ages are never available. This is pseudonymization, not anonymization: demographic combinations can still single people out, and the project does not claim otherwise.
 
-- **Opaque references** (`customer_ref`, `order_ref`, `item_ref`; `adapters/sql_compiler/derivations.py`) look like `cus_` plus 24 hex characters. BigQuery computes them inside the trusted binding as HMAC-SHA256 of `<kind>:<raw key>`, so raw keys never leave the warehouse. BigQuery has no HMAC function, so the RFC 2104 construction is written out with `SHA256` and the two padded keys, which are passed as secret trusted parameters. The key is derived per executive from the master key `RETAIL_ANALYTICS_REFERENCE_KEY`. One executive's references are stable across sessions and relations, so joins, follow-ups and saved reports keep working. Another executive's references for the same customer are unrelated, so they cannot be correlated across executives, and a reference pasted from another executive's results matches nothing. A lookup by reference is an ordinary filter in a compiled query, so it always runs under the current product scope. Without the key, references cannot be reversed or recomputed. Limits: BigQuery records query parameters in job metadata, so a principal who can read the project's jobs could compute one executive's references from raw keys (never the master key, and never reverse a reference). Rotating the master key retires every reference. If the key is unset, customer-level references are unavailable (queries fail closed), while age bands keep working.
+- **Opaque references** (`customer_ref`, `order_ref`, `item_ref`; `adapters/sql_compiler/derivations.py`) look like `cus_` plus 24 hex characters. BigQuery computes them inside the trusted binding as HMAC-SHA256 of `<kind>:<raw key>`, so raw keys never leave the warehouse. BigQuery has no HMAC function, so the RFC 2104 construction is written out with `SHA256` and the two padded keys, which are passed as secret trusted parameters. The key is derived per executive from the master key `REFERENCE_KEY`. One executive's references are stable across sessions and relations, so joins, follow-ups and saved reports keep working. Another executive's references for the same customer are unrelated, so they cannot be correlated across executives, and a reference pasted from another executive's results matches nothing. A lookup by reference is an ordinary filter in a compiled query, so it always runs under the current product scope. Without the key, references cannot be reversed or recomputed. Limits: BigQuery records query parameters in job metadata, so a principal who can read the project's jobs could compute one executive's references from raw keys (never the master key, and never reverse a reference). Rotating the master key retires every reference. If the key is unset, customer-level references are unavailable (queries fail closed), while age bands keep working.
 - **Age bands** are cells of a fixed 5-year grid anchored at multiples of 5 (`25-29`), top-coded at `90+` (`domain/privacy.py`). Analysis chooses coarser bands by merging cells (`CASE WHEN age_band IN ('25-29', '30-34') ...`). It cannot get finer ones: raw age never appears in model SQL and the grid never moves, so shifted boundaries or differencing cannot reveal an exact age. A property test changes hidden ages within their cells and checks that no allowed query result changes.
 - **Result boundary.** `ResultPrivacyBoundary.release(compiled, rows, catalog=<fresh view>)` (`application/result_privacy.py`) is the only way query rows reach the model, evidence or reports. It withholds the whole result (`ResultWithheld`) in any of these cases: the authorization or catalog version changed since compilation; an output's lineage uses a field that is no longer published or has a forbidden source; the result shape differs from the compiled outputs; a value is not a plain scalar; or a column that passes a reference or age band through holds anything other than a well-formed reference of that kind or a grid band. Free text that looks like an email, phone number or street address is masked and counted. Releases are bounded to 500 rows or 256 KiB, with truthful truncation flags. Secret parameters are hidden from `repr`, and `CompiledQuery.analysis_parameters` never includes them.
 
@@ -290,7 +366,7 @@ Tests: `tests/unit/privacy/` (end-to-end compiled queries over the DuckDB oracle
 - **Reference before submission.** The job ID is derived from the operation ID and a submission number (`domain.executions.query_job_id`). It is recorded in `query_executions` before the job is submitted. Every job carries the compiled `maximum_bytes_billed` and a statement fingerprint label. A dry run comes first: it validates the statement and estimates its bytes, and an estimate over the cap stops the query before any job exists.
 - **Reconcile first.** If a job reference exists, the attempt looks the job up before doing anything else. A lost submission response or a worker crash leads back to the same job. Resubmitting a recorded ID cannot create a second job, because BigQuery refuses the duplicate. A second job of the same operation is only submitted after the first one has ended with no result to release: a transient job failure, or authority that changed after submission.
 - **Outcomes** are `QuerySucceeded` (released rows plus job statistics), `QueryPending` (JOB_PENDING: the job is still running after the attempt's bounded wait), `QueryOutcomeUnknown` (reconcile before anything else), `QueryFailed` (an error code with `retryable`/`correctable`), and `QueryCancelled`. `cancel(run_id, operation_id)` requests BigQuery cancellation and reconciles it. Failure details are a fixed vocabulary. SQL and parameter values are never logged or persisted by this path. The statement itself stays in BigQuery's job metadata.
-- **Limits held by the operation record.** The operation gets a deadline when it is first recorded (`RETAIL_ANALYTICS_QUERY_DEADLINE_SECONDS`, default 120). Past it, the job is cancelled and reconciled. The operation then fails with `BUDGET_EXCEEDED`/`query_deadline`, and no result is released. While cancellation is still unconfirmed, `QueryFailed.stopping` names the job, and `reconcile_cancel` finishes it. The job also carries a BigQuery job timeout 30 seconds longer than the deadline, as a backstop if no worker is left. At most `RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS` (3) attempts may end in a transient failure, and at most that many jobs are submitted. The last allowed failure fails the operation with `retries_exhausted` instead of asking for a retry. Both counts come from the persisted history, so a restart cannot reset them.
+- **Limits held by the operation record.** The operation gets a deadline when it is first recorded (`QUERY_DEADLINE_SECONDS`, default 120). Past it, the job is cancelled and reconciled. The operation then fails with `BUDGET_EXCEEDED`/`query_deadline`, and no result is released. While cancellation is still unconfirmed, `QueryFailed.stopping` names the job, and `reconcile_cancel` finishes it. The job also carries a BigQuery job timeout 30 seconds longer than the deadline, as a backstop if no worker is left. At most `MAX_TRANSIENT_ATTEMPTS` (3) attempts may end in a transient failure, and at most that many jobs are submitted. The last allowed failure fails the operation with `retries_exhausted` instead of asking for a retry. Both counts come from the persisted history, so a restart cannot reset them.
 - **Run budgets** plug in through `QueryAdmission.admit(...)`. It is called with the dry-run estimate before each new submission is recorded. `QueryUsageRecorder.settle(...)` is called once a job has finished. Both are implemented by `RunBudgets` (see "Run budgets and recovery").
 - The source tables are public, so these credentials can read them directly. The application query path is the enforcement boundary, not IAM on the rows.
 
@@ -302,16 +378,16 @@ One investigation run has one persisted account (`run_budgets`, `budget_charges`
 
 | Limit | Setting | Default |
 | --- | --- | --- |
-| Active time (clarification waits excluded) | `RETAIL_ANALYTICS_RUN_ACTIVE_SECONDS` | 600 |
-| Provider requests, fallback included | `RETAIL_ANALYTICS_RUN_MAX_PROVIDER_REQUESTS` | 20 |
-| Input + output tokens | `RETAIL_ANALYTICS_RUN_MAX_TOKENS` | 100000 |
-| Query executions (job submissions) | `RETAIL_ANALYTICS_RUN_MAX_QUERIES` | 10 |
-| Bytes per query / per run | `RETAIL_ANALYTICS_QUERY_MAX_BYTES` / `RETAIL_ANALYTICS_RUN_MAX_BYTES` | 1 GiB / 5 GiB |
-| Reformulations per failed query | `RETAIL_ANALYTICS_QUERY_MAX_CORRECTIONS` | 2 |
-| Attempts that may fail transiently | `RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS` | 3 |
-| Backoff base / cap (seconds) | `RETAIL_ANALYTICS_RETRY_BASE_SECONDS` / `RETAIL_ANALYTICS_RETRY_MAX_SECONDS` | 1 / 20 |
-| Query deadline (seconds) | `RETAIL_ANALYTICS_QUERY_DEADLINE_SECONDS` | 120 |
-| Rows / bytes per tool result | `RETAIL_ANALYTICS_RESULT_MAX_ROWS` / `RETAIL_ANALYTICS_RESULT_MAX_BYTES` | 500 / 256 KiB |
+| Active time (clarification waits excluded) | `RUN_ACTIVE_SECONDS` | 600 |
+| Provider requests, fallback included | `RUN_MAX_PROVIDER_REQUESTS` | 20 |
+| Input + output tokens | `RUN_MAX_TOKENS` | 100000 |
+| Query executions (job submissions) | `RUN_MAX_QUERIES` | 10 |
+| Bytes per query / per run | `QUERY_MAX_BYTES` / `RUN_MAX_BYTES` | 1 GiB / 5 GiB |
+| Reformulations per failed query | `QUERY_MAX_CORRECTIONS` | 2 |
+| Attempts that may fail transiently | `MAX_TRANSIENT_ATTEMPTS` | 3 |
+| Backoff base / cap (seconds) | `RETRY_BASE_SECONDS` / `RETRY_MAX_SECONDS` | 1 / 20 |
+| Query deadline (seconds) | `QUERY_DEADLINE_SECONDS` | 120 |
+| Rows / bytes per tool result | `RESULT_MAX_ROWS` / `RESULT_MAX_BYTES` | 500 / 256 KiB |
 
 - **Pinned and never reset.** The limits are stored with the run when its account opens (`RunBudgets.open`, or lazily on the first charge). A resumed run, a restarted worker or a configuration change keeps the run's limits and its usage. New settings only apply to new runs.
 - **Atomic, idempotent charges.** Each charge locks the run's budget row, so concurrent charges from any number of workers can never jointly pass a limit. Each charge is recorded once per (run, kind, key). A retried activity that repeats a charge gets the recorded charge back and is not counted again.
@@ -331,7 +407,7 @@ Reuse is a privacy boundary. `EvidenceService.find_reusable(context, ReuseReques
 
 - **Authority:** same owner and session, a non-empty product scope, unchanged authorization version and product set, intact content, not invalidated. Any change to an executive's entitlements makes earlier evidence unusable, both for reuse and for context (`usable_in_session`).
 - **Meaning:** catalog and policy versions, the required metric definition versions, preference fingerprint, period and time zone.
-- **Sufficiency:** explicit refresh always queries again; questions about current data reuse only evidence computed within the freshness limit (`RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS`, default 900 = 15 minutes, allowed 60-86400; `build_evidence(persistence, settings=...)` applies it and `current_freshness=` overrides it in tests); explanations reuse the original snapshot at any age and disclose when it was computed; a requested breakdown must be in the grain; truncated rows cannot feed a calculation.
+- **Sufficiency:** explicit refresh always queries again; questions about current data reuse only evidence computed within the freshness limit (`EVIDENCE_CURRENT_FRESHNESS_SECONDS`, default 900 = 15 minutes, allowed 60-86400; `build_evidence(persistence, settings=...)` applies it and `current_freshness=` overrides it in tests); explanations reuse the original snapshot at any age and disclose when it was computed; a requested breakdown must be in the grain; truncated rows cannot feed a calculation.
 
 Reused evidence is linked to the new run in `run_evidence`. Changing a preference that affects computed numbers (a metric definition or time zone) marks dependent evidence invalidated, including evidence derived from it (`PostgresEvidenceStore.invalidate_dependent_findings`, wired as the preference service's invalidator). A saved report retains its evidence through pins (`pin_for` / `release_pins`). A pinned record cannot be deleted, but a pin never authorizes reading it. Investigation cleanup is not implemented yet.
 
@@ -345,8 +421,8 @@ Tests: `tests/unit/evidence/` (policy rules with a fake clock, encoding, recordi
 - **Target** is the explicit `target_currency` argument, else the executive's saved `display_currency` preference (`StoredDisplayCurrency`).
 - **Basis.** `current` uses the latest published rate; `historical` needs `as_of`. If the basis is omitted and the amounts cover a finished period, the tool refuses and asks for a choice, since the figures differ.
 - **Refusals** (unknown source currency, unsupported pair or date, provider down, unclear basis, same currency) return an explanation, never an estimate.
-- **Provider.** Public ECB euro reference rates through [Frankfurter](https://frankfurter.dev) v2 (`adapters/exchange_rates/frankfurter.py`): no API key and no quota (only abuse limiting), mid-market, daily on TARGET business days, non-euro pairs crossed through EUR, about 30 currencies. Requests pin `providers=ECB`, because without it Frankfurter blends 100+ central banks. A dated request returns the latest business day on or before it; the returned date is what is disclosed. Retries 429/5xx with backoff. `RETAIL_ANALYTICS_EXCHANGE_RATE_BASE_URL` points at another instance. Offline tests use `adapters/exchange_rates/fixture.py`. Wiring: `bootstrap.currency.build_currency_conversion(settings, evidence, preference_store, source=...)`.
-- **Source currency is declared, not verified.** The dataset carries no currency metadata and it is never inferred from prices. `RETAIL_ANALYTICS_SOURCE_CURRENCY_DECLARED` (ISO 4217; `.env.example` and bootstrap default it to `USD` locally, never overwriting a non-empty value) lets the operator declare it. A declared currency is typed as declared (`SourceCurrency.declared`), and every conversion result, its provenance notes (`source_currency_basis`) and the user-facing disclosure say "source currency declared by operator, not verified from data". Empty means unknown and every conversion is refused. An invalid code fails startup with a configuration error naming the variable.
+- **Provider.** Public ECB euro reference rates through [Frankfurter](https://frankfurter.dev) v2 (`adapters/exchange_rates/frankfurter.py`): no API key and no quota (only abuse limiting), mid-market, daily on TARGET business days, non-euro pairs crossed through EUR, about 30 currencies. Requests pin `providers=ECB`, because without it Frankfurter blends 100+ central banks. A dated request returns the latest business day on or before it; the returned date is what is disclosed. Retries 429/5xx with backoff. `EXCHANGE_RATE_BASE_URL` points at another instance. Offline tests use `adapters/exchange_rates/fixture.py`. Wiring: `bootstrap.currency.build_currency_conversion(settings, evidence, preference_store, source=...)`.
+- **Source currency is declared, not verified.** The dataset carries no currency metadata and it is never inferred from prices. `SOURCE_CURRENCY_DECLARED` (ISO 4217; `.env.example` and bootstrap default it to `USD` locally, never overwriting a non-empty value) lets the operator declare it. A declared currency is typed as declared (`SourceCurrency.declared`), and every conversion result, its provenance notes (`source_currency_basis`) and the user-facing disclosure say "source currency declared by operator, not verified from data". Empty means unknown and every conversion is refused. An invalid code fails startup with a configuration error naming the variable.
 
 ### Context selection and the output privacy gate
 
@@ -413,7 +489,7 @@ retail-analytics-maintenance restore <report-id> --as <executive-id>
 retail-analytics-maintenance unresolved                      # operations flagged for manual resolution
 ```
 
-`cleanup` is the scheduled job: run it from cron or any scheduler (for example hourly). It is idempotent and bounded, so overlapping or repeated runs are safe, and `more_pending=true` in its output means a bound stopped it early. No bootstrap step is needed: a fresh environment has nothing to seed. Settings: `RETAIL_ANALYTICS_AUDIT_RETENTION_DAYS` (90) and `RETAIL_ANALYTICS_CLEANUP_BATCH_SIZE` (100). Closed Temporal histories keep seven days through the namespace retention in `compose.yaml`. No custom retention exists for local telemetry.
+`cleanup` is the scheduled job: run it from cron or any scheduler (for example hourly). It is idempotent and bounded, so overlapping or repeated runs are safe, and `more_pending=true` in its output means a bound stopped it early. No bootstrap step is needed: a fresh environment has nothing to seed. Settings: `AUDIT_RETENTION_DAYS` (90) and `CLEANUP_BATCH_SIZE` (100). Closed Temporal histories keep seven days through the namespace retention in `compose.yaml`. No custom retention exists for local telemetry.
 
 - **Restore** `LifecycleService.restore(principal, report_id)` (what T21/T22 call with an authenticated principal; `list_restorable(principal)` finds IDs). Allowed for the owner holding `reports:delete_own` or a principal with `access:admin`; anyone else, and unknown IDs, get the same `not_found`. It works strictly before `deleted_at + 7 days`, only if the report was not purged, and only while the owner is an active executive; otherwise `RestoreError` with code `not_deleted`, `window_closed`, `purged` or `owner_unavailable`. It locks the report row, rechecks, clears `deleted_at` and appends a `report.restored` audit event in one transaction. The consumed deletion confirmation stays consumed. Restoring never revives reuse by itself: the links the deletion withdrew are marked `revalidation_pending` in the same transaction, then (`build_lifecycle(..., reuse=reports)`, wired in the maintenance CLI) `ReportService.revalidate_restored` checks each one again for the owner: the report version is still readable (required-scope coverage), the owner's products cover the record, the record is intact and not invalidated, and its meaning matches current definitions and that session's settings (unknown definitions are not compatible). Passing links are reinstated; the rest stay withdrawn (`revalidation_failed` with the first failed rule); a `report.reuse_revalidated` audit event records the counts. Reading the report again in a session re-runs the import checks and can reinstate a link (`reimported`).
 - **Purge** of reports past the deadline: (1) one transaction removes versions, citations, evidence pins and proposal items, leaving a content-free tombstone row; (2) `ArtifactMaintenance.purge` deletes the artifact (metadata, then bytes); (3) one transaction deletes the tombstone and appends `report.purged`. Restore and purge both lock the report row, so one wins; a crash or storage failure leaves a tombstone that the next run finishes, and a tombstone cannot be restored. A report whose runs still have unresolved operations is skipped until they settle.
@@ -465,7 +541,7 @@ The `docker` tests in `tests/integration/test_telemetry_stack.py` push a synthet
 
 #### Application traces, metrics and the "Agent overview" dashboard
 
-Telemetry is on by default (`RETAIL_ANALYTICS_TELEMETRY_ENABLED=true` in `.env.example` and in the settings default); `./scripts/bootstrap.sh` and `./scripts/dev.sh` start the stack above. Set the variable to `false` (or pass `--no-telemetry` to bootstrap on a new env file) to opt out. Tests and `./scripts/check.sh` force it off and make no network calls. When on, the API and worker export:
+Telemetry is on by default (`TELEMETRY_ENABLED=true` in `.env.example` and in the settings default); `./scripts/bootstrap.sh` and `./scripts/dev.sh` start the stack above. Set the variable to `false` (or pass `--no-telemetry` to bootstrap on a new env file) to opt out. Tests and `./scripts/check.sh` force it off and make no network calls. When on, the API and worker export:
 
 - **Traces to MLflow** (OTLP/HTTP protobuf): all spans of a run share one trace (`tr-` plus an id derived from the run id), covering API acceptance, tool attempts, query attempts (BigQuery job id, bytes), retrieval, model attempts (provider, model id, attempt number, fallback from/to and reason class) and a run root span that names the provider that produced the final answer. `python -m retail_analytics.bootstrap.trace_lookup <run_id> [--tree]` prints the trace id, links and the span tree.
 - **Metrics to Prometheus**, shown on the provisioned Grafana dashboard "Agent overview": runs and latency, budget use, query bytes, provider/fallback rates and final-answer provider, gate withholds, compiler rejections by class and exception type, retrieval hit/no-match, tool failures.

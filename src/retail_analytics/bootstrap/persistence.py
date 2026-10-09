@@ -84,5 +84,5 @@ def build_persistence(
 
 def persistence_from_settings(settings: BackendSettings) -> Persistence:
     if settings.database_url is None:
-        raise ConfigError(["RETAIL_ANALYTICS_DATABASE_URL: required for persistence"])
+        raise ConfigError(["APP_DATABASE_URL: required for persistence"])
     return build_persistence(settings.database_url.get_secret_value())

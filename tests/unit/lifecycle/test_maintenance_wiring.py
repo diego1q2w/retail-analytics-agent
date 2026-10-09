@@ -17,8 +17,8 @@ def test_restore_command_wires_the_reuse_revalidation(
     settings = load_backend_settings(
         environ={
             # Never connected: composition only.
-            "RETAIL_ANALYTICS_DATABASE_URL": "postgresql+psycopg://u:p@127.0.0.1:1/x",
-            "RETAIL_ANALYTICS_ARTIFACT_DIR": str(tmp_path),
+            "APP_DATABASE_URL": "postgresql+psycopg://u:p@127.0.0.1:1/x",
+            "ARTIFACT_DIR": str(tmp_path),
         },
         env_file=None,
     )

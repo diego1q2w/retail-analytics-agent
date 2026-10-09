@@ -11,12 +11,12 @@ replaced at this root:
 - optionally the model: a scripted plan (``adapters.models.scripted``) for
   deterministic runs, or the configured live provider chain.
 
-Execution follows ``RETAIL_ANALYTICS_EXECUTION_BACKEND`` like the API: with
+Execution follows ``EXECUTION_BACKEND`` like the API: with
 ``local`` (the default) the investigations run on an in-process local manager
 and need only PostgreSQL (migrated), e.g. the local stack from
 ``./scripts/bootstrap.sh``; with ``temporal`` they run as Temporal workflows
 on a worker inside this process and also need
-``RETAIL_ANALYTICS_TEMPORAL_ADDRESS``. The ``*_temporal`` factories select
+``TEMPORAL_ADDRESS``. The ``*_temporal`` factories select
 Temporal explicitly whatever the setting. The backend is part of the
 recorded target ID (``agent_runtime:local`` / ``agent_runtime:temporal``).
 Each scenario gets a fresh evaluation executive, product entitlements and

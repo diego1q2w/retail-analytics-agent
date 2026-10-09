@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def live() -> tuple[str, str, bigquery.Client]:
     settings = load_backend_settings(environ={}, env_file=ROOT / ".env")
     if settings.bigquery_project is None:
-        pytest.skip("RETAIL_ANALYTICS_BIGQUERY_PROJECT not set")
+        pytest.skip("BIGQUERY_PROJECT not set")
     try:
         client = create_bigquery_client(
             settings.bigquery_project, settings.bigquery_location

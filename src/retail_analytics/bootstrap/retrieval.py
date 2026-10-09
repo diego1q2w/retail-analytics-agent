@@ -24,7 +24,7 @@ def build_embedder(settings: BackendSettings) -> TextEmbedder:
     if settings.embedding_provider == "hashing":
         return HashingEmbedder()
     if settings.gemini_api_key is None:
-        raise ConfigError(["RETAIL_ANALYTICS_GEMINI_API_KEY: required for gemini"])
+        raise ConfigError(["GEMINI_API_KEY: required for gemini"])
     return GeminiEmbedder(
         settings.gemini_api_key.get_secret_value(),
         model=settings.embedding_model,

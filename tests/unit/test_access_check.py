@@ -183,8 +183,8 @@ def test_gemini_success_and_unexpected_error() -> None:
 def test_command_reports_missing_settings_without_network() -> None:
     result = CliRunner().invoke(check_credentials.main, [])
     assert result.exit_code == 1
-    assert "RETAIL_ANALYTICS_BIGQUERY_PROJECT is not set" in result.output
-    assert "RETAIL_ANALYTICS_GEMINI_API_KEY is not set" in result.output
+    assert "BIGQUERY_PROJECT is not set" in result.output
+    assert "GEMINI_API_KEY is not set" in result.output
     assert "0/2 checks passed" in result.output
 
 
@@ -195,8 +195,8 @@ def test_command_success_never_prints_the_key(monkeypatch: pytest.MonkeyPatch) -
         check_credentials.main,
         [],
         env={
-            "RETAIL_ANALYTICS_BIGQUERY_PROJECT": "proj",
-            "RETAIL_ANALYTICS_GEMINI_API_KEY": SECRET,
+            "BIGQUERY_PROJECT": "proj",
+            "GEMINI_API_KEY": SECRET,
         },
     )
     assert result.exit_code == 0, result.output
@@ -205,7 +205,5 @@ def test_command_success_never_prints_the_key(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_command_config_error_exits_2() -> None:
-    result = CliRunner().invoke(
-        check_credentials.main, [], env={"RETAIL_ANALYTICS_MODE": "bogus"}
-    )
+    result = CliRunner().invoke(check_credentials.main, [], env={"APP_MODE": "bogus"})
     assert result.exit_code == 2

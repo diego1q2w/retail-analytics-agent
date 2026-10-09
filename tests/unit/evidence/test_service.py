@@ -409,9 +409,7 @@ def _service_from_settings(env: Env, seconds: int | None) -> Any:
     from retail_analytics.bootstrap.evidence import build_evidence
 
     raw = (
-        {}
-        if seconds is None
-        else {"RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS": str(seconds)}
+        {} if seconds is None else {"EVIDENCE_CURRENT_FRESHNESS_SECONDS": str(seconds)}
     )
     return build_evidence(
         SimpleNamespace(evidence=env.store, engine=None),  # type: ignore[arg-type]

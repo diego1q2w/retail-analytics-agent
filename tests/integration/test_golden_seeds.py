@@ -29,8 +29,8 @@ def stack() -> Iterator[Stack]:
 
 def _run(stack: Stack, tmp_path: Path) -> tuple[int, str]:
     env = {
-        "RETAIL_ANALYTICS_DATABASE_URL": stack.app_url,
-        "RETAIL_ANALYTICS_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+        "APP_DATABASE_URL": stack.app_url,
+        "ARTIFACT_DIR": str(tmp_path / "artifacts"),
     }
     result = CliRunner().invoke(main, [], env=env)
     return result.exit_code, result.output

@@ -79,7 +79,7 @@ def test_temporal_work_message_is_actionable() -> None:
     assert "1 queued request(s)" in text
     assert "--execution-backend temporal" in text
     assert "analytics cancel RUN_ID" in text
-    assert "RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal" in text
+    assert "EXECUTION_BACKEND=temporal" in text
     assert "Nothing was changed" in text
 
 

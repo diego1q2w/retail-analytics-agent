@@ -168,7 +168,7 @@ def test_errors_use_one_format_and_exit_one() -> None:
     anonymous = CliRunner().invoke(
         cli, ["sessions"], obj=lambda: Backend().client(token=None)
     )
-    assert "ANALYTICS_CLI_TOKEN" in anonymous.output and anonymous.exit_code == 1
+    assert "CLI_TOKEN" in anonymous.output and anonymous.exit_code == 1
 
 
 def test_unreachable_backend_is_reported_not_raised() -> None:

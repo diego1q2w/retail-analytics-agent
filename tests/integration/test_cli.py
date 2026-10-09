@@ -51,18 +51,16 @@ class Cli:
         self.env = {
             "PATH": os.environ.get("PATH", ""),
             "PYTHONPATH": str(ROOT / "src"),
-            "RETAIL_ANALYTICS_ENV_FILE": str(tmp / "empty.env"),
-            "ANALYTICS_CLI_API_URL": url,
-            "ANALYTICS_CLI_TOKEN": bearer(principal)["Authorization"].removeprefix(
-                "Bearer "
-            ),
-            "ANALYTICS_CLI_TIMEOUT_SECONDS": "30",
+            "APP_ENV_FILE": str(tmp / "empty.env"),
+            "CLI_API_URL": url,
+            "CLI_TOKEN": bearer(principal)["Authorization"].removeprefix("Bearer "),
+            "CLI_TIMEOUT_SECONDS": "30",
         }
 
     def popen(self, *args: str, url: str | None = None) -> subprocess.Popen[str]:
         env = dict(self.env)
         if url:
-            env["ANALYTICS_CLI_API_URL"] = url
+            env["CLI_API_URL"] = url
         return subprocess.Popen(
             [sys.executable, "-m", "retail_analytics.bootstrap.cli", *args],
             env=env,
@@ -389,7 +387,7 @@ async def test_scripted_chat_session_ask_follow_up_report_and_delete(
     assert "Unknown command /bogus" in out
     assert "Deleted 1 report(s)" in out
     assert world.live_ids(principal) == set()
-    assert cli.env["ANALYTICS_CLI_TOKEN"] not in out
+    assert cli.env["CLI_TOKEN"] not in out
 
 
 def _read_until(fd: int, needle: str, seconds: float = 60) -> str:

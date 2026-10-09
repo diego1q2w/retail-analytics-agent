@@ -15,9 +15,14 @@ from retail_analytics.application.budgets import RunBudgets
 from retail_analytics.bootstrap.config import (
     BackendSettings,
     ConfigError,
+    RuntimeMode,
     load_backend_settings,
 )
-from retail_analytics.bootstrap.models import provider_chain, response_limits
+from retail_analytics.bootstrap.models import (
+    provider_chain,
+    provider_summary,
+    response_limits,
+)
 from retail_analytics.domain.budgets import RunLimits
 from tests.unit.budgets.memory_store import MemoryRunBudgetStore
 
@@ -57,16 +62,16 @@ def test_without_an_openai_key_there_is_no_backup() -> None:
 
 
 def test_the_primary_is_required() -> None:
-    with pytest.raises(ConfigError, match="RETAIL_ANALYTICS_GEMINI_API_KEY"):
+    with pytest.raises(ConfigError, match="GEMINI_API_KEY"):
         provider_chain(BackendSettings(openai_api_key=KEY))
 
 
 def test_model_settings_load_and_validate() -> None:
     settings = load_backend_settings(
         environ={
-            "RETAIL_ANALYTICS_AGENT_GEMINI_MODEL": "gemini-3-flash-preview",
-            "RETAIL_ANALYTICS_MODEL_FIRST_TOKEN_SECONDS": "90",
-            "RETAIL_ANALYTICS_MODEL_STREAM_STALL_SECONDS": "45",
+            "AGENT_GEMINI_MODEL": "gemini-3-flash-preview",
+            "MODEL_FIRST_TOKEN_SECONDS": "90",
+            "MODEL_STREAM_STALL_SECONDS": "45",
         },
         env_file=None,
     )
@@ -75,8 +80,8 @@ def test_model_settings_load_and_validate() -> None:
     with pytest.raises(ConfigError, match="MODEL_FIRST_TOKEN_SECONDS"):
         load_backend_settings(
             environ={
-                "RETAIL_ANALYTICS_MODEL_FIRST_TOKEN_SECONDS": "120",
-                "RETAIL_ANALYTICS_MODEL_REQUEST_MAX_SECONDS": "60",
+                "MODEL_FIRST_TOKEN_SECONDS": "120",
+                "MODEL_REQUEST_MAX_SECONDS": "60",
             },
             env_file=None,
         )
@@ -90,3 +95,25 @@ def test_chain_repr_does_not_expose_keys() -> None:
     chain = provider_chain(settings)(RunBudgets(MemoryRunBudgetStore(), RunLimits()))
     assert secret not in repr(chain)
     assert secret not in str(settings.redacted_summary())
+
+
+def test_provider_summary_names_providers_never_keys() -> None:
+    key = "test-openai-key-must-not-be-printed"
+    fixture = BackendSettings()
+    assert "fixture" in provider_summary(fixture)
+    live = BackendSettings(
+        mode=RuntimeMode.LIVE,
+        database_url=SecretStr("postgresql://u:p@h/d"),
+        bigquery_project="p",
+        gemini_api_key=SecretStr("g" * 40),
+        auth_signing_key=SecretStr("s" * 40),
+    )
+    assert provider_summary(live) == (
+        "model providers: gemini (primary), no fallback (OPENAI_API_KEY unset)"
+    )
+    both = live.model_copy(update={"openai_api_key": SecretStr(key)})
+    line = provider_summary(both)
+    assert line == (
+        "model providers: gemini (primary), openai (fallback, OPENAI_API_KEY set)"
+    )
+    assert key not in line

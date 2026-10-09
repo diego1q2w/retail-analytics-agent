@@ -30,7 +30,7 @@ def build_discovery(
     """Wire discovery; pass ``provider`` to use something other than BigQuery."""
     if provider is None:
         if settings.bigquery_project is None:
-            raise ConfigError(["RETAIL_ANALYTICS_BIGQUERY_PROJECT: required"])
+            raise ConfigError(["BIGQUERY_PROJECT: required"])
         provider = BigQuerySourceMetadata(
             settings.bigquery_project, settings.bigquery_location, PUBLIC_DATASET
         )

@@ -1,7 +1,7 @@
 """Alembic environment for the application database.
 
 The connection string comes from the typed backend settings
-(``RETAIL_ANALYTICS_DATABASE_URL`` or ``.env``), never from alembic.ini. Run as
+(``APP_DATABASE_URL`` or ``.env``), never from alembic.ini. Run as
 the application role: it owns the database, and Temporal's databases are
 unreachable to it by design.
 
@@ -25,7 +25,7 @@ def _database_url() -> str:
     except ConfigError as exc:
         raise SystemExit(str(exc)) from None
     if url is None:
-        raise SystemExit("RETAIL_ANALYTICS_DATABASE_URL is required to migrate")
+        raise SystemExit("APP_DATABASE_URL is required to migrate")
     return url.get_secret_value()
 
 

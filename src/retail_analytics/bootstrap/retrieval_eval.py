@@ -1,7 +1,7 @@
 """Golden retrieval benchmark: ``python -m retail_analytics.bootstrap.retrieval_eval``.
 
 Commands (run from the repository root with a migrated database; semantic
-variants need ``RETAIL_ANALYTICS_EMBEDDING_PROVIDER=gemini`` and a key):
+variants need ``EMBEDDING_PROVIDER=gemini`` and a key):
 
 - ``prepare``: create two synthetic evaluation executives and publish the
   corpus (seeds plus evaluation-only examples). Safe to rerun; embeddings are

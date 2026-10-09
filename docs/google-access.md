@@ -16,7 +16,7 @@ Never paste keys or tokens into chat, issues, logs or commits.
 
 ## Public dataset versus your project
 
-The data lives in the public dataset `bigquery-public-data.thelook_ecommerce` (tables `orders`, `order_items`, `products`, `users`). Google owns and maintains it; you do not copy or recreate the tables. What you need is your own project to run query jobs in. Setting `RETAIL_ANALYTICS_BIGQUERY_PROJECT` selects that project: it is the query (and billing) project, not the dataset owner.
+The data lives in the public dataset `bigquery-public-data.thelook_ecommerce` (tables `orders`, `order_items`, `products`, `users`). Google owns and maintains it; you do not copy or recreate the tables. What you need is your own project to run query jobs in. Setting `BIGQUERY_PROJECT` selects that project: it is the query (and billing) project, not the dataset owner.
 
 ## Authentication
 
@@ -40,9 +40,9 @@ gcloud auth application-default set-quota-project <project>
 Create a key in Google AI Studio and set it in `.env` (copied from `.env.example`):
 
 ```text
-RETAIL_ANALYTICS_BIGQUERY_PROJECT=<your project id>
-RETAIL_ANALYTICS_GEMINI_API_KEY=<your key>
-RETAIL_ANALYTICS_GEMINI_MODEL=gemini-3-flash-preview
+BIGQUERY_PROJECT=<your project id>
+GEMINI_API_KEY=<your key>
+GEMINI_MODEL=gemini-3-flash-preview
 ```
 
 The model setting is a configurable default for the check only; choosing models for the agent is a separate decision. Availability and rate limits depend on your key and tier: a model can be listed by the models endpoint yet answer 404 on `generateContent`. Confirm in Google's current model and rate-limit documentation.
@@ -66,5 +66,5 @@ The same checks run as tests marked `live`: `python -m pytest -m live`. They rea
 | credentials are expired or revoked | log in again |
 | permission denied (HTTP 403) on BigQuery | enable the BigQuery API on your project; check you can create query jobs there |
 | API key rejected (Gemini) | create a new key in AI Studio and update `.env` |
-| model not available to this key (404) | set `RETAIL_ANALYTICS_GEMINI_MODEL` to a model your key supports |
+| model not available to this key (404) | set `GEMINI_MODEL` to a model your key supports |
 | rate limit or quota exceeded (429) | wait, or check quota in AI Studio |

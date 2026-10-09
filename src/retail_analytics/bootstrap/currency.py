@@ -31,7 +31,7 @@ def build_currency_conversion(
     """Pass ``rates`` to replace the live provider (tests, offline runs).
 
     ``source`` defaults to the operator-declared currency
-    (``RETAIL_ANALYTICS_SOURCE_CURRENCY_DECLARED``, typed as declared, not
+    (``SOURCE_CURRENCY_DECLARED``, typed as declared, not
     verified); unset means unknown and every conversion is refused.
     """
     if source is None:

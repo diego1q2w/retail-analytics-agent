@@ -4,15 +4,15 @@ Local only (see the README for the Compose stack). Production hosting needs its 
 
 ## Switching it on
 
-`RETAIL_ANALYTICS_TELEMETRY_ENABLED` is `true` by default (settings and `.env.example`); `./scripts/bootstrap.sh` and `./scripts/dev.sh` start MLflow, Prometheus and Grafana and print their URLs, unless `--no-telemetry` is given or the env file says `false` (an explicit `false` is never overwritten). Tests force it off, so `./scripts/check.sh` makes no network calls. With the services down, exports are dropped (bounded queue, short timeout, breaker) and runs are unaffected. Endpoints and timings:
+`TELEMETRY_ENABLED` is `true` by default (settings and `.env.example`); `./scripts/bootstrap.sh` and `./scripts/dev.sh` start MLflow, Prometheus and Grafana and print their URLs, unless `--no-telemetry` is given or the env file says `false` (an explicit `false` is never overwritten). Tests force it off, so `./scripts/check.sh` makes no network calls. With the services down, exports are dropped (bounded queue, short timeout, breaker) and runs are unaffected. Endpoints and timings:
 
 | Setting | Default |
 | --- | --- |
-| `RETAIL_ANALYTICS_TELEMETRY_TRACES_ENDPOINT` | `http://127.0.0.1:55500/v1/traces` (MLflow, protobuf only) |
-| `RETAIL_ANALYTICS_TELEMETRY_METRICS_ENDPOINT` | `http://127.0.0.1:59090/api/v1/otlp/v1/metrics` (Prometheus OTLP receiver) |
-| `RETAIL_ANALYTICS_TELEMETRY_EXPERIMENT_ID` | `0` (MLflow experiment) |
-| `RETAIL_ANALYTICS_TELEMETRY_EXPORT_TIMEOUT_SECONDS` | `2` |
-| `RETAIL_ANALYTICS_TELEMETRY_METRIC_INTERVAL_SECONDS` | `10` |
+| `TELEMETRY_TRACES_ENDPOINT` | `http://127.0.0.1:55500/v1/traces` (MLflow, protobuf only) |
+| `TELEMETRY_METRICS_ENDPOINT` | `http://127.0.0.1:59090/api/v1/otlp/v1/metrics` (Prometheus OTLP receiver) |
+| `TELEMETRY_EXPERIMENT_ID` | `0` (MLflow experiment) |
+| `TELEMETRY_EXPORT_TIMEOUT_SECONDS` | `2` |
+| `TELEMETRY_METRIC_INTERVAL_SECONDS` | `10` |
 
 ## Correlation
 

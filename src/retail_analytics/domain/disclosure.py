@@ -141,7 +141,10 @@ _RAW_IDENTIFIER = re.compile(
     _FLAGS,
 )
 _SECRET = re.compile(
-    r"\b_policy_\w+|RETAIL_ANALYTICS_REFERENCE_KEY|reference[_ ]master[_ ]key",
+    # The reference key's variable: the older full name (any case, as before)
+    # and the current bare name (case-sensitive, so prose is not caught).
+    r"\b_policy_\w+|RETAIL_ANALYTICS_REFERENCE_KEY|(?-i:\bREFERENCE_KEY\b)"
+    r"|reference[_ ]master[_ ]key",
     _FLAGS,
 )
 # Cue words are case-insensitive (scoped flag); the name itself must be

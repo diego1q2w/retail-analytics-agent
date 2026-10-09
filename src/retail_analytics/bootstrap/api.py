@@ -2,7 +2,7 @@
 
 The API needs PostgreSQL and the token signing key in every mode: no route
 skips authentication. Where investigations execute follows
-``RETAIL_ANALYTICS_EXECUTION_BACKEND`` (``bootstrap.execution``):
+``EXECUTION_BACKEND`` (``bootstrap.execution``):
 
 - ``local`` (default): this process hosts the local manager, opened in the
   lifespan (``async with``); no Temporal is imported or contacted.
@@ -52,6 +52,7 @@ from retail_analytics.bootstrap.execution import (
     local_scheduler,
     require_api_settings,
 )
+from retail_analytics.bootstrap.models import provider_summary
 from retail_analytics.bootstrap.persistence import (
     Persistence,
     persistence_from_settings,
@@ -189,6 +190,7 @@ def main(check_config: bool) -> None:
     except ConfigError as error:
         click.echo(str(error), err=True)
         raise SystemExit(CONFIG_ERROR_EXIT_CODE) from None
+    click.echo(f"retail-analytics-api: {provider_summary(settings)}", err=True)
     uvicorn.run(build_app(settings), host=settings.api_host, port=settings.api_port)
 
 

@@ -22,7 +22,7 @@ JsonObject = dict[str, Any]
 NOTICES_HEADER = "X-Report-Definition-Notices"
 
 MISSING_CREDENTIAL_HELP = (
-    "no access token: set ANALYTICS_CLI_TOKEN or ANALYTICS_CLI_TOKEN_FILE "
+    "no access token: set CLI_TOKEN or CLI_TOKEN_FILE "
     "(local development: retail-analytics-dev-access token demo-a)"
 )
 

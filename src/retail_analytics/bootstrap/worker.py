@@ -1,6 +1,6 @@
 """Composition root for the Temporal investigation worker.
 
-Used only with ``RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal``. With local
+Used only with ``EXECUTION_BACKEND=temporal``. With local
 execution (the default) investigations run inside ``retail-analytics-api``,
 so this command exits at once with an instruction instead of starting
 duplicate work.
@@ -29,6 +29,7 @@ from retail_analytics.bootstrap.execution import (
     investigation_wiring,
 )
 from retail_analytics.bootstrap.investigations import build_investigations
+from retail_analytics.bootstrap.models import provider_summary
 from retail_analytics.bootstrap.persistence import persistence_from_settings
 from retail_analytics.bootstrap.telemetry import install_from_settings
 from retail_analytics.bootstrap.temporal import (
@@ -46,7 +47,7 @@ NOT_USED_EXIT_CODE = 3
 
 async def run_worker(settings: BackendSettings) -> None:
     if settings.temporal_address is None:
-        raise ConfigError(["RETAIL_ANALYTICS_TEMPORAL_ADDRESS: required for worker"])
+        raise ConfigError(["TEMPORAL_ADDRESS: required for worker"])
     install_from_settings(settings, "worker")
     # Fail on configuration problems before connecting to anything.
     model = investigation_model(settings)
@@ -102,6 +103,7 @@ def main(check_config: bool) -> None:
     if settings.execution_backend is not ExecutionBackend.TEMPORAL:
         click.echo(WORKER_NOT_USED_MESSAGE, err=True)
         raise SystemExit(NOT_USED_EXIT_CODE)
+    click.echo(f"retail-analytics-worker: {provider_summary(settings)}", err=True)
     try:
         asyncio.run(run_worker(settings))
     except ConfigError as error:

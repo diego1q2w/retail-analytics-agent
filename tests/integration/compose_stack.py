@@ -30,13 +30,20 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def unique_project() -> str:
+    """``ra-test-[<RA_TEST_PROJECT_TAG>-]<random>``: the tag lets concurrent
+    runs (for example parallel task worktrees) tell their own stacks apart."""
+    tag = os.environ.get("RA_TEST_PROJECT_TAG", "")
+    return "ra-test-" + (f"{tag}-" if tag else "") + uuid.uuid4().hex[:8]
+
+
 def _password(role: str) -> str:
     return f"test-{role}-{uuid.uuid4().hex}"
 
 
 @dataclass(frozen=True)
 class Stack:
-    project: str = field(default_factory=lambda: "ra-test-" + uuid.uuid4().hex[:8])
+    project: str = field(default_factory=unique_project)
     postgres_port: int = field(default_factory=_free_port)
     temporal_port: int = field(default_factory=_free_port)
     app_password: str = field(default_factory=lambda: _password("app"))
@@ -88,7 +95,7 @@ class Stack:
         return self.alembic("upgrade", target)
 
     def alembic(self, *args: str) -> subprocess.CompletedProcess[str]:
-        env = {**os.environ, "RETAIL_ANALYTICS_DATABASE_URL": self.app_url}
+        env = {**os.environ, "APP_DATABASE_URL": self.app_url}
         return subprocess.run(
             [sys.executable, "-m", "alembic", *args],
             cwd=ROOT,

@@ -29,9 +29,7 @@ class AccessServices:
 
 def local_token_authority(settings: BackendSettings) -> LocalJwtAuthority:
     if settings.auth_signing_key is None:
-        raise ConfigError(
-            ["RETAIL_ANALYTICS_AUTH_SIGNING_KEY: required for token authentication"]
-        )
+        raise ConfigError(["AUTH_SIGNING_KEY: required for token authentication"])
     return LocalJwtAuthority(
         settings.auth_signing_key.get_secret_value(),
         issuer=settings.auth_issuer,

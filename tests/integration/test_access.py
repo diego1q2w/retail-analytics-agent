@@ -302,8 +302,8 @@ async def test_dev_command_provisions_and_issues_a_working_token(
     stack: Stack, services: AccessServices
 ) -> None:
     env = {
-        "RETAIL_ANALYTICS_DATABASE_URL": stack.app_url,
-        "RETAIL_ANALYTICS_AUTH_SIGNING_KEY": KEY,
+        "APP_DATABASE_URL": stack.app_url,
+        "AUTH_SIGNING_KEY": KEY,
     }
     runner = CliRunner()
     provisioned = await asyncio.to_thread(

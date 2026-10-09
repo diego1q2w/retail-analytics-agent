@@ -114,8 +114,8 @@ json_option = click.option("--json", "as_json", is_flag=True, help="Print JSON."
 def cli() -> None:
     """Retail analytics assistant.
 
-    Set ANALYTICS_CLI_TOKEN (or ANALYTICS_CLI_TOKEN_FILE) to your access token and
-    ANALYTICS_CLI_API_URL to the backend. Start with: analytics chat
+    Set CLI_TOKEN (or CLI_TOKEN_FILE) to your access token and
+    CLI_API_URL to the backend. Start with: analytics chat
     """
 
 

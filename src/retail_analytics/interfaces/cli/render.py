@@ -376,7 +376,7 @@ def format_error(error: ApiError | Unreachable) -> str:
     if isinstance(error, Unreachable):
         return (
             f"error [unreachable]: the backend could not be reached ({error.reason}). "
-            "Check ANALYTICS_CLI_API_URL and that retail-analytics-api is running."
+            "Check CLI_API_URL and that retail-analytics-api is running."
         )
     text = f"error [{error.code}]: {one_line(error.message)}"
     hint = _HINTS.get(error.code)

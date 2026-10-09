@@ -107,12 +107,12 @@ def _gemini_error(exc: Exception, model: str) -> AccessError:
             return AccessError(
                 f"API key rejected or not permitted (HTTP {code})",
                 "create a key in Google AI Studio and set "
-                "RETAIL_ANALYTICS_GEMINI_API_KEY in your ignored .env",
+                "GEMINI_API_KEY in your ignored .env",
             )
         if code == 404:
             return AccessError(
                 f"model '{model}' not available to this key (HTTP 404)",
-                "set RETAIL_ANALYTICS_GEMINI_MODEL to a model that supports "
+                "set GEMINI_MODEL to a model that supports "
                 "generateContent for your key",
             )
         if code == 429:

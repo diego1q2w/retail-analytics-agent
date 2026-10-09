@@ -24,9 +24,9 @@ from retail_analytics.application.ports.access_check import (
     WarehouseAccess,
 )
 from retail_analytics.bootstrap.config import (
-    BACKEND_ENV_PREFIX,
     BackendSettings,
     ConfigError,
+    backend_env_name,
     load_backend_settings,
 )
 from retail_analytics.bootstrap.entrypoint import CONFIG_ERROR_EXIT_CODE
@@ -49,12 +49,12 @@ def build_model(settings: BackendSettings) -> ModelAccess | None:
 
 
 def _missing(name: str, setting: str) -> CheckResult:
+    variable = backend_env_name(setting)
     return CheckResult(
         name,
         False,
-        f"{BACKEND_ENV_PREFIX}{setting} is not set",
-        f"set {BACKEND_ENV_PREFIX}{setting} in your ignored .env "
-        "(see docs/google-access.md)",
+        f"{variable} is not set",
+        f"set {variable} in your ignored .env (see docs/google-access.md)",
     )
 
 
@@ -64,10 +64,10 @@ def run_checks(settings: BackendSettings) -> list[CheckResult]:
     results = (
         check_warehouse(warehouse)
         if warehouse
-        else [_missing("bigquery project", "BIGQUERY_PROJECT")]
+        else [_missing("bigquery project", "bigquery_project")]
     )
     results.append(
-        check_model(model) if model else _missing("gemini request", "GEMINI_API_KEY")
+        check_model(model) if model else _missing("gemini request", "gemini_api_key")
     )
     return results
 

@@ -20,9 +20,7 @@ def _read_token(settings: CliSettings) -> str | None:
         try:
             raw = settings.token_file.read_text(encoding="utf-8").strip()
         except OSError:
-            raise ConfigError(
-                ["ANALYTICS_CLI_TOKEN_FILE: the file cannot be read"]
-            ) from None
+            raise ConfigError(["CLI_TOKEN_FILE: the file cannot be read"]) from None
         return raw or None
     if settings.token is not None:
         return settings.token.get_secret_value().strip() or None

@@ -8,8 +8,8 @@ ending.
 
 ## Selecting the execution backend
 
-`RETAIL_ANALYTICS_EXECUTION_BACKEND` chooses where investigations execute. It
-is independent of `RETAIL_ANALYTICS_MODE`: fixture and live (real Gemini/GPT
+`EXECUTION_BACKEND` chooses where investigations execute. It
+is independent of `APP_MODE`: fixture and live (real Gemini/GPT
 and BigQuery) both work with either backend.
 
 | | `local` (default) | `temporal` (opt-in) |
@@ -18,7 +18,7 @@ and BigQuery) both work with either backend.
 | Services | PostgreSQL | PostgreSQL, Temporal server and namespace |
 | CLI disconnect | the run keeps going | the run keeps going |
 | API/worker process stops or dies | running investigations end **interrupted** (never resumed); the user sends a new request | the workflow resumes on a worker |
-| Settings | `RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS` (4), `RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS` (10) | `RETAIL_ANALYTICS_TEMPORAL_ADDRESS` (required), `_TEMPORAL_NAMESPACE`, `_TEMPORAL_TASK_QUEUE` |
+| Settings | `LOCAL_MAX_CONCURRENT_RUNS` (4), `LOCAL_SHUTDOWN_GRACE_SECONDS` (10) | `TEMPORAL_ADDRESS` (required), `_TEMPORAL_NAMESPACE`, `_TEMPORAL_TASK_QUEUE` |
 
 `./scripts/bootstrap.sh` and `./scripts/dev.sh` follow the setting; both also
 accept `--execution-backend local|temporal` for one run (bootstrap writes it
@@ -31,7 +31,7 @@ Temporal and its namespace, the worker and the API, exactly as before;
 `/healthz` and `analytics status` report the backend that started.
 
 An environment file from before the setting existed has no
-`RETAIL_ANALYTICS_EXECUTION_BACKEND`, so it runs local even though it still
+`EXECUTION_BACKEND`, so it runs local even though it still
 names a Temporal address; the next bootstrap adds `local` and says so.
 Temporal settings, containers and volumes are left as they are.
 
@@ -50,18 +50,18 @@ scaled workers; the local backend is the simpler laptop/demo topology.
 
 ## Temporal worker (opt-in)
 
-With `RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal`, after configuring
+With `EXECUTION_BACKEND=temporal`, after configuring
 PostgreSQL and Temporal and running migrations:
 
 ```sh
 retail-analytics-worker
 ```
 
-The worker requires `RETAIL_ANALYTICS_DATABASE_URL`,
-`RETAIL_ANALYTICS_TEMPORAL_ADDRESS` and the local authentication signing key.
+The worker requires `APP_DATABASE_URL`,
+`TEMPORAL_ADDRESS` and the local authentication signing key.
 Namespace and task queue use the existing backend settings. In fixture mode
 the worker uses an offline model and returns a partial answer without
-warehouse findings. In live mode (`RETAIL_ANALYTICS_MODE=live`) it runs the
+warehouse findings. In live mode (`APP_MODE=live`) it runs the
 Gemini primary / GPT backup chain with discovery and guarded query execution;
 see [model providers](model-providers.md). The local backend builds the same
 model and tools (`bootstrap/execution.py`).
@@ -99,7 +99,7 @@ using real PostgreSQL, Temporal and all application guards.
 Investigation behaviour is split from the engine that executes it. Two
 execution backends implement it: the durable Temporal workflow and an
 in-process local manager (see "Local execution backend" below), selected by
-`RETAIL_ANALYTICS_EXECUTION_BACKEND` (see above).
+`EXECUTION_BACKEND` (see above).
 
 - Application (`application/investigation_runtime.py`): the steps an
   investigation takes - begin, prepare a model step, release an answer, ask,
@@ -156,7 +156,7 @@ What it promises, and what it does not:
 - Tasks belong to the manager (the application lifespan), never to an HTTP
   request or SSE connection. Clients disconnect and reconnect freely;
   attachment replays persisted events and never starts or restarts work.
-  Concurrent agent work is bounded (`RETAIL_ANALYTICS_LOCAL_MAX_CONCURRENT_RUNS`,
+  Concurrent agent work is bounded (`LOCAL_MAX_CONCURRENT_RUNS`,
   default 4); waiting runs do not hold a slot.
 - Starting the same run twice (resubmission, concurrent duplicates, a direct
   scheduler call) never creates a second task. One active run per session,
@@ -169,7 +169,7 @@ What it promises, and what it does not:
 - Process lifetime only; no replay. The manager does not retry steps or
   persist agent progress. When the process stops, shutdown stops admission,
   cancels the tasks and, within a bounded grace period
-  (`RETAIL_ANALYTICS_LOCAL_SHUTDOWN_GRACE_SECONDS`, default 10 s), ends
+  (`LOCAL_SHUTDOWN_GRACE_SECONDS`, default 10 s), ends
   each run as **interrupted**: FAILED (CANCELLED if cancellation was already
   requested) with a notice, the open question closed, pending steering and the
   session's queued requests discarded (kept as history, named in the notice,

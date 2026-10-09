@@ -31,11 +31,13 @@ import sqlalchemy as sa
 
 from retail_analytics.bootstrap import local_env
 from retail_analytics.bootstrap.config import ENV_FILE_VARIABLE
+from retail_analytics.bootstrap.local_setup import is_config_name
 from tests.integration.compose_stack import (
     COMPOSE_FILE,
     ROOT,
     _free_port,
     _require_docker,
+    unique_project,
 )
 
 pytestmark = pytest.mark.docker
@@ -129,11 +131,7 @@ class Setup:
         return local_env.secret_values(self.values)
 
     def tool_env(self, **extra: str) -> dict[str, str]:
-        env = {
-            k: v
-            for k, v in os.environ.items()
-            if not k.startswith(("RETAIL_", "ANALYTICS_CLI_"))
-        }
+        env = {k: v for k, v in os.environ.items() if not is_config_name(k)}
         env[ENV_FILE_VARIABLE] = str(self.env_file)
         env.update(extra)
         return env
@@ -155,9 +153,9 @@ class Setup:
             [sys.executable, "-m", "retail_analytics.bootstrap.cli", *args],
             cwd=ROOT,
             env=self.tool_env(
-                ANALYTICS_CLI_API_URL=self.base_url,
-                ANALYTICS_CLI_TOKEN=token,
-                ANALYTICS_CLI_TIMEOUT_SECONDS="30",
+                CLI_API_URL=self.base_url,
+                CLI_TOKEN=token,
+                CLI_TIMEOUT_SECONDS="30",
             ),
             capture_output=True,
             text=True,
@@ -202,7 +200,7 @@ class Setup:
 def setup(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Setup]:
     _require_docker()
     base = tmp_path_factory.mktemp("dev-up")
-    project = "ra-test-" + uuid.uuid4().hex[:8]
+    project = unique_project()
     api_port = _free_port()
     ports = {
         "mlflow": _free_port(),
@@ -235,16 +233,16 @@ def setup(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Setup]:
         )
         with env_file.open("a", encoding="utf-8") as handle:
             handle.write(
-                f"\nRETAIL_ANALYTICS_API_PORT={api_port}\n"
-                f"RETAIL_ANALYTICS_ARTIFACT_DIR={base / 'artifacts'}\n"
+                f"\nAPP_API_PORT={api_port}\n"
+                f"ARTIFACT_DIR={base / 'artifacts'}\n"
                 # Telemetry is on by default: keep this stack off the default
                 # host ports so a developer's own stack is never involved.
                 f"COMPOSE_MLFLOW_PORT={ports['mlflow']}\n"
                 f"COMPOSE_PROMETHEUS_PORT={ports['prometheus']}\n"
                 f"COMPOSE_GRAFANA_PORT={ports['grafana']}\n"
-                f"RETAIL_ANALYTICS_TELEMETRY_TRACES_ENDPOINT="
+                f"TELEMETRY_TRACES_ENDPOINT="
                 f"http://127.0.0.1:{ports['mlflow']}/v1/traces\n"
-                f"RETAIL_ANALYTICS_TELEMETRY_METRICS_ENDPOINT="
+                f"TELEMETRY_METRICS_ENDPOINT="
                 f"http://127.0.0.1:{ports['prometheus']}/api/v1/otlp/v1/metrics\n"
             )
         values = local_env.parse_values(env_file.read_text(encoding="utf-8"))
@@ -394,7 +392,7 @@ def test_worker_command_exits_promptly_with_local_execution(setup: Setup) -> Non
         timeout=60,
     )
     assert done.returncode == 3
-    assert "RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal" in done.stderr
+    assert "EXECUTION_BACKEND=temporal" in done.stderr
     assert time.monotonic() - started < 30
 
 
@@ -495,7 +493,7 @@ def test_switching_never_takes_over_active_temporal_runs(setup: Setup) -> None:
     api = subprocess.Popen(
         [sys.executable, "-m", "retail_analytics.bootstrap.api"],
         cwd=ROOT,
-        env=setup.tool_env(RETAIL_ANALYTICS_EXECUTION_BACKEND="temporal"),
+        env=setup.tool_env(EXECUTION_BACKEND="temporal"),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -588,7 +586,7 @@ def test_no_telemetry_skips_the_stack_and_runs_survive_the_default_on_outage(
         check=True,
         timeout=300,
     )
-    assert setup.values["RETAIL_ANALYTICS_TELEMETRY_ENABLED"] == "true"
+    assert setup.values["TELEMETRY_ENABLED"] == "true"
     dev = setup.start("--no-telemetry")
     try:
         dev.wait_for("[dev] ready")

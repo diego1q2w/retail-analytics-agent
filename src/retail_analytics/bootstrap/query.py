@@ -30,7 +30,7 @@ from retail_analytics.bootstrap.persistence import Persistence
 def build_query_compilers(
     settings: BackendSettings, *, dataset: str = PUBLIC_DATASET
 ) -> ScopedSqlglotCompilers:
-    """Per-executive compilers; references need RETAIL_ANALYTICS_REFERENCE_KEY."""
+    """Per-executive compilers; references need REFERENCE_KEY."""
     key = settings.reference_key
     keyring = None if key is None else ReferenceKeyring(key.get_secret_value().encode())
     limits = CompilerLimits(maximum_bytes_billed=settings.query_max_bytes)
@@ -69,7 +69,7 @@ def build_query_execution(
     """
     project = settings.bigquery_project
     if project is None:
-        raise ConfigError(["RETAIL_ANALYTICS_BIGQUERY_PROJECT: required"])
+        raise ConfigError(["BIGQUERY_PROJECT: required"])
     location = settings.bigquery_location
     return QueryExecutionService(
         settings=QueryExecutionSettings(

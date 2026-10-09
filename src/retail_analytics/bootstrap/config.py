@@ -1,11 +1,22 @@
 """Typed configuration loaded once at the composition roots.
 
-Backend settings use the ``RETAIL_ANALYTICS_`` prefix; CLI client settings use
-``ANALYTICS_CLI_``. Values come from an optional dotenv file overlaid by the
-process environment. Empty values count as unset.
+Each backend setting is read from its own variable: the field name upper-cased
+(``GEMINI_API_KEY``, ``EXECUTION_BACKEND``), except where a bare name is too
+generic for a shell (``APP_MODE``, ``APP_DATABASE_URL``, ``APP_API_HOST``,
+``APP_API_PORT``; README,
+"Environment variables", has the full list). CLI client
+settings use ``CLI_`` (``CLI_API_URL``, ``CLI_TOKEN``). Values come from an
+optional dotenv file overlaid by the process environment; the process
+environment is read only for these known names. Empty values count as unset.
+
+The dotenv file may hold only known names and ``COMPOSE_*`` keys (read by
+Docker Compose): any other key is reported as a probable typo. The older
+prefixed names (``RETAIL_ANALYTICS_*``, ``ANALYTICS_CLI_*``) are refused wherever they
+appear, with the fix (``./scripts/bootstrap.sh --env-only`` migrates the file);
+there is no silent dual support.
 
 The dotenv file is ``.env`` in the working directory unless
-``RETAIL_ANALYTICS_ENV_FILE`` (in the process environment) names another file;
+``APP_ENV_FILE`` (in the process environment) names another file;
 then that file is the only one read, and it must exist. Local bootstrap sets it
 for every child command so an isolated ``--env-file`` never falls back to the
 repository ``.env``. Precedence, highest first: process environment, the dotenv
@@ -18,6 +29,7 @@ environment: bootstrap passes the typed values they need.
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 from collections.abc import Mapping
@@ -38,12 +50,36 @@ from pydantic import (
 
 from retail_analytics.domain.runs import ExecutionBackend
 
-BACKEND_ENV_PREFIX = "RETAIL_ANALYTICS_"
-CLI_ENV_PREFIX = "ANALYTICS_CLI_"
+CLI_ENV_PREFIX = "CLI_"
+# Keys for Docker Compose interpolation; allowed in the dotenv file, never read.
+COMPOSE_ENV_PREFIX = "COMPOSE_"
 DEFAULT_ENV_FILE = Path(".env")
 # Names the one dotenv file to read instead of ``.env`` in the working directory.
 # It is a loader pointer, not a setting: it is never validated as one.
-ENV_FILE_VARIABLE = BACKEND_ENV_PREFIX + "ENV_FILE"
+ENV_FILE_VARIABLE = "APP_ENV_FILE"
+# Backend fields whose bare upper-case name is too generic for a shell.
+_BACKEND_NAME_OVERRIDES: dict[str, str] = {
+    "mode": "APP_MODE",
+    "database_url": "APP_DATABASE_URL",
+    "api_host": "APP_API_HOST",
+    "api_port": "APP_API_PORT",
+}
+# The older prefixed names. Refused by the loader; migrated by
+# ``./scripts/bootstrap.sh --env-only`` (bootstrap.local_env.migrate_legacy).
+LEGACY_BACKEND_PREFIX = "RETAIL_ANALYTICS_"
+LEGACY_CLI_PREFIX = "ANALYTICS_CLI_"
+LEGACY_PREFIXES = (LEGACY_BACKEND_PREFIX, LEGACY_CLI_PREFIX)
+MIGRATE_COMMAND = "./scripts/bootstrap.sh --env-only"
+
+
+def backend_env_name(field: str) -> str:
+    """The environment variable of a ``BackendSettings`` field."""
+    return _BACKEND_NAME_OVERRIDES.get(field, field.upper())
+
+
+def cli_env_name(field: str) -> str:
+    """The environment variable of a ``CliSettings`` field."""
+    return CLI_ENV_PREFIX + field.upper()
 
 
 class ConfigError(Exception):
@@ -116,7 +152,7 @@ class BackendSettings(BaseModel):
     openai_api_key: SecretStr | None = None
     # Investigation agent models (live mode). Gemini is primary and is called
     # through the Interactions API; the OpenAI model (Responses API) is the
-    # backup, enabled when RETAIL_ANALYTICS_OPENAI_API_KEY is set.
+    # backup, enabled when OPENAI_API_KEY is set.
     agent_gemini_model: str = Field(default="gemini-3.8-flash", min_length=1)
     agent_openai_model: str = Field(default="gpt-5-mini", min_length=1)
     # Provider response limits: no first streamed token within this time
@@ -195,35 +231,26 @@ class BackendSettings(BaseModel):
         for name in ("auth_signing_key", "reference_key"):
             key = getattr(self, name)
             if key is not None and len(key.get_secret_value().encode()) < 32:
-                raise ValueError(
-                    BACKEND_ENV_PREFIX + name.upper() + " must be at least 32 bytes"
-                )
+                raise ValueError(backend_env_name(name) + " must be at least 32 bytes")
         return self
 
     @model_validator(mode="after")
     def _check_budget_order(self) -> Self:
         if self.query_max_bytes > self.run_max_bytes:
-            raise ValueError(
-                "RETAIL_ANALYTICS_QUERY_MAX_BYTES must not exceed "
-                "RETAIL_ANALYTICS_RUN_MAX_BYTES"
-            )
+            raise ValueError("QUERY_MAX_BYTES must not exceed RUN_MAX_BYTES")
         if self.model_first_token_seconds > self.model_request_max_seconds:
             raise ValueError(
-                "RETAIL_ANALYTICS_MODEL_FIRST_TOKEN_SECONDS must not exceed "
-                "RETAIL_ANALYTICS_MODEL_REQUEST_MAX_SECONDS"
+                "MODEL_FIRST_TOKEN_SECONDS must not exceed MODEL_REQUEST_MAX_SECONDS"
             )
         if self.retry_base_seconds > self.retry_max_seconds:
-            raise ValueError(
-                "RETAIL_ANALYTICS_RETRY_BASE_SECONDS must not exceed "
-                "RETAIL_ANALYTICS_RETRY_MAX_SECONDS"
-            )
+            raise ValueError("RETRY_BASE_SECONDS must not exceed RETRY_MAX_SECONDS")
         return self
 
     @model_validator(mode="after")
     def _require_live_settings(self) -> Self:
         if self.mode is RuntimeMode.LIVE:
             missing = [
-                BACKEND_ENV_PREFIX + name.upper()
+                backend_env_name(name)
                 for name in LIVE_REQUIRED_SETTINGS
                 if getattr(self, name) is None
             ]
@@ -231,7 +258,7 @@ class BackendSettings(BaseModel):
                 self.execution_backend is ExecutionBackend.TEMPORAL
                 and self.temporal_address is None
             ):
-                missing.append(BACKEND_ENV_PREFIX + "TEMPORAL_ADDRESS")
+                missing.append(backend_env_name("temporal_address"))
             if missing:
                 raise ValueError("live mode requires " + ", ".join(missing))
         return self
@@ -247,7 +274,7 @@ class BackendSettings(BaseModel):
                 shown = "<unset>"
             else:
                 shown = str(value)
-            summary[BACKEND_ENV_PREFIX + name.upper()] = shown
+            summary[backend_env_name(name)] = shown
         return summary
 
 
@@ -273,7 +300,7 @@ def api_required_settings(settings: BackendSettings) -> tuple[str, ...]:
 def missing_api_settings(settings: BackendSettings) -> list[str]:
     """Variable names of unset settings the API needs (never values)."""
     return [
-        BACKEND_ENV_PREFIX + name.upper()
+        backend_env_name(name)
         for name in api_required_settings(settings)
         if getattr(settings, name) is None
     ]
@@ -292,59 +319,164 @@ class CliSettings(BaseModel):
     token_file: Path | None = None
 
 
+# Field name -> environment variable, per settings model.
+BACKEND_ENV_NAMES: dict[str, str] = {
+    name: backend_env_name(name) for name in BackendSettings.model_fields
+}
+CLI_ENV_NAMES: dict[str, str] = {
+    name: cli_env_name(name) for name in CliSettings.model_fields
+}
+# Every variable the application reads; the dotenv file may also hold COMPOSE_*.
+KNOWN_ENV_NAMES: frozenset[str] = frozenset(
+    {*BACKEND_ENV_NAMES.values(), *CLI_ENV_NAMES.values(), ENV_FILE_VARIABLE}
+)
+# The bare forms of the APP_ names (``DATABASE_URL``, ``MODE``...): never read,
+# dropped from child environments, and pointed to their APP_ name when found in
+# the env file.
+BARE_GENERIC_NAMES: frozenset[str] = frozenset(
+    {*(field.upper() for field in _BACKEND_NAME_OVERRIDES), "ENV_FILE"}
+)
+_LEGACY_SPECIAL: dict[str, str] = {
+    LEGACY_BACKEND_PREFIX + "ENV_FILE": ENV_FILE_VARIABLE
+}
+
+
+def is_legacy_name(key: str) -> bool:
+    return key.startswith(LEGACY_PREFIXES)
+
+
+def legacy_replacement(key: str) -> str | None:
+    """The current name of an older prefixed variable, else ``None``.
+
+    Known settings map to their own names; an unknown legacy key just loses its
+    prefix (``ANALYTICS_CLI_X`` becomes ``CLI_X``), so the loader then reports
+    it as an unknown key instead of silently dropping it.
+    """
+    if key in _LEGACY_SPECIAL:
+        return _LEGACY_SPECIAL[key]
+    if key.startswith(LEGACY_BACKEND_PREFIX):
+        field = key.removeprefix(LEGACY_BACKEND_PREFIX).lower()
+        return BACKEND_ENV_NAMES.get(field, field.upper())
+    if key.startswith(LEGACY_CLI_PREFIX):
+        return cli_env_name(key.removeprefix(LEGACY_CLI_PREFIX).lower())
+    return None
+
+
 def load_backend_settings(
     environ: Mapping[str, str] | None = None,
     env_file: Path | None = DEFAULT_ENV_FILE,
 ) -> BackendSettings:
-    return _validate(BackendSettings, BACKEND_ENV_PREFIX, environ, env_file)
+    return _validate(BackendSettings, BACKEND_ENV_NAMES, environ, env_file)
 
 
 def load_cli_settings(
     environ: Mapping[str, str] | None = None,
     env_file: Path | None = DEFAULT_ENV_FILE,
 ) -> CliSettings:
-    return _validate(CliSettings, CLI_ENV_PREFIX, environ, env_file)
+    return _validate(CliSettings, CLI_ENV_NAMES, environ, env_file)
 
 
 def _validate[M: BaseModel](
     model: type[M],
-    prefix: str,
+    names: Mapping[str, str],
     environ: Mapping[str, str] | None,
     env_file: Path | None,
 ) -> M:
-    raw = _collect(prefix, environ, env_file)
+    raw = _collect(names, environ, env_file)
     try:
         return model.model_validate(raw)
     except ValidationError as exc:
-        raise ConfigError(_describe(exc, prefix)) from None
+        raise ConfigError(_describe(exc, names)) from None
 
 
 def _collect(
-    prefix: str, environ: Mapping[str, str] | None, env_file: Path | None
+    names: Mapping[str, str],
+    environ: Mapping[str, str] | None,
+    env_file: Path | None,
 ) -> dict[str, str]:
-    merged: dict[str, str] = {}
     process = os.environ if environ is None else environ
     pointed = process.get(ENV_FILE_VARIABLE, "")
-    if pointed != "" and env_file == DEFAULT_ENV_FILE:
+    custom_file = pointed != "" and env_file == DEFAULT_ENV_FILE
+    if custom_file:
         env_file = Path(pointed)
         if not env_file.is_file():
             raise ConfigError([f"{ENV_FILE_VARIABLE}: file does not exist"])
+    from_file: dict[str, str] = {}
     if env_file is not None and env_file.is_file():
-        merged.update(
-            {k: v for k, v in dotenv_values(env_file).items() if v is not None}
+        from_file = {k: v for k, v in dotenv_values(env_file).items() if v is not None}
+    _check_names(from_file, process, env_file, explicit_file=custom_file)
+    wanted = {env: field for field, env in names.items()}
+    merged: dict[str, str] = {}
+    for source in (from_file, process):
+        for env, field in wanted.items():
+            value = source.get(env)
+            if value is not None:
+                merged[field] = value
+    return {field: value for field, value in merged.items() if value != ""}
+
+
+def _check_names(
+    from_file: Mapping[str, str],
+    process: Mapping[str, str],
+    env_file: Path | None,
+    *,
+    explicit_file: bool,
+) -> None:
+    """Refuse older prefixed names and unknown env-file keys (names, never values)."""
+    problems: list[str] = []
+    legacy_in_file = sorted(k for k in from_file if is_legacy_name(k))
+    if legacy_in_file:
+        command = MIGRATE_COMMAND
+        if explicit_file or env_file != DEFAULT_ENV_FILE:
+            command += f" --env-file {env_file}"
+        problems.append(
+            f"{env_file} uses names from before the rename: "
+            + _renames(legacy_in_file)
+            + f". Run `{command}` to rename them in place (values are kept); "
+            "see README, 'Environment variables'"
         )
-    merged.update(process)
-    return {
-        key.removeprefix(prefix).lower(): value
-        for key, value in merged.items()
-        if key.startswith(prefix) and key != ENV_FILE_VARIABLE and value != ""
-    }
+    legacy_in_process = sorted(k for k in process if is_legacy_name(k))
+    if legacy_in_process:
+        problems.append(
+            "the process environment sets names from before the rename: "
+            + _renames(legacy_in_process)
+            + ". Unset them (or export the new names) in your shell; "
+            f"`{MIGRATE_COMMAND}` migrates the environment file"
+        )
+    for key in sorted(from_file):
+        if (
+            key in KNOWN_ENV_NAMES
+            or key.startswith(COMPOSE_ENV_PREFIX)
+            or is_legacy_name(key)
+        ):
+            continue
+        # A bare name given an APP_ prefix (``MODE`` for ``APP_MODE``) is the
+        # likely hand rename; otherwise suggest the closest known name.
+        expected = _BACKEND_NAME_OVERRIDES.get(key.lower())
+        if key == "ENV_FILE":
+            expected = ENV_FILE_VARIABLE
+        close = (
+            [expected]
+            if expected
+            else difflib.get_close_matches(key, sorted(KNOWN_ENV_NAMES), n=1)
+        )
+        hint = f" (did you mean {close[0]}?)" if close else ""
+        problems.append(
+            f"{env_file}: unknown variable {key}{hint}. Fix or remove it; "
+            "the known names are in .env.example"
+        )
+    if problems:
+        raise ConfigError(problems)
 
 
-def _describe(exc: ValidationError, prefix: str) -> list[str]:
+def _renames(keys: list[str]) -> str:
+    return ", ".join(f"{key} -> {legacy_replacement(key)}" for key in keys)
+
+
+def _describe(exc: ValidationError, names: Mapping[str, str]) -> list[str]:
     problems = []
     for error in exc.errors(include_input=False, include_url=False):
         location = ".".join(str(part) for part in error["loc"])
-        name = prefix + location.upper() if location else "configuration"
+        name = names.get(location, location.upper()) if location else "configuration"
         problems.append(f"{name}: {error['msg']}")
     return problems

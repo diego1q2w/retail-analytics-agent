@@ -7,7 +7,7 @@ values, volumes and containers.
 
 Never touches the repository's own ``.env``: the run uses ``--env-file`` in a
 temporary directory, a unique ``ra-test-*`` Compose project and free ports.
-Children read only that file (``RETAIL_ANALYTICS_ENV_FILE``), never the
+Children read only that file (``APP_ENV_FILE``), never the
 repository ``.env``.
 """
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +29,7 @@ from tests.integration.compose_stack import (
     ROOT,
     _free_port,
     _require_docker,
+    unique_project,
 )
 
 pytestmark = pytest.mark.docker
@@ -69,10 +69,10 @@ class Run:
 @pytest.fixture
 def run(tmp_path: Path) -> Iterator[Run]:
     _require_docker()
-    project = "ra-test-" + uuid.uuid4().hex[:8]
+    project = unique_project()
     env = {
         **os.environ,
-        "RETAIL_ANALYTICS_ARTIFACT_DIR": str(tmp_path / "artifacts"),
+        "ARTIFACT_DIR": str(tmp_path / "artifacts"),
         "TEST_PG_PORT": str(_free_port()),
         "TEST_TEMPORAL_PORT": str(_free_port()),
         "COMPOSE_MLFLOW_PORT": str(_free_port()),
@@ -160,7 +160,7 @@ def test_one_command_builds_a_seeded_stack_and_rerun_is_a_noop(run: Run) -> None
     assert not running & {"temporal", "temporal-schema", "temporal-namespace"}
 
     # Telemetry is on by default: the key is true, the stack is up, URLs printed.
-    assert values[local_env.PREFIX + "TELEMETRY_ENABLED"] == "true"
+    assert values["TELEMETRY_ENABLED"] == "true"
     assert f"Grafana http://127.0.0.1:{run.env['COMPOSE_GRAFANA_PORT']}" in output
     assert f"MLflow http://127.0.0.1:{run.env['COMPOSE_MLFLOW_PORT']}" in output
     assert _running_services(run.project) >= {"mlflow", "prometheus", "grafana"}
@@ -182,7 +182,7 @@ def test_no_telemetry_skips_the_stack_and_records_false(run: Run) -> None:
     result = run.bootstrap("--no-telemetry")
     assert result.returncode == 0, result.stdout + result.stderr
     values = local_env.parse_values(run.env_file.read_text())
-    assert values[local_env.PREFIX + "TELEMETRY_ENABLED"] == "false"
+    assert values["TELEMETRY_ENABLED"] == "false"
     running = _running_services(run.project)
     assert "postgres" in running and "temporal" not in running
     assert not running & {"mlflow", "prometheus", "grafana"}

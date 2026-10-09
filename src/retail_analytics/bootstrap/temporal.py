@@ -1,7 +1,7 @@
 """Temporal assembly: client, scheduler and the investigation worker.
 
 The only composition module that knows the investigations run on Temporal,
-used only with ``RETAIL_ANALYTICS_EXECUTION_BACKEND=temporal`` (opt-in).
+used only with ``EXECUTION_BACKEND=temporal`` (opt-in).
 General construction (``bootstrap.investigations``) builds runtime-neutral
 services; the worker, API and evaluation roots take them here to connect,
 schedule, bind and register.
