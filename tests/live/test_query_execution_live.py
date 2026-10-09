@@ -65,7 +65,7 @@ MAX_BILLED = 50 * 1024 * 1024
 def project() -> tuple[str, str, bigquery.Client]:
     settings = load_backend_settings(environ={}, env_file=ROOT / ".env")
     if settings.bigquery_project is None:
-        pytest.skip("BIGQUERY_PROJECT not set")
+        pytest.skip("GOOGLE_CLOUD_PROJECT not set")
     try:
         client = create_bigquery_client(
             settings.bigquery_project, settings.bigquery_location

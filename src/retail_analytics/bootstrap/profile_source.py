@@ -2,7 +2,7 @@
 
 ``python -m retail_analytics.bootstrap.profile_source [--out DIR]``
 
-Needs BIGQUERY_PROJECT and application default credentials.
+Needs GOOGLE_CLOUD_PROJECT and application default credentials.
 Writes ``source-profile.json`` and ``source-profile.md`` (aggregates only).
 """
 
@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     settings = load_backend_settings()
     if settings.bigquery_project is None:
-        print("BIGQUERY_PROJECT is not set", file=sys.stderr)
+        print("GOOGLE_CLOUD_PROJECT is not set", file=sys.stderr)
         return 2
     client = create_bigquery_client(
         settings.bigquery_project, settings.bigquery_location

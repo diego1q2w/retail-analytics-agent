@@ -516,7 +516,7 @@ def test_live_defaults_to_gemini_and_fixture_to_hashing() -> None:
     base = {
         "APP_MODE": "live",
         "APP_DATABASE_URL": "postgresql://x/y",
-        "BIGQUERY_PROJECT": "p",
+        "GOOGLE_CLOUD_PROJECT": "p",
         "GEMINI_API_KEY": "k",
         "AUTH_SIGNING_KEY": "k" * 32,
     }

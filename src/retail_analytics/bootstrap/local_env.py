@@ -63,7 +63,7 @@ DATABASE_URL_KEY = backend_env_name("database_url")
 TEMPORAL_ADDRESS_KEY = backend_env_name("temporal_address")
 EXECUTION_BACKEND_KEY = backend_env_name("execution_backend")
 TELEMETRY_ENABLED_KEY = backend_env_name("telemetry_enabled")
-BIGQUERY_PROJECT_KEY = backend_env_name("bigquery_project")
+GOOGLE_CLOUD_PROJECT_KEY = backend_env_name("bigquery_project")
 GEMINI_API_KEY_KEY = backend_env_name("gemini_api_key")
 OPENAI_API_KEY_KEY = backend_env_name("openai_api_key")
 EXECUTION_BACKENDS = ("local", "temporal")
@@ -71,7 +71,7 @@ DEFAULT_EXECUTION_BACKEND = "local"
 # External credentials: never generated; the action says what the user does.
 EXTERNAL_CREDENTIALS: dict[str, tuple[str, bool]] = {
     # key -> (action, secret input)
-    BIGQUERY_PROJECT_KEY: (
+    GOOGLE_CLOUD_PROJECT_KEY: (
         "set your Google Cloud project, see docs/google-access.md",
         False,
     ),

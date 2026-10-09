@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 async def test_catalog_is_compatible_with_live_metadata() -> None:
     settings = load_backend_settings(env_file=ROOT / ".env")
     if settings.bigquery_project is None:
-        pytest.skip("BIGQUERY_PROJECT not set")
+        pytest.skip("GOOGLE_CLOUD_PROJECT not set")
     catalog = default_logical_catalog()
     adapter = BigQuerySourceMetadata(
         settings.bigquery_project, settings.bigquery_location, PUBLIC_DATASET

@@ -134,8 +134,8 @@ The older prefixed names (`RETAIL_ANALYTICS_*`, `ANALYTICS_CLI_*`) are no longer
 | `RETAIL_ANALYTICS_TEMPORAL_ADDRESS` | `TEMPORAL_ADDRESS` |
 | `RETAIL_ANALYTICS_TEMPORAL_NAMESPACE` | `TEMPORAL_NAMESPACE` |
 | `RETAIL_ANALYTICS_TEMPORAL_TASK_QUEUE` | `TEMPORAL_TASK_QUEUE` |
-| `RETAIL_ANALYTICS_BIGQUERY_PROJECT` | `BIGQUERY_PROJECT` |
-| `RETAIL_ANALYTICS_BIGQUERY_LOCATION` | `BIGQUERY_LOCATION` |
+| `RETAIL_ANALYTICS_BIGQUERY_PROJECT` | `GOOGLE_CLOUD_PROJECT` |
+| `RETAIL_ANALYTICS_BIGQUERY_LOCATION` | `GOOGLE_CLOUD_LOCATION` |
 | `RETAIL_ANALYTICS_SCHEMA_REFRESH_SECONDS` | `SCHEMA_REFRESH_SECONDS` |
 | `RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS` | `EVIDENCE_CURRENT_FRESHNESS_SECONDS` |
 | `RETAIL_ANALYTICS_AUDIT_RETENTION_DAYS` | `AUDIT_RETENTION_DAYS` |
@@ -299,3 +299,9 @@ Direct dependencies are pinned exactly in `pyproject.toml`, one per line, sorted
 ```
 
 Rerun it after changing any pin and commit both files. On a merge conflict in `requirements.txt`, resolve `pyproject.toml` first and regenerate rather than hand-merging.
+
+
+Older checkouts using `BIGQUERY_PROJECT` and `BIGQUERY_LOCATION` can run
+`./scripts/bootstrap.sh --env-only` to rename them to `GOOGLE_CLOUD_PROJECT`
+and `GOOGLE_CLOUD_LOCATION` without changing their values. Update exported
+shell variables to the new names too.

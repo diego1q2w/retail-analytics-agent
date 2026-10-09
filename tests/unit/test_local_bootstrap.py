@@ -131,7 +131,7 @@ def test_interactive_prompt_fills_only_empty_external_credentials() -> None:
     values = local_env.parse_values(result.text)
     assert values["GEMINI_API_KEY"] == "typed-value"
     assert ("GEMINI_API_KEY", True) in asked
-    assert ("BIGQUERY_PROJECT", False) in asked
+    assert ("GOOGLE_CLOUD_PROJECT", False) in asked
     assert "AUTH_SIGNING_KEY" not in [k for k, _ in asked]
 
 
@@ -245,7 +245,7 @@ def _isolation_ctx(tmp_path: Path, env_text: str) -> SetupContext:
     root = tmp_path / "repo"
     root.mkdir()
     (root / ".env").write_text(
-        "BIGQUERY_LOCATION=SENTINEL-FROM-REPO-ENV\n", encoding="utf-8"
+        "GOOGLE_CLOUD_LOCATION=SENTINEL-FROM-REPO-ENV\n", encoding="utf-8"
     )
     env_file = tmp_path / "isolated.env"
     env_file.write_text("APP_MODE=fixture\n" + env_text, encoding="utf-8")
@@ -257,30 +257,30 @@ def _isolation_ctx(tmp_path: Path, env_text: str) -> SetupContext:
 
 
 def test_child_commands_never_read_the_repository_env(tmp_path: Path) -> None:
-    ctx = _isolation_ctx(tmp_path, "BIGQUERY_LOCATION=\n")
+    ctx = _isolation_ctx(tmp_path, "GOOGLE_CLOUD_LOCATION=\n")
     out = ctx.python("-c", _PRINT_LOCATION)
     assert "SENTINEL" not in out
     assert out == "US"  # the default, not the repository value
 
 
 def test_child_commands_use_the_env_file_values(tmp_path: Path) -> None:
-    ctx = _isolation_ctx(tmp_path, "BIGQUERY_LOCATION=EU\n")
+    ctx = _isolation_ctx(tmp_path, "GOOGLE_CLOUD_LOCATION=EU\n")
     assert ctx.python("-c", _PRINT_LOCATION) == "EU"
 
 
 def test_child_env_drops_stray_parent_configuration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("BIGQUERY_LOCATION", "SENTINEL-FROM-SHELL")
+    monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "SENTINEL-FROM-SHELL")
     monkeypatch.setenv("CLI_API_URL", "http://stray.invalid")
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", "kept")
     monkeypatch.setenv("RETAIL_ANALYTICS_BIGQUERY_LOCATION", "LEGACY-FROM-SHELL")
     monkeypatch.setenv("ANALYTICS_CLI_TOKEN", "legacy-token-from-shell")
     monkeypatch.setenv("DATABASE_URL", "postgresql://other-project/db")
     monkeypatch.setenv("UNRELATED_TOOL_SETTING", "kept")
-    ctx = _isolation_ctx(tmp_path, "BIGQUERY_LOCATION=\n")
+    ctx = _isolation_ctx(tmp_path, "GOOGLE_CLOUD_LOCATION=\n")
     env = ctx.child_env()
-    assert "BIGQUERY_LOCATION" not in env
+    assert "GOOGLE_CLOUD_LOCATION" not in env
     assert "CLI_API_URL" not in env
     assert "RETAIL_ANALYTICS_BIGQUERY_LOCATION" not in env
     assert "ANALYTICS_CLI_TOKEN" not in env
@@ -294,7 +294,7 @@ def test_child_env_drops_stray_parent_configuration(
 def test_loader_pointer_replaces_the_default_dotenv(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / ".env").write_text("BIGQUERY_LOCATION=SENTINEL\n")
+    (tmp_path / ".env").write_text("GOOGLE_CLOUD_LOCATION=SENTINEL\n")
     pointed = tmp_path / "other.env"
     pointed.write_text("APP_API_PORT=9191\n")
     monkeypatch.setenv(config.ENV_FILE_VARIABLE, str(pointed))
@@ -636,13 +636,24 @@ def test_live_defaults_require_external_credentials(tmp_path: Path) -> None:
     assert local_env.documented_defaults(TEMPLATE)["APP_MODE"] == "live"
     ctx = _isolation_ctx(tmp_path, "")
     ctx.values.pop("APP_MODE", None)
-    with pytest.raises(StepFailed, match="BIGQUERY_PROJECT and GEMINI_API_KEY"):
+    with pytest.raises(StepFailed, match="GOOGLE_CLOUD_PROJECT and GEMINI_API_KEY"):
         local_setup.step_check_credentials(ctx)
     assert next(s for s in local_setup.STEPS if s.name == "check-credentials").required
 
 
 def test_fixture_skips_external_credential_checks(tmp_path: Path) -> None:
-    ctx = _isolation_ctx(tmp_path, "BIGQUERY_PROJECT=fake\nGEMINI_API_KEY=fake\n")
+    ctx = _isolation_ctx(tmp_path, "GOOGLE_CLOUD_PROJECT=fake\nGEMINI_API_KEY=fake\n")
     result = local_setup.step_check_credentials(ctx)
     assert result.status == "skipped"
     assert "fixed responses" in result.message
+
+
+def test_google_cloud_rename_preserves_existing_values() -> None:
+    result = local_env.migrate_legacy(
+        "BIGQUERY_PROJECT=my-query-project\nBIGQUERY_LOCATION=US\n"
+    )
+    assert (
+        result.text
+        == "GOOGLE_CLOUD_PROJECT=my-query-project\nGOOGLE_CLOUD_LOCATION=US\n"
+    )
+    assert not local_env.migrate_legacy(result.text).changed

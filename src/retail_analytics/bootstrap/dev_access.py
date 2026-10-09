@@ -339,7 +339,7 @@ def sync_brands() -> None:
     if source is None:
         raise click.ClickException(
             "no brand catalog source: needs APP_MODE=fixture (synthetic catalog) "
-            "or live mode with BIGQUERY_PROJECT"
+            "or live mode with GOOGLE_CLOUD_PROJECT"
         )
     persistence = _persistence(settings)
     try:

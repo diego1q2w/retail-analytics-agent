@@ -23,7 +23,7 @@ LIVE_ENV = {
     "APP_MODE": "live",
     "APP_DATABASE_URL": f"postgresql://app:{SECRET}@localhost/app",
     "TEMPORAL_ADDRESS": "localhost:7233",
-    "BIGQUERY_PROJECT": "example-project",
+    "GOOGLE_CLOUD_PROJECT": "example-project",
     "GEMINI_API_KEY": SECRET,
     "AUTH_SIGNING_KEY": SECRET + "-signing-key",
 }
@@ -48,7 +48,7 @@ def test_live_mode_lists_every_missing_required_setting() -> None:
     message = str(caught.value)
     for name in (
         "APP_DATABASE_URL",
-        "BIGQUERY_PROJECT",
+        "GOOGLE_CLOUD_PROJECT",
         "GEMINI_API_KEY",
         "AUTH_SIGNING_KEY",
     ):
@@ -403,3 +403,26 @@ def test_http_traces_require_a_separate_experiment() -> None:
         env_file=None,
     )
     assert settings.telemetry_http_experiment_id == "1"
+
+
+def test_google_cloud_settings_and_agent_model_are_configurable() -> None:
+    settings = load_backend_settings(
+        environ={
+            "APP_MODE": "fixture",
+            "GOOGLE_CLOUD_PROJECT": "my-query-project",
+            "GOOGLE_CLOUD_LOCATION": "US",
+            "AGENT_GEMINI_MODEL": "chosen-model",
+        },
+        env_file=None,
+    )
+    assert settings.bigquery_project == "my-query-project"
+    assert settings.bigquery_location == "US"
+    assert settings.agent_gemini_model == "chosen-model"
+
+
+def test_old_bigquery_names_require_migration() -> None:
+    with pytest.raises(ConfigError, match="BIGQUERY_PROJECT -> GOOGLE_CLOUD_PROJECT"):
+        load_backend_settings(
+            environ={"APP_MODE": "fixture", "BIGQUERY_PROJECT": "my-query-project"},
+            env_file=None,
+        )

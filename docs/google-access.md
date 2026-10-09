@@ -16,7 +16,7 @@ Never paste keys or tokens into chat, issues, logs or commits.
 
 ## Public dataset versus your project
 
-The data lives in the public dataset `bigquery-public-data.thelook_ecommerce` (tables `orders`, `order_items`, `products`, `users`). Google owns and maintains it; you do not copy or recreate the tables. What you need is your own project to run query jobs in. Setting `BIGQUERY_PROJECT` selects that project: it is the query (and billing) project, not the dataset owner.
+The data lives in the public dataset `bigquery-public-data.thelook_ecommerce` (tables `orders`, `order_items`, `products`, `users`). Google owns and maintains it; you do not copy or recreate the tables. What you need is your own project to run query jobs in. Setting `GOOGLE_CLOUD_PROJECT` selects that project: it is the query (and billing) project, not the dataset owner.
 
 ## Authentication
 
@@ -40,7 +40,7 @@ gcloud auth application-default set-quota-project <project>
 Create a key in Google AI Studio and set it in `.env` (copied from `.env.example`):
 
 ```text
-BIGQUERY_PROJECT=<your project id>
+GOOGLE_CLOUD_PROJECT=<your project id>
 GEMINI_API_KEY=<your key>
 GEMINI_MODEL=gemini-3-flash-preview
 ```

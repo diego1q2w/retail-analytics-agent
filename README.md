@@ -27,6 +27,19 @@ gcloud auth application-default login
 ./scripts/bootstrap.sh --interactive
 ```
 
+Bootstrap prompts for `GOOGLE_CLOUD_PROJECT` (your query/billing project) and
+`GEMINI_API_KEY`. In `.env`, you can also set:
+
+```dotenv
+GOOGLE_CLOUD_LOCATION=US
+AGENT_GEMINI_MODEL=gemini-3.8-flash
+```
+
+These are the defaults; override them when needed. Location controls BigQuery
+jobs and must match the dataset (`US` for this demo); it does not select the
+Gemini Developer API region. `AGENT_GEMINI_MODEL` selects the chat agent's model;
+`GEMINI_MODEL` is a separate model used only by the credential check.
+
 **2. Start** the backend (Ctrl-C stops it):
 
 ```sh

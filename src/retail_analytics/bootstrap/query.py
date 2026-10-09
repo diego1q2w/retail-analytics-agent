@@ -70,7 +70,7 @@ def build_query_execution(
     """
     project = settings.bigquery_project
     if project is None:
-        raise ConfigError(["BIGQUERY_PROJECT: required"])
+        raise ConfigError(["GOOGLE_CLOUD_PROJECT: required"])
     location = settings.bigquery_location
     return QueryExecutionService(
         settings=QueryExecutionSettings(

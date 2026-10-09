@@ -44,7 +44,7 @@ def _clients() -> tuple[object, str, str] | None:
 
     settings = load_backend_settings()
     if settings.bigquery_project is None:
-        print("BIGQUERY_PROJECT is not set", file=sys.stderr)
+        print("GOOGLE_CLOUD_PROJECT is not set", file=sys.stderr)
         return None
     client = create_bigquery_client(
         settings.bigquery_project, settings.bigquery_location

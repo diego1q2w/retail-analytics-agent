@@ -183,7 +183,7 @@ def test_gemini_success_and_unexpected_error() -> None:
 def test_command_reports_missing_settings_without_network() -> None:
     result = CliRunner().invoke(check_credentials.main, [])
     assert result.exit_code == 1
-    assert "BIGQUERY_PROJECT is not set" in result.output
+    assert "GOOGLE_CLOUD_PROJECT is not set" in result.output
     assert "GEMINI_API_KEY is not set" in result.output
     assert "0/2 checks passed" in result.output
 
@@ -195,7 +195,7 @@ def test_command_success_never_prints_the_key(monkeypatch: pytest.MonkeyPatch) -
         check_credentials.main,
         [],
         env={
-            "BIGQUERY_PROJECT": "proj",
+            "GOOGLE_CLOUD_PROJECT": "proj",
             "GEMINI_API_KEY": SECRET,
         },
     )

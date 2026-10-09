@@ -66,6 +66,8 @@ _BACKEND_NAME_OVERRIDES: dict[str, str] = {
     "database_url": "APP_DATABASE_URL",
     "api_host": "APP_API_HOST",
     "api_port": "APP_API_PORT",
+    "bigquery_project": "GOOGLE_CLOUD_PROJECT",
+    "bigquery_location": "GOOGLE_CLOUD_LOCATION",
 }
 # The older prefixed names. Refused by the loader; migrated by
 # ``./scripts/bootstrap.sh --env-only`` (bootstrap.local_env.migrate_legacy).
@@ -399,12 +401,14 @@ BARE_GENERIC_NAMES: frozenset[str] = frozenset(
     {*(field.upper() for field in _BACKEND_NAME_OVERRIDES), "ENV_FILE"}
 )
 _LEGACY_SPECIAL: dict[str, str] = {
+    "BIGQUERY_PROJECT": "GOOGLE_CLOUD_PROJECT",
+    "BIGQUERY_LOCATION": "GOOGLE_CLOUD_LOCATION",
     LEGACY_BACKEND_PREFIX + "ENV_FILE": ENV_FILE_VARIABLE
 }
 
 
 def is_legacy_name(key: str) -> bool:
-    return key.startswith(LEGACY_PREFIXES)
+    return key in _LEGACY_SPECIAL or key.startswith(LEGACY_PREFIXES)
 
 
 def legacy_replacement(key: str) -> str | None:

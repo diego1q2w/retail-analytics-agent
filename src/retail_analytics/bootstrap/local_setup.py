@@ -429,7 +429,7 @@ def _has_external_credentials(ctx: SetupContext) -> bool:
     return all(ctx.values.get(key) for key in _CREDENTIAL_KEYS)
 
 
-_CREDENTIAL_KEYS = (local_env.BIGQUERY_PROJECT_KEY, local_env.GEMINI_API_KEY_KEY)
+_CREDENTIAL_KEYS = (local_env.GOOGLE_CLOUD_PROJECT_KEY, local_env.GEMINI_API_KEY_KEY)
 
 
 def step_check_credentials(ctx: SetupContext) -> StepResult:
@@ -439,7 +439,7 @@ def step_check_credentials(ctx: SetupContext) -> StepResult:
         )
     if not _has_external_credentials(ctx):
         raise StepFailed(
-            "Live analysis requires BIGQUERY_PROJECT and GEMINI_API_KEY. "
+            "Live analysis requires GOOGLE_CLOUD_PROJECT and GEMINI_API_KEY. "
             "Set them in the environment file (or rerun with --interactive), "
             "authenticate with gcloud auth application-default login, then rerun. "
             "See docs/google-access.md."

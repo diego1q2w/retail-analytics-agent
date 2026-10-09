@@ -136,7 +136,7 @@ def reference(months: Sequence[str]) -> dict[str, float]:
 
     settings = load_backend_settings()
     if settings.bigquery_project is None:
-        raise SystemExit("blocked: BIGQUERY_PROJECT is not set")
+        raise SystemExit("blocked: GOOGLE_CLOUD_PROJECT is not set")
     client = create_bigquery_client(
         settings.bigquery_project, settings.bigquery_location
     )
