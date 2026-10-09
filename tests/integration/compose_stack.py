@@ -67,6 +67,7 @@ class Stack:
     def env(self) -> dict[str, str]:
         return {
             **os.environ,
+            "APP_MODE": "fixture",
             "COMPOSE_POSTGRES_PORT": str(self.postgres_port),
             "COMPOSE_TEMPORAL_PORT": str(self.temporal_port),
             "COMPOSE_APP_DB_PASSWORD": self.app_password,
@@ -95,7 +96,7 @@ class Stack:
         return self.alembic("upgrade", target)
 
     def alembic(self, *args: str) -> subprocess.CompletedProcess[str]:
-        env = {**os.environ, "APP_DATABASE_URL": self.app_url}
+        env = {**os.environ, "APP_MODE": "fixture", "APP_DATABASE_URL": self.app_url}
         return subprocess.run(
             [sys.executable, "-m", "alembic", *args],
             cwd=ROOT,
