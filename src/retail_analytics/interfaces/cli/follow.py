@@ -33,6 +33,9 @@ from retail_analytics.interfaces.cli.sse import (
 
 DEFAULT_STALL_SECONDS = 45.0  # the server sends a keepalive every 15 seconds
 DEFAULT_MAX_FAILURES = 8
+# A connection that has stayed open this long before a keepalive arrives is
+# healthy (a quiet investigation); an instant "preamble then close" is not.
+HEALTHY_CONNECTION_SECONDS = 5.0
 
 
 class StopFollowing(Exception):
@@ -67,7 +70,18 @@ def follow_run(
     stall_seconds: float = DEFAULT_STALL_SECONDS,
     max_failures: int = DEFAULT_MAX_FAILURES,
     sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> FollowResult:
+    """Follow a run until its end message.
+
+    Meaningful progress resets the consecutive-failure allowance. It is only:
+    a fresh event handled (or an end/error message), or a keepalive comment
+    that arrives after the connection has stayed open for at least
+    ``HEALTHY_CONNECTION_SECONDS``. The ``retry:`` directive the server sends
+    at the start of every connection, and a keepalive right after connecting,
+    prove nothing: a server that keeps closing right after that preamble must
+    still run out of attempts and raise ``StreamLost``.
+    """
     api.require_token()
     last_id = after
     last_sequence = 0
@@ -80,6 +94,7 @@ def follow_run(
             return FollowResult("stopped", None, last_id, last_sequence)
         headers = {} if last_id is None else {"Last-Event-ID": last_id}
         try:
+            connected_at = monotonic()
             with api.http.stream(
                 "GET", path, headers=headers, timeout=timeout
             ) as response:
@@ -90,13 +105,14 @@ def follow_run(
                         raise httpx.ConnectError("unavailable")
                     raise error
                 for item in parse_sse(response.iter_lines()):
-                    failures = 0
                     if should_stop():
                         return FollowResult("stopped", None, last_id, last_sequence)
                     if isinstance(item, SseRetry):
                         retry_seconds = min(max(item.milliseconds / 1000, 0.2), 10.0)
                         continue
                     if isinstance(item, SseComment):
+                        if monotonic() - connected_at >= HEALTHY_CONNECTION_SECONDS:
+                            failures = 0
                         continue
                     try:
                         result = _handle(item, on_event, last_sequence)
@@ -104,6 +120,8 @@ def follow_run(
                         return FollowResult(
                             "stopped", None, item.id or last_id, last_sequence
                         )
+                    if result is not None:
+                        failures = 0
                     if isinstance(result, FollowResult):
                         return FollowResult(
                             "end", result.status, last_id, last_sequence

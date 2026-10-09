@@ -104,3 +104,82 @@ def test_keepalive_comments_do_not_break_the_stream() -> None:
     follow_run(make(backend), "r1", on_event=lambda e: seen.append(e["sequence"]))
     assert seen == [1]
     backend.runs["r1"] = run_view()
+
+
+PREAMBLE = b"retry: 2000\n\n"
+
+
+def _follow(backend: Backend, **kwargs: object) -> list[int]:
+    seen: list[int] = []
+    follow_run(
+        make(backend),
+        "r1",
+        on_event=lambda e: seen.append(e["sequence"]),
+        sleep=lambda _s: None,
+        **kwargs,  # type: ignore[arg-type]
+    )
+    return seen
+
+
+def test_retry_preamble_then_eof_does_not_reset_failures() -> None:
+    backend = Backend()
+    backend.streams = [
+        lambda r: httpx.Response(200, content=PREAMBLE) for _ in range(10)
+    ]
+    with pytest.raises(StreamLost):
+        _follow(backend, max_failures=3)
+    assert len(backend.calls("GET", "/events")) == 4
+
+
+def test_retry_preamble_then_transport_error_does_not_reset_failures() -> None:
+    backend = Backend()
+    backend.streams = [
+        lambda r: httpx.Response(200, stream=BrokenStream(PREAMBLE)) for _ in range(10)
+    ]
+    with pytest.raises(StreamLost):
+        _follow(backend, max_failures=3)
+    assert len(backend.calls("GET", "/events")) == 4
+
+
+def test_instant_keepalive_after_preamble_does_not_reset_failures() -> None:
+    backend = Backend()
+    backend.streams = [
+        lambda r: httpx.Response(200, content=PREAMBLE + b": keepalive\n\n")
+        for _ in range(10)
+    ]
+    with pytest.raises(StreamLost):
+        _follow(backend, max_failures=3)
+
+
+def test_real_event_restores_the_reconnect_allowance_and_id_is_resent() -> None:
+    backend = Backend()
+    empty = lambda r: httpx.Response(200, content=PREAMBLE)  # noqa: E731
+    backend.streams = [
+        empty,
+        empty,
+        lambda r: httpx.Response(
+            200, content=PREAMBLE + sse([event(1, "run.started", "go")])
+        ),
+        empty,
+        empty,
+        lambda r: httpx.Response(
+            200,
+            content=PREAMBLE + sse([event(2, "tool.started", "q")], end="completed"),
+        ),
+    ]
+    assert _follow(backend, max_failures=3) == [1, 2]
+    streams = backend.calls("GET", "/events")
+    assert "last-event-id" not in streams[0].headers
+    assert [s.headers["Last-Event-ID"] for s in streams[3:]] == ["ev1", "ev1", "ev1"]
+
+
+def test_keepalive_after_a_healthy_wait_counts_as_progress() -> None:
+    backend = Backend()
+    keepalive = lambda r: httpx.Response(200, content=PREAMBLE + b": keepalive\n\n")  # noqa: E731
+    backend.streams = [keepalive] * 5 + [
+        lambda r: httpx.Response(200, content=sse([], end="completed"))
+    ]
+    ticks = iter(range(0, 1000, 20))  # connect and keepalive 20 s apart
+    seen = _follow(backend, max_failures=1, monotonic=lambda: next(ticks))
+    assert seen == []
+    assert len(backend.calls("GET", "/events")) == 6
