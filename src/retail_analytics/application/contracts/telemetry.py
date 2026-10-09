@@ -1,8 +1,12 @@
 """Telemetry vocabulary shared by the application and its sink adapters.
 
-Spans carry correlation identifiers and bounded outcome codes; metrics carry
-only the low-cardinality labels listed in :class:`Label`. Nothing here holds
-prompts, SQL, result rows, personal data or credentials.
+Span attributes carry correlation identifiers and bounded outcome codes;
+metrics carry only the low-cardinality labels listed in :class:`Label`.
+Interaction content (model messages, tool arguments and results, SQL, the
+user's messages and released answers) travels separately as a
+:class:`CapturedPayload`: already sanitized and bounded by
+``application.telemetry_payloads``, and representation-neutral (a sink adapter
+decides how its backend displays it).
 """
 
 from __future__ import annotations
@@ -111,6 +115,8 @@ class Span(StrEnum):
     ANSWER = "answer.release"
     LIFECYCLE = "run.step"
     CONTEXT_RESTART = "investigation.context_restart"
+    USER_INPUT = "user.input"
+    CLARIFICATION = "clarification.ask"
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,3 +133,34 @@ class ProviderAttribution:
     attempt: int
     fallback_from: str | None = None
     fallback_reason: str | None = None
+
+
+type PayloadValue = (
+    bool | int | float | str | list[PayloadValue] | dict[str, PayloadValue] | None
+)
+
+
+class PayloadSide(StrEnum):
+    """What a span received (inputs) or produced (outputs)."""
+
+    INPUTS = "inputs"
+    OUTPUTS = "outputs"
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedPayload:
+    """A sanitized, bounded interaction payload for one side of a span.
+
+    ``content`` is plain JSON data with visible markers wherever something was
+    masked (``[withheld]``/``[redacted]``), cut (``[truncated: ...]``) or left
+    out (``[omitted: ...]``). ``chars`` is the size of the serialized content;
+    ``omitted`` lists reason codes for the parts left out, so an empty
+    ``content`` is never silent.
+    """
+
+    side: PayloadSide
+    content: PayloadValue
+    chars: int
+    redactions: int = 0
+    truncated: bool = False
+    omitted: tuple[str, ...] = ()

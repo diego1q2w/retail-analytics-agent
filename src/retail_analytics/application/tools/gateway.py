@@ -54,7 +54,9 @@ async def invoke(
     context: OperationContext,
     progress: ProgressSink,
 ) -> ToolResult[Any]:
-    """Run one tool call; the span and metrics hold codes and identifiers only."""
+    """Run one tool call. Span attributes and metrics hold codes and
+    identifiers; the span's captured content holds the validated arguments and
+    the model-visible result (sanitized by the telemetry facade)."""
     # Model-supplied names that resolve to nothing never become metric labels.
     known = registry.resolve(call.name, context.execution)
     capability = known.name if known is not None else "unknown_tool"
@@ -72,7 +74,18 @@ async def invoke(
             "attempt": context.attempt,
         },
     ) as span:
+        if span.captures:
+            span.inputs(_call_payload(known, call, context))
         result = await _invoke(registry, call, context, progress)
+        if span.captures:
+            # Exactly what the model is given back (the compact contract).
+            span.outputs(
+                {
+                    "model_visible_result": result.model_dump(
+                        mode="json", exclude_none=True
+                    )
+                }
+            )
         outcome, error_code, summary = _describe(result.outcome)
         span.set(
             {"outcome": outcome, "error_code": error_code, "error_summary": summary}
@@ -89,6 +102,29 @@ async def invoke(
         Metric.TOOL_SECONDS, watch.seconds(), {Label.CAPABILITY: capability}
     )
     return result
+
+
+def _call_payload(
+    spec: CapabilitySpec[Any, Any] | None, call: ToolCall, context: OperationContext
+) -> dict[str, object]:
+    """The call as the guarded path sees it: validated arguments when they
+    pass the tool's schema, otherwise the rejected ones, labelled."""
+    payload: dict[str, object] = {
+        "tool_call_id": call.call_id,
+        "operation_id": context.operation_id,
+        "tool": call.name,
+        "attempt": context.attempt,
+    }
+    if spec is None:
+        payload["rejected_arguments"] = call.arguments
+        return payload
+    try:
+        validated = spec.input_model.model_validate(call.arguments)
+    except ValidationError:
+        payload["rejected_arguments"] = call.arguments
+        return payload
+    payload["arguments"] = validated.model_dump(mode="json")
+    return payload
 
 
 def _describe(outcome: _Outcome) -> tuple[str, str, str]:

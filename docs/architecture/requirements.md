@@ -337,12 +337,18 @@ runs.
 
   A blocked request and a valid empty result are counted as outcomes, not as
   failures.
-- **Privacy.** A sanitizing facade drops prompts, SQL, rows and secrets
-  before export. Identifiers never become metric labels. Mutation audits
-  live in PostgreSQL transactions, independent of telemetry.
+- **Interaction content.** Each trace shows the sanitized conversation as
+  span inputs/outputs: the messages sent to each model attempt, responses
+  and tool calls, tool arguments and model-visible results, generated and
+  executed SQL, the request, clarifications and the released answer beside
+  the model's draft. Content capture can be switched off.
+- **Privacy.** A sanitizing facade allowlists attributes and masks personal
+  data and secrets in captured content, with explicit size bounds.
+  Identifiers never become metric labels. Mutation audits live in
+  PostgreSQL transactions, independent of telemetry.
 
 **Status.** Implemented. Tests use canaries to check that MLflow,
-Prometheus and container logs receive no sensitive values. Details:
+Prometheus and container logs receive no personal data or secrets. Details:
 [observability](../observability.md).
 
 **Limits.**

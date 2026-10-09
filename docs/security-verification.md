@@ -90,6 +90,7 @@ Case IDs are test node IDs. Paths are relative to `tests/`.
 | Identity comes only from the verified token | `unit/http/test_api.py::test_body_cannot_carry_identity_or_unknown_fields`, `::test_token_in_query_string_is_not_accepted`, `::test_every_route_requires_a_valid_bearer_token`; `unit/test_authorization.py::test_context_comes_from_server_state_and_token_scopes_only_narrow`; `integration/test_http_api.py::test_authentication_failures` | `integration/test_http_api.py::test_run_lifecycle_replay_after_disconnect_and_two_users` |
 | Untrusted text stays data | `unit/context/test_context_builder.py::test_untrusted_text_cannot_break_out_of_its_block`; `unit/tools/test_gateway.py::test_malicious_extra_arguments_are_rejected`, `::test_hidden_and_unknown_tools_look_the_same` | `unit/tools/test_gateway.py::test_sql_success_is_typed_and_correlated` |
 | Secrets never released | `unit/context/test_output_gate.py::test_secrets_and_memory_references_fail_closed` | same test: a permitted reference is displayed |
+| Trace content carries no secrets or direct personal data | `unit/telemetry/test_content_capture.py` (canaries for keys, tokens, emails, cued names, raw customer IDs, SQL literals and comments, exception text, secret and identity fields, thought signatures; fail-closed omission; bounds), `integration/test_telemetry_e2e.py::test_conversation_with_clarification_is_readable_and_sanitized` (live MLflow) | same tests: the request, tool arguments, model output and released answer are readable in span inputs/outputs |
 
 ### Human-only deletion confirmation
 

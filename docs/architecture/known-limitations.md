@@ -92,6 +92,10 @@ verified Gemini result.
   traces and metrics, not in the user's progress stream.
 - **Operations.**
   - No alert rules and no telemetry retention policy.
+  - Traces hold sanitized but still sensitive analytical content; the local
+    MLflow has no access control beyond listening on localhost. Payloads
+    over the size bounds are truncated with a marker, not stored elsewhere.
+    Names typed without a cue are not detected in captured text.
   - Report restore is an operator command.
   - Backups and other retained copies are not covered by purge.
 - **Production.** The reference deployment is a design. Nothing is

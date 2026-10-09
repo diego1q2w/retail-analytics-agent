@@ -422,6 +422,7 @@ class InvestigationRuntime:
         except AccessDenied:
             return StepOutcome(StepResult.STOPPED, stop_reason=StopReason.ACCESS)
         except OutputWithheld as withheld:
+            _trace_answer(draft, withheld=withheld)
             return _withheld(withheld)
         await self._evidence.link_to_run(context, released.cited_evidence)
         cited = await self._cited(context, draft.run_id, released.cited_evidence)
@@ -429,15 +430,23 @@ class InvestigationRuntime:
         if truncated:
             # Never record an answer resting on a cut result as complete.
             status = RunStatus.PARTIAL
+        answer = (
+            released.text
+            + _source_notes(cited)
+            + (f"\n\n{TRUNCATED_NOTE}" if truncated else "")
+        )
         closure = await self._inputs.close_run(
             draft.run_id,
             status,
             output=AssistantOutput(
                 answer_message_id(draft.run_id, draft.sequence),
-                released.text
-                + _source_notes(cited)
-                + (f"\n\n{TRUNCATED_NOTE}" if truncated else ""),
+                answer,
             ),
+        )
+        _trace_answer(
+            draft,
+            released=answer if closure.closed else None,
+            status=status if closure.closed else None,
         )
         if not closure.closed:
             if closure.run.status.is_terminal:
@@ -453,6 +462,7 @@ class InvestigationRuntime:
             retried=False,
             served_by=draft.served_by,
             summary=_partial_summary(status, truncated=truncated),
+            answer=answer,
         )
 
     async def ask(self, draft: QuestionDraft) -> StepOutcome:
@@ -488,7 +498,10 @@ class InvestigationRuntime:
         except AccessDenied:
             return StepOutcome(StepResult.STOPPED, stop_reason=StopReason.ACCESS)
         except OutputWithheld as withheld:
+            _trace_question(draft, withheld=withheld)
             return _withheld(withheld)
+        if not recovering:
+            _trace_question(draft, released=released.text)
         if not recovering:
             waiting = await self._inputs.wait_for_input(
                 ClarificationQuestion(
@@ -555,7 +568,12 @@ class InvestigationRuntime:
         if not closure.closed:
             return StepOutcome(StepResult.STOPPED, status=closure.run.status)
         return await self._after_close(
-            closure.run, status, retried=False, summary=f"Stopped. {reason}"
+            closure.run,
+            status,
+            retried=False,
+            summary=f"Stopped. {reason}",
+            answer=sections.text,
+            stop=request,
         )
 
     async def finish_message(self, run_id: str, message: str) -> StepOutcome:
@@ -571,7 +589,9 @@ class InvestigationRuntime:
             output=AssistantOutput(answer_message_id(run_id, 0), message),
             force=True,
         )
-        return await self._after_close(closure.run, RunStatus.COMPLETED, retried=False)
+        return await self._after_close(
+            closure.run, RunStatus.COMPLETED, retried=False, answer=message
+        )
 
     async def expire(self, run_id: str) -> StepOutcome:
         """Waiting ended without an answer within the retention window."""
@@ -769,11 +789,13 @@ class InvestigationRuntime:
         retried: bool,
         served_by: ProviderAttribution | None = None,
         summary: str | None = None,
+        answer: str | None = None,
+        stop: FinishRequest | None = None,
     ) -> StepOutcome:
         if run.status is not status and retried:
             return StepOutcome(StepResult.STOPPED, status=run.status)
         if not retried:
-            await self._record_run_end(run, served_by)
+            await self._record_run_end(run, served_by, answer, stop)
         await self._inputs.discard_pending(run.run_id)
         kind, default = _TERMINAL_EVENTS[run.status]
         if run.status is not status:
@@ -783,7 +805,11 @@ class InvestigationRuntime:
         return StepOutcome(StepResult.RELEASED, status=run.status)
 
     async def _record_run_end(
-        self, run: Run, served_by: ProviderAttribution | None
+        self,
+        run: Run,
+        served_by: ProviderAttribution | None,
+        answer: str | None = None,
+        stop: FinishRequest | None = None,
     ) -> None:
         """Run outcome, duration, budget use and answering provider, once."""
         now = self._clock()
@@ -819,8 +845,24 @@ class InvestigationRuntime:
             attributes=attributes,
             start=run.created_at,
             root=True,
-        ):
-            pass
+        ) as span:
+            if span.captures:
+                try:
+                    inputs = await self._inputs.for_run(run.run_id)
+                except Exception:
+                    # Telemetry is best effort: never let it fail the run end.
+                    span.inputs({"request": "[omitted: request unavailable]"})
+                else:
+                    span.inputs({"request": compose_request(inputs)})
+                outputs: dict[str, object] = {"status": status}
+                if stop is not None:
+                    # The stop reason code the user's message is built from.
+                    outputs["stop_reason"] = stop.reason.value
+                    if stop.resource is not None:
+                        outputs["stop_resource"] = stop.resource.value
+                if answer is not None:
+                    outputs["released_answer"] = answer
+                span.outputs(outputs)
         telemetry().count(Metric.RUNS, {Label.STATUS: status})
         telemetry().observe(Metric.RUN_SECONDS, seconds, {Label.STATUS: status})
         if served_by is not None:
@@ -904,6 +946,78 @@ class InvestigationRuntime:
                 summary=summary,
                 input_request=input_request,
             )
+        )
+
+
+def _trace_answer(
+    draft: AnswerDraft,
+    *,
+    released: str | None = None,
+    status: RunStatus | None = None,
+    withheld: OutputWithheld | None = None,
+) -> None:
+    """The model's draft beside what the output gate released (or why not)."""
+    if withheld is not None:
+        outcome = "withheld"
+    elif released is not None:
+        outcome = "released"
+    else:
+        outcome = "superseded"
+    with telemetry().span(
+        Span.ANSWER,
+        run_id=draft.run_id,
+        attributes={
+            "run_id": draft.run_id,
+            "sequence": draft.sequence,
+            "outcome": outcome,
+            "reason": withheld.reason if withheld is not None else "none",
+        },
+    ) as span:
+        if not span.captures:
+            return
+        span.inputs(
+            {
+                "model_draft": draft.text,
+                "cited_evidence": list(draft.cited_evidence),
+                "complete": draft.complete,
+            }
+        )
+        result: dict[str, object] = {"outcome": outcome}
+        if released is not None:
+            result["released_answer"] = released
+        if status is not None:
+            result["status"] = status.value
+        if withheld is not None:
+            result["withheld_reason"] = withheld.reason
+            result["user_notice"] = withheld.message
+        span.outputs(result)
+
+
+def _trace_question(
+    draft: QuestionDraft,
+    *,
+    released: str | None = None,
+    withheld: OutputWithheld | None = None,
+) -> None:
+    """The model's clarification draft beside the question the user sees."""
+    outcome = "withheld" if withheld is not None else "asked"
+    with telemetry().span(
+        Span.CLARIFICATION,
+        run_id=draft.run_id,
+        attributes={
+            "run_id": draft.run_id,
+            "sequence": draft.sequence,
+            "outcome": outcome,
+            "reason": withheld.reason if withheld is not None else "none",
+        },
+    ) as span:
+        if not span.captures:
+            return
+        span.inputs({"model_draft": draft.question})
+        span.outputs(
+            {"outcome": outcome, "released_question": released}
+            if withheld is None
+            else {"outcome": outcome, "withheld_reason": withheld.reason}
         )
 
 

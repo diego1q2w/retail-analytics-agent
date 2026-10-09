@@ -243,6 +243,7 @@ The older prefixed names (`RETAIL_ANALYTICS_*`, `ANALYTICS_CLI_*`) are no longer
 | `RETAIL_ANALYTICS_TELEMETRY_EXPERIMENT_ID` | `TELEMETRY_EXPERIMENT_ID` |
 | `RETAIL_ANALYTICS_TELEMETRY_EXPORT_TIMEOUT_SECONDS` | `TELEMETRY_EXPORT_TIMEOUT_SECONDS` |
 | `RETAIL_ANALYTICS_TELEMETRY_METRIC_INTERVAL_SECONDS` | `TELEMETRY_METRIC_INTERVAL_SECONDS` |
+| `RETAIL_ANALYTICS_TELEMETRY_CAPTURE_CONTENT` | `TELEMETRY_CAPTURE_CONTENT` |
 | `RETAIL_ANALYTICS_REFERENCE_KEY` | `REFERENCE_KEY` |
 | `RETAIL_ANALYTICS_ENV_FILE` | `APP_ENV_FILE` |
 | `ANALYTICS_CLI_API_URL` | `CLI_API_URL` |
@@ -586,7 +587,7 @@ Telemetry is on by default (`TELEMETRY_ENABLED=true` in `.env.example` and in th
 - **Traces to MLflow** (OTLP/HTTP protobuf): all spans of a run share one trace (`tr-` plus an id derived from the run id), covering API acceptance, tool attempts, query attempts (BigQuery job id, bytes), retrieval, model attempts (provider, model id, attempt number, fallback from/to and reason class) and a run root span that names the provider that produced the final answer. `python -m retail_analytics.bootstrap.trace_lookup <run_id> [--tree]` prints the trace id, links and the span tree.
 - **Metrics to Prometheus**, shown on the provisioned Grafana dashboard "Agent overview": runs and latency, budget use, query bytes, provider/fallback rates and final-answer provider, gate withholds, compiler rejections by class and exception type, retrieval hit/no-match, tool failures.
 
-Telemetry is best effort: bounded queues and short timeouts drop data when MLflow or Prometheus is down and never delay a run; mutation audits stay in PostgreSQL. Spans and metrics hold identifiers, codes and sizes only (no prompts, SQL, rows, personal data or credentials). See [docs/observability.md](docs/observability.md).
+Telemetry is best effort: bounded queues and short timeouts drop data when MLflow or Prometheus is down and never delay a run; mutation audits stay in PostgreSQL. Span attributes and metrics hold identifiers, codes and sizes only. The interaction itself (model messages and responses, tool arguments and results, generated and executed SQL, the request, clarifications and the released answer) is shown as sanitized span inputs/outputs in the MLflow trace viewer: personal data and secrets are masked and sizes are bounded, but the content is still analytical data, so keep MLflow operator-only. `TELEMETRY_CAPTURE_CONTENT=false` keeps metadata only. See [docs/observability.md](docs/observability.md).
 
 ### Package layout and dependency rules
 

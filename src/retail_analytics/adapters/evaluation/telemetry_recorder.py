@@ -19,6 +19,7 @@ from datetime import datetime
 from retail_analytics.application.contracts.evaluation import RecordedSpan
 from retail_analytics.application.contracts.telemetry import (
     Attributes,
+    CapturedPayload,
     Label,
     Metric,
 )
@@ -36,6 +37,10 @@ class _Handle:
 
     def fail(self, error_type: str) -> None:
         self.attributes["error_type"] = error_type
+
+    def payload(self, payload: CapturedPayload) -> None:
+        # The evaluation reads attribution only; content is not kept.
+        return None
 
 
 class RecordingTelemetrySink:

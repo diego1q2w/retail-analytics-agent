@@ -8,7 +8,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from retail_analytics.application.contracts.telemetry import Attributes, Label, Metric
+from retail_analytics.application.contracts.telemetry import (
+    Attributes,
+    CapturedPayload,
+    Label,
+    Metric,
+)
 from retail_analytics.application.ports.telemetry import SpanHandle
 from retail_analytics.application.telemetry import Telemetry
 
@@ -22,6 +27,12 @@ class RecordedSpan:
     events: list[tuple[str, Attributes]] = field(default_factory=list)
     failed: str | None = None
     ended: bool = False
+    payloads: list[CapturedPayload] = field(default_factory=list)
+
+    def content(self, side: str) -> object:
+        """The last captured content of ``side`` ("inputs"/"outputs")."""
+        found = [p.content for p in self.payloads if p.side.value == side]
+        return found[-1] if found else None
 
 
 class _Handle:
@@ -36,6 +47,9 @@ class _Handle:
 
     def fail(self, error_type: str) -> None:
         self._span.failed = error_type
+
+    def payload(self, payload: CapturedPayload) -> None:
+        self._span.payloads.append(payload)
 
 
 class RecordingSink:
@@ -85,10 +99,24 @@ class RecordingSink:
 
     def everything(self) -> str:
         """All recorded data as one string, for canary scans."""
+        return self._dump(content=True)
+
+    def metadata(self) -> str:
+        """Everything except captured content (attributes, events, metrics)."""
+        return self._dump(content=False)
+
+    def _dump(self, *, content: bool) -> str:
         return json.dumps(
             {
                 "spans": [
-                    [s.name, s.run_id, s.attributes, s.events, s.failed]
+                    [
+                        s.name,
+                        s.run_id,
+                        s.attributes,
+                        s.events,
+                        s.failed,
+                        [p.content for p in s.payloads] if content else [],
+                    ]
                     for s in self.spans
                 ],
                 "counts": [
@@ -104,6 +132,6 @@ class RecordingSink:
         )
 
 
-def recording() -> tuple[Telemetry, RecordingSink]:
+def recording(*, capture_content: bool = True) -> tuple[Telemetry, RecordingSink]:
     sink = RecordingSink()
-    return Telemetry(sink), sink
+    return Telemetry(sink, capture_content=capture_content), sink

@@ -32,7 +32,7 @@ def build_telemetry(settings: BackendSettings, service: str) -> Telemetry:
             metric_interval_seconds=settings.telemetry_metric_interval_seconds,
         )
     )
-    return Telemetry(sink)
+    return Telemetry(sink, capture_content=settings.telemetry_capture_content)
 
 
 def install_from_settings(settings: BackendSettings, service: str) -> Telemetry:

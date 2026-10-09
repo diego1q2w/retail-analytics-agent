@@ -15,6 +15,12 @@ value passes through this module before a sink sees it:
 - a failing sink never raises into the caller and never delays it: exporters
   are bounded and drop data (see ``adapters.telemetry``).
 
+Interaction content is the one exception to "codes only": a span's
+``inputs``/``outputs`` take an explicit structured payload built at a known
+boundary, which ``application.telemetry_payloads`` sanitizes and bounds before
+the sink sees it. Content capture can be switched off (``capture_content``);
+the span then keeps its metadata and records ``content_capture=disabled``.
+
 The holder is process-wide on purpose (as OpenTelemetry's own providers are):
 bootstrap installs the real sink once; tests install a recording sink with
 :func:`use_telemetry`.
@@ -34,8 +40,10 @@ from types import TracebackType
 from retail_analytics.application.contracts.telemetry import (
     Attributes,
     AttributeValue,
+    CapturedPayload,
     Label,
     Metric,
+    PayloadSide,
     ProviderAttribution,
     ReasonClass,
     Span,
@@ -86,6 +94,8 @@ _SECRET_SHAPES = re.compile(
     r"|-----BEGIN [A-Z ]+-----)",
     re.IGNORECASE,
 )
+# Shared with ``application.telemetry_payloads``.
+SECRET_SHAPES = _SECRET_SHAPES
 _LONG_OPAQUE = re.compile(r"[A-Za-z0-9+/_=-]{32,}")
 # Values that look like data dumps (JSON, row reprs, SQL fragments, shell) are
 # dropped outright instead of masked.
@@ -230,15 +240,46 @@ class _NoSpan:
     def fail(self, error_type: str) -> None:
         return None
 
+    def payload(self, payload: CapturedPayload) -> None:
+        return None
+
 
 _NO_SPAN = _NoSpan()
+
+
+def _capture(side: PayloadSide, value: object) -> CapturedPayload:
+    # Imported here: the payload sanitizer uses the output gate, which itself
+    # reports to this module.
+    from retail_analytics.application.telemetry_payloads import capture
+
+    return capture(side, value)
 
 
 class SpanRecorder:
     """Sanitizes what callers record and swallows sink errors."""
 
-    def __init__(self, inner: SpanHandle) -> None:
+    def __init__(self, inner: SpanHandle, *, capture_content: bool = False) -> None:
         self._inner = inner
+        self._capture_content = capture_content
+
+    @property
+    def captures(self) -> bool:
+        """Whether content recorded here is exported (else skip building it)."""
+        return self._capture_content and self._inner is not _NO_SPAN
+
+    def inputs(self, value: object) -> None:
+        """What the span received: an explicit JSON-like structure."""
+        self._payload(PayloadSide.INPUTS, value)
+
+    def outputs(self, value: object) -> None:
+        """What the span produced: an explicit JSON-like structure."""
+        self._payload(PayloadSide.OUTPUTS, value)
+
+    def _payload(self, side: PayloadSide, value: object) -> None:
+        if not self.captures:
+            return
+        with suppress(Exception):
+            self._inner.payload(_capture(side, value))
 
     def set(self, attributes: Mapping[str, object]) -> None:
         with suppress(Exception):
@@ -263,7 +304,9 @@ class _SafeSpan:
         attributes: Mapping[str, object] | None,
         start: datetime | None,
         root: bool,
+        capture_content: bool = False,
     ) -> None:
+        self._capture_content = capture_content
         self._sink = sink
         self._name = name
         self._run_id = run_id
@@ -280,14 +323,19 @@ class _SafeSpan:
             run_id = self._run_id
             if run_id is not None and not _ID.fullmatch(run_id):
                 run_id = None
+            attributes = sanitize_attributes(self._attributes)
+            if not self._capture_content:
+                attributes["content_capture"] = "disabled"
             context = self._sink.span(
                 self._name,
                 run_id=run_id,
-                attributes=sanitize_attributes(self._attributes),
+                attributes=attributes,
                 start=self._start,
                 root=self._root,
             )
-            self.handle = SpanRecorder(context.__enter__())
+            self.handle = SpanRecorder(
+                context.__enter__(), capture_content=self._capture_content
+            )
             self._context = context
         except Exception:
             self._context = None
@@ -315,12 +363,20 @@ class _SafeSpan:
 class Telemetry:
     """The application's telemetry facade (no-op without a sink)."""
 
-    def __init__(self, sink: TelemetrySink | None = None) -> None:
+    def __init__(
+        self, sink: TelemetrySink | None = None, *, capture_content: bool = True
+    ) -> None:
         self._sink = sink
+        self._capture_content = capture_content
 
     @property
     def enabled(self) -> bool:
         return self._sink is not None
+
+    @property
+    def captures_content(self) -> bool:
+        """Sanitized interaction content is exported (not only metadata)."""
+        return self._sink is not None and self._capture_content
 
     def span(
         self,
@@ -331,7 +387,15 @@ class Telemetry:
         start: datetime | None = None,
         root: bool = False,
     ) -> AbstractContextManager[SpanRecorder]:
-        return _SafeSpan(self._sink, str(name), run_id, attributes, start, root)
+        return _SafeSpan(
+            self._sink,
+            str(name),
+            run_id,
+            attributes,
+            start,
+            root,
+            self._capture_content,
+        )
 
     def count(
         self,

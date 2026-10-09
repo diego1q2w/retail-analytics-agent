@@ -49,6 +49,11 @@ from pydantic_ai.profiles import DEFAULT_PROFILE, ModelProfile
 from pydantic_ai.settings import ModelSettings
 
 from retail_analytics.adapters.models.budgeted import current_run_id
+from retail_analytics.adapters.models.capture import (
+    error_payload,
+    request_payload,
+    response_payload,
+)
 from retail_analytics.adapters.models.deadlines import ModelResponseTimeout
 from retail_analytics.application.budgets import RetryDecision
 from retail_analytics.application.contracts.investigations import StopReason
@@ -298,6 +303,18 @@ class ProviderAttempts(WrapperModel):
                 "fallback_reason": origin[1].value if origin else "none",
             },
         ) as span:
+            if span.captures:
+                # What this provider is sent: after foreign reasoning removal,
+                # with the guarded context in front (GuardedModel).
+                span.inputs(
+                    request_payload(
+                        messages,
+                        model_request_parameters,
+                        provider=provider,
+                        model=model,
+                        attempt=attempt,
+                    )
+                )
             try:
                 response = await self.wrapped.request(
                     messages, model_settings, model_request_parameters
@@ -305,6 +322,8 @@ class ProviderAttempts(WrapperModel):
             except Exception as error:
                 reason = reason_class(error)
                 span.set({"outcome": "failed", "reason_class": reason.value})
+                if span.captures:
+                    span.outputs(error_payload(error, reason.value))
                 telemetry().count(
                     Metric.MODEL_REQUESTS,
                     {
@@ -316,6 +335,8 @@ class ProviderAttempts(WrapperModel):
                 telemetry().observe(Metric.MODEL_SECONDS, watch.seconds(), labels)
                 raise
             tokens_in, tokens_out = _usage_counts(response)
+            if span.captures:
+                span.outputs(response_payload(response))
             span.set(
                 {
                     "outcome": "succeeded",

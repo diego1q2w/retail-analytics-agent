@@ -4,7 +4,12 @@ from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Protocol
 
-from retail_analytics.application.contracts.telemetry import Attributes, Label, Metric
+from retail_analytics.application.contracts.telemetry import (
+    Attributes,
+    CapturedPayload,
+    Label,
+    Metric,
+)
 
 
 class SpanHandle(Protocol):
@@ -15,6 +20,10 @@ class SpanHandle(Protocol):
     def event(self, name: str, attributes: Attributes) -> None: ...
 
     def fail(self, error_type: str) -> None: ...
+
+    def payload(self, payload: CapturedPayload) -> None:
+        """Attach sanitized interaction content (one call per side)."""
+        ...
 
 
 class TelemetrySink(Protocol):

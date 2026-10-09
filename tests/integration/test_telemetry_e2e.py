@@ -2,10 +2,11 @@
 
 A worker process runs the real Temporal workflow with the Gemini/GPT provider
 chain over HTTP stubs: Gemini calls a tool, then is overloaded, and GPT
-answers. The run's trace must show the API acceptance, workflow, tool attempt,
-model attempts with the fallback and the answering provider; the dashboards
-must query the metrics; no canary may appear anywhere; and stopping the
-telemetry backends must not stop runs.
+answers (after a clarification in the conversation test). The run's trace
+must show the API acceptance, workflow, tool attempt, model attempts with the
+fallback and the answering provider, with the sanitized interaction as span
+inputs/outputs; the dashboards must query the metrics; no canary may appear
+anywhere; and stopping the telemetry backends must not stop runs.
 """
 
 from __future__ import annotations
@@ -134,6 +135,56 @@ def mlflow_spans(stack: TelemetryStack, run_id: str) -> list[dict[str, Any]]:
     traces = response.json()["traces"]
     spans: list[dict[str, Any]] = traces[0]["spans"] if traces else []
     return spans
+
+
+def mlflow_trace_info(stack: TelemetryStack, run_id: str) -> dict[str, Any]:
+    response = httpx.get(
+        f"http://127.0.0.1:{stack.mlflow_port}/api/3.0/mlflow/traces/batchGet",
+        params={"trace_ids": "tr-" + trace_id_for(run_id)},
+        timeout=10,
+    )
+    response.raise_for_status()
+    info: dict[str, Any] = response.json()["traces"][0]["trace_info"]
+    return info
+
+
+_CONTENT_KEYS = ("mlflow.spanInputs", "mlflow.spanOutputs")
+
+
+def payload(span: dict[str, Any], side: str) -> Any:
+    """A span's captured content as MLflow stores it (JSON)."""
+    key = f"mlflow.span{side.capitalize()}"
+    raw = span.get("attributes")
+    value: Any
+    if isinstance(raw, dict):
+        value = raw[key]
+    else:
+        (item,) = [a for a in raw or [] if a.get("key") == key]
+        value = _otlp_value(item["value"])
+    while isinstance(value, str):
+        value = json.loads(value)
+    return value
+
+
+def _otlp_value(value: dict[str, Any]) -> Any:
+    """An OTLP ``AnyValue`` (as MLflow's batchGet returns it) as plain data."""
+    if "kvlist_value" in value:
+        return {
+            item["key"]: _otlp_value(item.get("value", {}))
+            for item in value["kvlist_value"].get("values", [])
+        }
+    if "array_value" in value:
+        return [_otlp_value(v) for v in value["array_value"].get("values", [])]
+    if "int_value" in value:
+        return int(value["int_value"])
+    for kind in ("string_value", "bool_value", "double_value"):
+        if kind in value:
+            return value[kind]
+    return None
+
+
+def metadata_of(span: dict[str, Any]) -> dict[str, str]:
+    return {k: v for k, v in span_attributes(span).items() if k not in _CONTENT_KEYS}
 
 
 def prometheus(stack: TelemetryStack, query: str) -> list[dict[str, Any]]:
@@ -330,17 +381,129 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
             for value in series["metric"].values():
                 assert run_id not in value and operation.operation_id not in value
 
-        # Nothing sensitive anywhere: spans, metric labels or the container logs.
+        # The interaction is readable in the span inputs/outputs (T30-F2) ...
+        assert "Analyze sales" in payload(root, "inputs")["request"]
+        (tool_span,) = by_name["tool.call"]
+        assert payload(tool_span, "inputs")["arguments"] == {
+            "purpose": "controlled test"
+        }
+        assert "model_visible_result" in payload(tool_span, "outputs")
+        backup_span = by_name["model.attempt"][-1]
+        assert payload(backup_span, "inputs")["provider"] == "openai"
+        assert "Backup continued" in json.dumps(payload(backup_span, "outputs"))
+        # ... but never in attributes or metric labels, and nothing sensitive
+        # anywhere: spans, metric labels or the container logs.
+        metadata = json.dumps([metadata_of(s) for s in spans]) + json.dumps(names)
+        assert "Backup continued" not in metadata
+        assert "Analyze sales" not in metadata
         everything = json.dumps(spans) + json.dumps(names)
         assert CANARY not in everything
-        assert "Backup continued" not in everything
-        assert "Analyze sales" not in everything
-        for forbidden in ("OPENAI_KEY", "sk-openai", "gemini-test-key"):
+        for forbidden in (
+            "OPENAI_KEY",
+            "sk-openai",
+            "gemini-test-key",
+            "thought-sig",
+            "call-sig",
+        ):
             assert forbidden not in everything
         logs = stack.compose("logs", "mlflow", "prometheus").stdout
         assert CANARY not in logs
 
         check_dashboard(stack)
+    finally:
+        env.stop(process)
+        env.db.close()
+
+
+async def test_conversation_with_clarification_is_readable_and_sanitized(
+    stack: TelemetryStack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Clarification, reply, tool call, retries, fallback and the released
+    answer, in order, as sanitized span inputs/outputs of one trace."""
+    env = await TestEnv.create(stack)
+    process = worker_with_telemetry(env, stack, monkeypatch)
+    # Built at runtime: no key-shaped literal in source.
+    key = "sk-" + "canary" * 5 + "0123456789"
+    try:
+        with api_telemetry(stack):
+            run_id = await env.start(
+                f"Analyze sales: effect case, clarification case. Ask {CANARY}."
+            )
+            await env.wait_status(run_id, RunStatus.WAITING_FOR_INPUT, 90)
+            attached = await env.services.control.attach(env.principal, run_id=run_id)
+            assert attached.open_question_id is not None
+            await env.services.control.answer(
+                env.principal,
+                run_id=run_id,
+                question_id=attached.open_question_id,
+                text=f"Use last full month sales. My key is {key}",
+                submission_key="answer",
+            )
+        await completed(env, process, run_id)
+
+        def complete_trace() -> list[dict[str, Any]] | None:
+            spans = mlflow_spans(stack, run_id)
+            names = {s["name"] for s in spans}
+            needed = {
+                "investigation.run",
+                "clarification.ask",
+                "user.input",
+                "answer.release",
+                "tool.call",
+            }
+            return spans if needed <= names else None
+
+        spans = eventually("the conversation trace in MLflow", complete_trace, 90)
+        spans.sort(key=lambda s: int(s["start_time_unix_nano"]))
+        order = [
+            s["name"]
+            for s in spans
+            if s["name"]
+            in ("run.accept", "clarification.ask", "user.input", "answer.release")
+        ]
+        assert order == [
+            "run.accept",
+            "clarification.ask",
+            "user.input",
+            "answer.release",
+        ]
+        by_name: dict[str, list[dict[str, Any]]] = {}
+        for span in spans:
+            by_name.setdefault(span["name"], []).append(span)
+
+        (question,) = by_name["clarification.ask"]
+        assert payload(question, "inputs")["model_draft"].startswith("Which period?")
+        released_question = payload(question, "outputs")["released_question"]
+        assert released_question.startswith("Which period?")
+        (reply,) = by_name["user.input"]
+        assert payload(reply, "inputs")["kind"] == "answer"
+        assert "Use last full month" in payload(reply, "inputs")["text"]
+        (release,) = by_name["answer.release"]
+        assert payload(release, "inputs")["model_draft"].startswith("Backup continued")
+        assert payload(release, "outputs")["outcome"] == "released"
+        assert payload(release, "outputs")["released_answer"].startswith(
+            "Backup continued"
+        )
+        attempts = by_name["model.attempt"]
+        failed = [a for a in attempts if "error" in payload(a, "outputs")]
+        assert failed and all(
+            payload(a, "outputs")["error"]["status_code"] == 503 for a in failed
+        )
+        for attempt in attempts:
+            sent = payload(attempt, "inputs")
+            assert sent["messages"][0]["role"] == "system"
+            assert metadata_of(attempt)["capture.inputs.chars"]
+        (root,) = by_name["investigation.run"]
+        assert "user's answer" in payload(root, "inputs")["request"]
+        assert payload(root, "outputs")["status"] == "completed"
+
+        everything = json.dumps(spans)
+        for forbidden in (CANARY, "canary@example.com", key, "thought-sig"):
+            assert forbidden not in everything
+        assert "[withheld]" in everything and "[redacted]" in everything
+
+        # The trace list shows the request and answer previews.
+        assert "Analyze sales" in json.dumps(mlflow_trace_info(stack, run_id))
     finally:
         env.stop(process)
         env.db.close()

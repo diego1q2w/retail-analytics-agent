@@ -169,7 +169,7 @@ What each boundary enforces:
 | Output | Each answer, report, memory entry and progress text passes the output gate. Citations must be usable now. | Implemented |
 | Destructive actions | The model can propose a deletion. Only an authenticated user action can confirm it. | Implemented |
 | Model providers | Only masked, authorized context leaves the backend. Requests send `store: false`. | Implemented. The free tier of the Gemini API may use submitted content to improve Google products, so production needs a paid tier or an equivalent agreement (see [production deployment](production-deployment.md)) |
-| Telemetry | Attributes are allowlisted and redacted. Prompts, SQL and rows are never exported. | Implemented |
+| Telemetry | Attributes are allowlisted and redacted. Sanitized interaction content (prompts, model output, tool arguments and results, SQL, result previews) is exported as span inputs/outputs with personal data and secrets masked; it can be switched off. | Implemented. Masked traces still hold analytical data: operator-only access |
 
 The privacy policy is pseudonymization, not anonymization. Demographic
 combinations (country, state, age band) are allowed and can still single

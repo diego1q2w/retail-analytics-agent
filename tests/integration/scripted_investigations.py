@@ -7,6 +7,7 @@ Free of Temporal imports: used by the Temporal worker process
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from datetime import timedelta
 from typing import Any
@@ -160,7 +161,9 @@ def fallback_chain(settings: BackendSettings) -> Any:
     from tests.unit.models import stubs
 
     def gemini(request: dict[str, Any]) -> stubs.Reply:
-        if any(step["type"] == "function_result" for step in request["input"]):
+        if any(step["type"] == "function_result" for step in request["input"]) or (
+            "user's answer" in json.dumps(request)
+        ):
             return stubs.error(503, "unavailable")
         return stubs.Reply(
             events=stubs.gemini_call(
@@ -169,6 +172,15 @@ def fallback_chain(settings: BackendSettings) -> Any:
         )
 
     def gpt(request: dict[str, Any]) -> stubs.Reply:
+        sent = json.dumps(request)
+        if "clarification case" in sent and "user's answer" not in sent:
+            # Asked once, with a personal-data canary the gate must mask.
+            ask = next(t["name"] for t in request["tools"] if "Clarif" in t["name"])
+            return stubs.Reply(
+                events=stubs.openai_call(
+                    ask, {"question": "Which period? (or mail canary@example.com)"}
+                )
+            )
         answer = next(t["name"] for t in request["tools"] if "Answer" in t["name"])
         seen = [
             item["call_id"]

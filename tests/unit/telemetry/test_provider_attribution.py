@@ -166,17 +166,34 @@ async def test_unavailable_chain_is_reported_as_exhausted() -> None:
     assert sink.total(Metric.MODEL_FALLBACKS) == 0
 
 
-async def test_no_secret_or_prompt_reaches_model_telemetry() -> None:
+async def test_no_secret_or_personal_data_reaches_model_telemetry() -> None:
     telemetry, sink = recording()
     gemini = stubs.Recorder([stubs.error(401, "unauthenticated")])
     gpt = stubs.Recorder([gpt_answer("Sales were 10.")])
     with use_telemetry(telemetry):
         await harness(gemini, gpt).run("Sales last month for maria.canary@example.com?")
     text = sink.everything()
-    for secret in (stubs.GEMINI_KEY, stubs.OPENAI_KEY, "maria.canary", "Sales were 10"):
+    for secret in (stubs.GEMINI_KEY, stubs.OPENAI_KEY, "maria.canary"):
         assert secret not in text
+    # Sanitized content is captured by design (T30-F2): the answer is visible.
+    assert "Sales were 10" in text
     labels = {k for _, _, labels in sink.counts for k in labels}
     assert labels <= set(Label)
+
+
+async def test_disabled_content_capture_keeps_metadata_only() -> None:
+    telemetry, sink = recording(capture_content=False)
+    gemini = stubs.Recorder([stubs.error(401, "unauthenticated")])
+    gpt = stubs.Recorder([gpt_answer("Sales were 10.")])
+    with use_telemetry(telemetry):
+        await harness(gemini, gpt).run("Sales last month?")
+    text = sink.everything()
+    assert "Sales" not in text
+    attempts = sink.named(Span.MODEL_ATTEMPT)
+    assert [a.attributes["outcome"] for a in attempts] == ["failed", "succeeded"]
+    assert all(a.attributes["content_capture"] == "disabled" for a in attempts)
+    assert all(not a.payloads for a in sink.spans)
+    assert attempts[1].attributes["input_tokens"] == 50
 
 
 async def test_connection_lost_mid_stream_is_attributed_as_a_connection_failure() -> (

@@ -62,8 +62,10 @@ from opentelemetry.trace import (
 from retail_analytics.application.contracts.telemetry import (
     HISTOGRAMS,
     Attributes,
+    CapturedPayload,
     Label,
     Metric,
+    PayloadSide,
     Span,
 )
 from retail_analytics.application.ports.telemetry import SpanHandle
@@ -71,6 +73,10 @@ from retail_analytics.application.telemetry import root_span_id_for, trace_id_fo
 
 _SECONDS = (0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 45, 90, 180, 360, 720)
 _RATIO = (0.1, 0.25, 0.5, 0.75, 0.9, 1.0)
+_PAYLOAD_ATTRIBUTES = {
+    PayloadSide.INPUTS: "mlflow.spanInputs",
+    PayloadSide.OUTPUTS: "mlflow.spanOutputs",
+}
 _SPAN_TYPES = {
     Span.RUN: "AGENT",
     Span.TOOL: "TOOL",
@@ -211,6 +217,20 @@ class _Handle:
     def fail(self, error_type: str) -> None:
         self._span.set_attribute("error.type", error_type)
         self._span.set_status(Status(StatusCode.ERROR, error_type))
+
+    def payload(self, payload: CapturedPayload) -> None:
+        side = payload.side.value
+        self._span.set_attribute(
+            _PAYLOAD_ATTRIBUTES[payload.side],
+            json.dumps(payload.content, ensure_ascii=False),
+        )
+        self._span.set_attribute(f"capture.{side}.chars", payload.chars)
+        self._span.set_attribute(f"capture.{side}.redactions", payload.redactions)
+        self._span.set_attribute(f"capture.{side}.truncated", payload.truncated)
+        if payload.omitted:
+            self._span.set_attribute(
+                f"capture.{side}.omitted", ",".join(payload.omitted)
+            )
 
 
 def _ns(moment: datetime) -> int:

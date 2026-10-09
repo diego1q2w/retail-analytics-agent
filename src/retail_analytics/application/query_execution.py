@@ -350,6 +350,58 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+MAX_TRACE_ROWS = 20
+
+
+def _compiled_payload(compiled: CompiledQuery) -> dict[str, object]:
+    """The statement sent to the warehouse, labelled apart from the model's.
+
+    Authorization parameters are named in the SQL but their values (and any
+    key material) are never captured; only the model's analysis values are.
+    """
+    return {
+        "executed_sql": compiled.sql,
+        "normalized_sql": compiled.logical_sql,
+        "analysis_parameters": {
+            p.name: _jsonable_value(p.value)
+            for p in compiled.analysis_parameters
+            if not p.secret
+        },
+        "relations": sorted(compiled.relations),
+        "maximum_bytes_billed": compiled.maximum_bytes_billed,
+    }
+
+
+def _jsonable_value(value: object) -> object:
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, tuple):
+        return [_jsonable_value(item) for item in value]
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    return str(value)
+
+
+def _result_payload(outcome: QuerySucceeded) -> dict[str, object]:
+    """The internal execution result after the result-privacy boundary (the
+    model sees only the tool's compact output); at most a few rows."""
+    result = outcome.result
+    return {
+        "internal_result": {
+            "columns": [column.name for column in result.columns],
+            "rows": [
+                [_jsonable_value(cell) for cell in row]
+                for row in result.rows[:MAX_TRACE_ROWS]
+            ],
+            "rows_shown": min(len(result.rows), MAX_TRACE_ROWS),
+            "row_count": len(result.rows),
+            "received_rows": result.received_rows,
+            "truncated": result.truncated,
+            "masked_cells": result.masked_cells,
+        }
+    }
+
+
 def _observe_outcome(
     span: SpanRecorder, outcome: QueryOutcome, watch: Stopwatch
 ) -> None:
@@ -367,6 +419,8 @@ def _observe_outcome(
                 "cache_hit": bool(stats.cache_hit),
                 "masked_cells": outcome.result.masked_cells,
             }
+            if span.captures:
+                span.outputs(_result_payload(outcome))
             for label, amount in (
                 ("processed", stats.bytes_processed),
                 ("billed", stats.bytes_billed),
@@ -534,11 +588,44 @@ class QueryExecutionService:
 
         compiler = self._compilers.for_executive(authority.context.executive_id)
         try:
-            compiled = compiler.compile(
-                attempt.query,
-                catalog=authority.catalog,
-                scope=authority.context.product_scope,
-            )
+            with telemetry().span(
+                Span.COMPILE,
+                run_id=attempt.run_id,
+                attributes={
+                    "run_id": attempt.run_id,
+                    "operation_id": attempt.operation_id,
+                    "attempt": attempt.attempt,
+                },
+            ) as span:
+                if span.captures:
+                    span.inputs(
+                        {
+                            "generated_sql": attempt.query.sql,
+                            "parameters": dict(attempt.query.parameters),
+                        }
+                    )
+                try:
+                    compiled = compiler.compile(
+                        attempt.query,
+                        catalog=authority.catalog,
+                        scope=authority.context.product_scope,
+                    )
+                except QueryRejected as rejected:
+                    span.set({"outcome": "rejected", "reason": rejected.reason})
+                    if span.captures:
+                        span.outputs(
+                            {
+                                "rejected": {
+                                    "code": rejected.code.value,
+                                    "reason": rejected.reason,
+                                    "message": rejected.message,
+                                }
+                            }
+                        )
+                    raise
+                span.set({"outcome": "compiled"})
+                if span.captures:
+                    span.outputs(_compiled_payload(compiled))
         except QueryRejected as rejected:
             telemetry().count(
                 Metric.COMPILER_REJECTIONS,

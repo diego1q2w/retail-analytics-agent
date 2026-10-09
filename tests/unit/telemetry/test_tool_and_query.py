@@ -67,9 +67,21 @@ async def test_unexpected_handler_errors_and_arguments_stay_out_of_telemetry() -
         await h.call("drop_everything_for_jane_example_com", x="jane@example.com")
     text = sink.everything()
     assert "jane@example.com" not in text and "leaky" not in text
-    assert "SELECT" not in text and "salary" not in text
+    # Arguments and model-supplied names are captured content only, never
+    # attributes or metric labels.
+    metadata = sink.metadata()
+    assert "SELECT" not in metadata and "salary" not in metadata
     assert sink.total(Metric.TOOL_CALLS, capability="unknown_tool") == 1
-    assert "drop_everything" not in text
+    assert "drop_everything" not in metadata
+    spans = sink.named(Span.TOOL)
+    assert spans[1].content("inputs") == {
+        "tool_call_id": "call-1",
+        "operation_id": "op-7",
+        "tool": SQL,
+        "attempt": 2,
+        "arguments": {"sql": "SELECT secret FROM t", "parameters": {}, "purpose": "p"},
+    }
+    assert "rejected_arguments" in spans[2].content("inputs")  # type: ignore[operator]
 
 
 @pytest.fixture
@@ -97,13 +109,24 @@ async def test_query_attempt_records_job_bytes_and_no_sql_or_secrets(
     assert sink.total(Metric.QUERY_BYTES, kind="billed") == (
         outcome.statistics.bytes_billed or 0
     )
+    metadata = sink.metadata()
+    assert "SELECT" not in metadata and "customer_ref" not in metadata
+    assert TOP_CUSTOMERS[:30] not in metadata
     text = sink.everything()
-    assert "SELECT" not in text and "customer_ref" not in text
     assert MASTER_KEY.decode() not in text
     for parameter in h.warehouse.jobs[outcome.job.job_id].submission.parameters:
-        if parameter.secret:
-            assert str(parameter.value) not in text
-    assert TOP_CUSTOMERS[:30] not in text
+        if parameter.secret or parameter.trusted:
+            assert f'"{parameter.value}"' not in text
+    (compile_span,) = sink.named(Span.COMPILE)
+    inputs = compile_span.content("inputs")
+    outputs = compile_span.content("outputs")
+    assert isinstance(inputs, dict) and isinstance(outputs, dict)
+    assert inputs["generated_sql"].startswith("SELECT s.customer_ref")
+    assert outputs["executed_sql"].startswith("SELECT `s`.`customer_ref`")
+    assert set(outputs["analysis_parameters"]) == {"status"}
+    result = span.content("outputs")
+    assert isinstance(result, dict)
+    assert result["internal_result"]["row_count"] == len(outcome.result.rows)
 
 
 async def test_compiler_rejection_is_counted_by_class_and_exception_type(
@@ -131,4 +154,6 @@ async def test_compiler_rejection_is_counted_by_class_and_exception_type(
     assert other[Label.CAUSE_TYPE] == "none"  # a policy rejection, not an exception
     failed_spans = [s for s in sink.named(Span.QUERY) if s.failed]
     assert {s.attributes["reason"] for s in failed_spans} >= {"syntax_error"}
-    assert "SELEKT" not in sink.everything() and "DELETE" not in sink.everything()
+    assert "SELEKT" not in sink.metadata() and "DELETE" not in sink.metadata()
+    rejected = [s.content("outputs") for s in sink.named(Span.COMPILE)]
+    assert all(isinstance(r, dict) and "rejected" in r for r in rejected)

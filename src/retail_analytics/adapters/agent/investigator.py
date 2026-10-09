@@ -318,8 +318,15 @@ def _record_restart(run_id: str, cause: ContextRestartCause) -> None:
         Span.CONTEXT_RESTART,
         run_id=run_id,
         attributes={"restart.cause": cause.value},
-    ):
-        pass
+    ) as span:
+        if span.captures:
+            span.outputs(
+                {
+                    "restart_cause": cause.value,
+                    "effect": "earlier model turns discarded; the agent loop "
+                    "restarts from freshly built context",
+                }
+            )
 
 
 # Tools

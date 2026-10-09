@@ -172,6 +172,8 @@ class InvestigationLauncher:
             run_id=run_id,
             attributes={"run_id": run_id, "session_id": session_id},
         ) as span:
+            if span.captures:
+                span.inputs({"kind": "request", "text": _clean(text)})
             handle = await self._launch(
                 principal,
                 run_id=run_id,
@@ -511,8 +513,29 @@ class InvestigationControl:
             content=content,
             run_id=run_id,
         )
+        _trace_input(run_id, input_id, kind, content, question_id)
         await self._scheduler.notify_input(run_id)
         return InputReceipt(input_id, kind, run_id)
+
+
+def _trace_input(
+    run_id: str, input_id: str, kind: InputKind, content: str, question_id: str | None
+) -> None:
+    """The accepted steering message or clarification reply, in the run's trace."""
+    with telemetry().span(
+        Span.USER_INPUT,
+        run_id=run_id,
+        attributes={
+            "run_id": run_id,
+            "input_id": input_id,
+            "kind": kind.value,
+            "question_id": question_id or "none",
+        },
+    ) as span:
+        if span.captures:
+            span.inputs(
+                {"kind": kind.value, "question_id": question_id, "text": content}
+            )
 
 
 __all__ = [

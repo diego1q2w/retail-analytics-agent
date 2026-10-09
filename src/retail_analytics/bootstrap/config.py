@@ -215,6 +215,9 @@ class BackendSettings(BaseModel):
     telemetry_experiment_id: str = Field(default="0", pattern=r"^[0-9]{1,18}$")
     telemetry_export_timeout_seconds: float = Field(default=2.0, ge=0.5, le=10.0)
     telemetry_metric_interval_seconds: float = Field(default=10.0, ge=1.0, le=300.0)
+    # Sanitized model/tool/user interaction content in traces (docs/
+    # observability.md). Off keeps timings, ids, outcomes and token counts.
+    telemetry_capture_content: bool = True
     # Master key for opaque customer/order/item references. Unset: references
     # are unavailable and queries needing them fail closed.
     reference_key: SecretStr | None = None

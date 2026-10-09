@@ -212,6 +212,10 @@ async def _restarted(inv: Investigation) -> ContextRestartCause:
     (span,) = sink.spans
     assert span.name == Span.CONTEXT_RESTART and span.run_id == inv.run_id
     assert span.attributes == {"restart.cause": cause.value}
+    # The trace shows the cause as content too (T30-F2), nothing else.
+    (captured,) = span.payloads
+    assert isinstance(captured.content, dict)
+    assert captured.content["restart_cause"] == cause.value
     return cause
 
 
