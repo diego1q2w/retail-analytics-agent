@@ -93,7 +93,8 @@ FORBIDDEN_AT_IMPORT_TIME_BY_LAYER: dict[str, frozenset[str]] = {
     "capabilities": FORBIDDEN_AT_IMPORT_TIME,
 }
 
-# Narrow, justified exceptions: {(importing module, imported module): reason}.
+# Narrow, justified exceptions: {(module, subject): reason}. The subject is the
+# imported module for import rules and the class name for layout rules.
 EXCEPTIONS: dict[tuple[str, str], str] = {}
 
 
@@ -198,6 +199,259 @@ def check_sources(package_dir: Path, package: str) -> list[Violation]:
                 violations.add(
                     Violation(module, line, f"{source_layer} must not import {top}")
                 )
+    return sorted(violations)
+
+
+# --- Application layout: ports vs contracts vs services -----------------------
+#
+# ``application/ports/*``     Protocol interfaces only.
+# ``application/contracts/*`` shared data types only (``contracts/__init__`` also
+#                             holds the versioned wire-contract base).
+# ``application/<area>.py``   services/use cases; never define a Protocol.
+#
+# An exception to any of these rules goes in ``EXCEPTIONS`` with a reason, keyed
+# by (module, subject): the class name for rules on definitions, the imported
+# module for rules on imports.
+
+WIRE_CONTRACT_BASE_NAMES = frozenset(
+    {"CONTRACT_VERSION", "ContractModel", "Identifier"}
+)
+SERVICE_CLASS_SUFFIXES = (
+    "Service",
+    "Gateway",
+    "Runner",
+    "Registry",
+    "Handler",
+    "Manager",
+    "Orchestrator",
+    "Repository",
+    "Store",
+)
+_TYPE_ALIAS_CALLS = frozenset(
+    {"TypeVar", "ParamSpec", "TypeVarTuple", "NewType", "TypeAliasType"}
+)
+
+
+def _application_area(module: str, package: str) -> str | None:
+    """'ports', 'contracts' or 'service' for modules under ``application``."""
+    parts = module.split(".")
+    if len(parts) < 3 or parts[0] != package or parts[1] != "application":
+        return None
+    return parts[2] if parts[2] in ("ports", "contracts") else "service"
+
+
+def _base_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Subscript):
+        return _base_name(node.value)
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return ""
+
+
+def _is_protocol_class(node: ast.ClassDef) -> bool:
+    return any(_base_name(base) == "Protocol" for base in node.bases)
+
+
+def _trivial_body(body: list[ast.stmt]) -> bool:
+    """True for a docstring/``...``/``pass`` body: an interface, not logic."""
+    return all(
+        isinstance(stmt, ast.Pass)
+        or (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant))
+        for stmt in body
+    )
+
+
+def _is_type_expression(node: ast.expr | None) -> bool:
+    if node is None:
+        return True
+    if isinstance(node, ast.Constant):
+        return node.value is None or isinstance(node.value, str)
+    if isinstance(node, ast.Name | ast.Attribute):
+        return True
+    if isinstance(node, ast.Subscript):
+        return _is_type_expression(node.value)
+    if isinstance(node, ast.BinOp):
+        return isinstance(node.op, ast.BitOr)
+    if isinstance(node, ast.Call):
+        return _base_name(node.func) in _TYPE_ALIAS_CALLS
+    return False
+
+
+def _port_violations(
+    body: list[ast.stmt], protocols: set[str]
+) -> list[tuple[int, str, str]]:
+    """(line, subject, detail) for everything in a ports module that is not a port."""
+    found: list[tuple[int, str, str]] = []
+    for node in body:
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            continue
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            continue  # module docstring
+        if isinstance(node, ast.If) and _base_name(node.test) == "TYPE_CHECKING":
+            found += _port_violations(node.body, protocols)
+            found += _port_violations(node.orelse, protocols)
+        elif isinstance(node, ast.ClassDef):
+            inherits_ports = bool(node.bases) and all(
+                _base_name(base) in protocols for base in node.bases
+            )
+            if not (_is_protocol_class(node) or inherits_ports):
+                found.append(
+                    (node.lineno, node.name, "ports may only define Protocols")
+                )
+                continue
+            protocols.add(node.name)
+            for member in node.body:
+                if isinstance(
+                    member, ast.FunctionDef | ast.AsyncFunctionDef
+                ) and not _trivial_body(member.body):
+                    found.append(
+                        (
+                            member.lineno,
+                            f"{node.name}.{member.name}",
+                            "port methods must be bodiless (docstring, ... or pass)",
+                        )
+                    )
+        elif isinstance(node, ast.Assign | ast.AnnAssign | ast.TypeAlias):
+            if isinstance(node, ast.Assign):
+                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                if names == ["__all__"]:
+                    continue
+            value = None if isinstance(node, ast.TypeAlias) else node.value
+            if not _is_type_expression(value):
+                found.append(
+                    (node.lineno, "assignment", "ports hold no values or data")
+                )
+        else:
+            found.append(
+                (
+                    node.lineno,
+                    type(node).__name__,
+                    "ports may only contain Protocols, imports and type aliases",
+                )
+            )
+    return found
+
+
+def _service_like_reason(node: ast.ClassDef) -> str | None:
+    if node.name.endswith(SERVICE_CLASS_SUFFIXES):
+        return "service-like class name"
+    for member in node.body:
+        if isinstance(member, ast.AsyncFunctionDef):
+            return f"async method {member.name}"
+        if isinstance(member, ast.FunctionDef) and member.name == "__init__":
+            return "hand-written __init__ (injected collaborators)"
+    return None
+
+
+def _application_import_violation(area: str, target: str, package: str) -> str | None:
+    """Reason an import in a port/contract module is forbidden, or None."""
+    app = f"{package}.application"
+    if target == app or target.startswith(f"{app}.contracts"):
+        return None
+    if target.startswith(f"{app}.ports"):
+        return "contracts must not import ports" if area == "contracts" else None
+    if target.startswith(f"{app}."):
+        return f"{area} must not import the service module {target}"
+    layer = layer_of(target, package)
+    if layer in ("adapters", "interfaces", "bootstrap", "capabilities"):
+        return f"{area} must not import {layer} ({target})"
+    return None
+
+
+def _top_level_names(tree: ast.Module) -> set[str]:
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef | ast.FunctionDef):
+            names.add(node.name)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        elif isinstance(node, ast.Assign):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return names
+
+
+def check_application_layout(package_dir: Path, package: str) -> list[Violation]:
+    """Check where Protocols, data types and services live under ``application``.
+
+    Rules: Protocols only in ``application/ports``; ports contain only Protocols;
+    contracts contain no Protocols or services and keep the wire-contract base;
+    ports/contracts never import service modules, adapters, interfaces or
+    bootstrap; adapters take port interfaces from ``application.ports``.
+    """
+    violations: set[Violation] = set()
+    trees: dict[str, tuple[ast.Module, bool]] = {}
+    for module, path in iter_modules(package_dir, package):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        trees[module] = (tree, path.name == "__init__.py")
+
+    def report(module: str, line: int, subject: str, detail: str) -> None:
+        if (module, subject) not in EXCEPTIONS:
+            violations.add(Violation(module, line, detail))
+
+    port_names: set[str] = set()
+    for module, (tree, _) in trees.items():
+        if _application_area(module, package) == "ports":
+            for line, subject, detail in _port_violations(tree.body, port_names):
+                report(module, line, subject, f"{detail} ({subject})")
+
+    for module, (tree, is_package) in trees.items():
+        area = _application_area(module, package)
+        if area is not None and area != "ports":
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and _is_protocol_class(node):
+                    report(
+                        module,
+                        node.lineno,
+                        node.name,
+                        f"Protocol {node.name} must live in application/ports",
+                    )
+        if area == "contracts":
+            errors: set[str] = set()  # error types may carry data via __init__
+            for node in tree.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                if any(
+                    _base_name(b).endswith(("Error", "Exception"))
+                    or _base_name(b) in errors
+                    for b in node.bases
+                ):
+                    errors.add(node.name)
+                    continue
+                reason = _service_like_reason(node)
+                if reason:
+                    report(
+                        module,
+                        node.lineno,
+                        node.name,
+                        f"contract {node.name} looks like a service: {reason}",
+                    )
+        if module == f"{package}.application.contracts":
+            for name in sorted(WIRE_CONTRACT_BASE_NAMES - _top_level_names(tree)):
+                report(module, 1, name, f"contracts/__init__ must define {name}")
+        if area in ("ports", "contracts"):
+            for target, line in _imported_names(tree, module, is_package):
+                reason = _application_import_violation(area, target, package)
+                if reason:
+                    report(module, line, target, reason)
+        if layer_of(module, package) == "adapters":
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom):
+                    continue
+                single = ast.Module(body=[node], type_ignores=[])
+                for target, line in _imported_names(single, module, is_package):
+                    source, _, name = target.rpartition(".")
+                    if name in port_names and _application_area(source, package) == (
+                        "service"
+                    ):
+                        report(
+                            module,
+                            line,
+                            target,
+                            f"adapters must import port {name} from application.ports,"
+                            f" not {source}",
+                        )
     return sorted(violations)
 
 

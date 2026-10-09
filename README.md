@@ -442,6 +442,13 @@ Domain, application and capabilities also may not use `importlib`, `subprocess` 
 
 A deliberately invalid package in `tests/architecture/fixtures/` proves both checks fail on reverse dependencies and forbidden SDK imports. A justified exception goes in `EXCEPTIONS` in `boundaries.py` with its reason; do not weaken the rules to make a dependency pass.
 
+The same module enforces the application layout (`check_application_layout`, statically, with its own invalid fixture in `tests/architecture/fixtures/invalid_layout/`):
+
+- `typing.Protocol` classes under `application/` live only in `application/ports/`, and ports contain only Protocols (bodiless methods), imports and type aliases.
+- `application/contracts/` holds data types only: no Protocols, no service-like classes (service-style names, async methods, injected-collaborator `__init__`; error types may carry data), and `contracts/__init__.py` keeps `ContractModel`, `Identifier` and `CONTRACT_VERSION`.
+- Ports and contracts never import service modules (`application.<area>`), adapters, interfaces, bootstrap or capabilities, and contracts never import ports. Adapters take port types from `application.ports`, not from a service module.
+- Layout exceptions use the same `EXCEPTIONS` table, keyed by (module, class or imported module), and need a reason.
+
 ### Dependencies
 
 Direct dependencies are pinned exactly in `pyproject.toml`, one per line, sorted by name (`dependencies` for runtime, the `dev` extra for tooling). `requirements.txt` is the fully pinned, cross-platform lock generated from them:
