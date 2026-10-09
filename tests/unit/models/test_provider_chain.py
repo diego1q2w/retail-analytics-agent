@@ -219,6 +219,18 @@ async def test_request_budget_stops_retries_and_fallback_before_sending() -> Non
     assert gpt.requests == []  # refused before it was sent
 
 
+async def test_token_reservation_refusal_stops_with_the_token_resource() -> None:
+    # Stored usage is below the limit; the next request's estimate is not.
+    gemini = stubs.Recorder([gemini_answer()])
+    gpt = stubs.Recorder([gpt_answer()])
+    h = harness(gemini, gpt, limits=RunLimits(tokens=10))
+    with pytest.raises(RunStopped) as stopped:
+        await h.run()
+    assert stopped.value.reason is StopReason.BUDGET
+    assert stopped.value.resource is BudgetResource.TOKENS
+    assert gemini.requests == [] and gpt.requests == []
+
+
 async def test_first_token_timeout_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
     from retail_analytics.adapters.models import deadlines
 

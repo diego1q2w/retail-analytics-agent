@@ -270,6 +270,19 @@ heartbeat. The run's persistent active-time and query deadlines are additional
 limits. When every configured provider has failed, the model activity stops
 the run as "model unavailable" instead of being retried.
 
+A run that stops before the model writes an answer (budget, model unavailable,
+access change) ends with an application-written answer and no model call. It
+names what stopped the run (for a budget: tokens, model requests, active time,
+queries or data scanned) and shows only results that bear on the request:
+records whose recorded period and definition basis match the period and
+measure the request names (when it names neither, the records this run
+produced). Being linked to the run is not enough, so earlier-session results
+the model was shown are not listed unless they match. Figures are rounded,
+amounts carry the known source-currency status, and the answer says what was
+not answered. When nothing matches, no figure is given. The text passes the
+output gate like any answer. A partial answer whose cited result was cut off
+at its size limit says so; a budget stop is never described as truncation.
+
 ## Validation
 
 ```sh

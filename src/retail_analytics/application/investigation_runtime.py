@@ -84,7 +84,14 @@ from retail_analytics.application.output_privacy import (
     OutputSection,
     OutputWithheld,
 )
+from retail_analytics.application.partial_answers import (
+    render_partial,
+    select_relevant,
+)
 from retail_analytics.application.persona import PersonaDelivery
+from retail_analytics.application.ports.currency_conversion import (
+    SourceCurrencyProvider,
+)
 from retail_analytics.application.ports.investigations import (
     InvestigationInputs,
     RunPrincipals,
@@ -108,7 +115,7 @@ from retail_analytics.application.tools import (
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.budgets import BudgetResource, BudgetSnapshot
 from retail_analytics.domain.context import EvidenceStanding
-from retail_analytics.domain.evidence import EvidenceCell
+from retail_analytics.domain.currency import SourceCurrency
 from retail_analytics.domain.executions import ToolExecutionStatus
 from retail_analytics.domain.investigations import (
     MAX_QUESTION_CHARS,
@@ -122,6 +129,7 @@ from retail_analytics.domain.investigations import (
     message_id_for,
     question_id_for,
 )
+from retail_analytics.domain.metrics import MetricCatalog, default_catalog
 from retail_analytics.domain.request_scope import Admission, AdmissionDecision
 from retail_analytics.domain.runs import Run, RunStatus
 
@@ -132,8 +140,6 @@ _STOP_TIME = frozenset(
         BudgetResource.TOKENS,
     }
 )
-MAX_PARTIAL_EVIDENCE = 6
-MAX_PARTIAL_ROWS = 5
 
 
 _STOP_MESSAGES = {
@@ -145,6 +151,7 @@ _STOP_MESSAGES = {
         "The analysis service is unavailable right now; please try again later."
     ),
     StopReason.INTERRUPTED: "The investigation could not continue.",
+    StopReason.BUDGET: "This investigation has used one of its budget limits.",
 }
 
 
@@ -191,9 +198,16 @@ def _withheld(withheld: OutputWithheld) -> StepOutcome:
 
 
 def stop_message(reason: StopReason, resource: BudgetResource | None) -> str:
+    """What stopped the run, naming the exhausted budget resource if known."""
     if reason is StopReason.BUDGET and resource is not None:
         return budget_message(resource)
     return _STOP_MESSAGES.get(reason, _STOP_MESSAGES[StopReason.INTERRUPTED])
+
+
+TRUNCATED_NOTE = (
+    "Note: a result this answer relies on was cut off at its size limit, so "
+    "rows are missing from it; figures from it may be incomplete."
+)
 
 
 INTERRUPTED_NOTICE = (
@@ -254,6 +268,8 @@ class InvestigationRuntime:
         queries: QueryExecutionService | None,
         launcher: InvestigationLauncher,
         personas: PersonaDelivery | None = None,
+        metrics: MetricCatalog | None = None,
+        source_currency: SourceCurrencyProvider | None = None,
         clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         self._runs = runs
@@ -270,6 +286,8 @@ class InvestigationRuntime:
         self._queries = queries
         self._launcher = launcher
         self._personas = personas
+        self._metrics = metrics or default_catalog()
+        self._source_currency = source_currency
         self._clock = clock
 
     async def begin(self, run_id: str) -> BeginOutcome:
@@ -407,9 +425,8 @@ class InvestigationRuntime:
             return _withheld(withheld)
         await self._evidence.link_to_run(context, released.cited_evidence)
         cited = await self._cited(context, draft.run_id, released.cited_evidence)
-        if status is RunStatus.COMPLETED and any(
-            s.evidence.content.table.truncated for s in cited
-        ):
+        truncated = any(s.evidence.content.table.truncated for s in cited)
+        if truncated:
             # Never record an answer resting on a cut result as complete.
             status = RunStatus.PARTIAL
         closure = await self._inputs.close_run(
@@ -417,7 +434,9 @@ class InvestigationRuntime:
             status,
             output=AssistantOutput(
                 answer_message_id(draft.run_id, draft.sequence),
-                released.text + _source_notes(cited),
+                released.text
+                + _source_notes(cited)
+                + (f"\n\n{TRUNCATED_NOTE}" if truncated else ""),
             ),
         )
         if not closure.closed:
@@ -429,7 +448,11 @@ class InvestigationRuntime:
                 )
             return StepOutcome(StepResult.SUPERSEDED)
         return await self._after_close(
-            closure.run, status, retried=False, served_by=draft.served_by
+            closure.run,
+            status,
+            retried=False,
+            served_by=draft.served_by,
+            summary=_partial_summary(status, truncated=truncated),
         )
 
     async def ask(self, draft: QuestionDraft) -> StepOutcome:
@@ -504,8 +527,9 @@ class InvestigationRuntime:
         """End a run that cannot continue, showing verified findings so far.
 
         Built from evidence the run produced or used - no model call - so it
-        works when the model budget is spent. The text passes the output gate
-        like any answer.
+        works when the model budget is spent. Only results that bear on the
+        request are shown (``partial_answers``); the text names what stopped
+        the run and passes the output gate like any answer.
         """
         run = await self._runs.get_run(request.run_id)
         if run is None:
@@ -520,7 +544,7 @@ class InvestigationRuntime:
                 Label.RESOURCE: request.resource.value if request.resource else "none",
             },
         )
-        sections = await self._partial_findings(request.run_id, reason)
+        sections = await self._partial_findings(run, reason)
         status = RunStatus.PARTIAL if sections.cited else RunStatus.FAILED
         closure = await self._inputs.close_run(
             request.run_id,
@@ -530,7 +554,9 @@ class InvestigationRuntime:
         )
         if not closure.closed:
             return StepOutcome(StepResult.STOPPED, status=closure.run.status)
-        return await self._after_close(closure.run, status, retried=False)
+        return await self._after_close(
+            closure.run, status, retried=False, summary=f"Stopped. {reason}"
+        )
 
     async def finish_message(self, run_id: str, message: str) -> StepOutcome:
         """End the run with an application-authored message (no model call)."""
@@ -742,14 +768,17 @@ class InvestigationRuntime:
         *,
         retried: bool,
         served_by: ProviderAttribution | None = None,
+        summary: str | None = None,
     ) -> StepOutcome:
         if run.status is not status and retried:
             return StepOutcome(StepResult.STOPPED, status=run.status)
         if not retried:
             await self._record_run_end(run, served_by)
         await self._inputs.discard_pending(run.run_id)
-        kind, summary = _TERMINAL_EVENTS[run.status]
-        await self._publish_once(run, kind, summary)
+        kind, default = _TERMINAL_EVENTS[run.status]
+        if run.status is not status:
+            summary = None  # it ended otherwise meanwhile
+        await self._publish_once(run, kind, summary or default)
         await self._launcher.promote_next(run.session_id)
         return StepOutcome(StepResult.RELEASED, status=run.status)
 
@@ -804,9 +833,11 @@ class InvestigationRuntime:
                 },
             )
 
-    async def _partial_findings(self, run_id: str, reason: str) -> _Partial:
+    async def _partial_findings(self, run: Run, reason: str) -> _Partial:
+        run_id = run.run_id
         principal = await self._principals.get(run_id)
         standings: Sequence[EvidenceStanding] = ()
+        currency = SourceCurrency.unknown()
         if principal is not None:
             try:
                 context = await self._context_for(principal, run_id)
@@ -818,11 +849,24 @@ class InvestigationRuntime:
                     s
                     for s in session.standings
                     if s.usable and s.evidence.evidence_id in linked
-                ][:MAX_PARTIAL_EVIDENCE]
+                ]
+                if self._source_currency is not None:
+                    currency = await self._source_currency.source_currency(context)
             except (RunStopped, AccessDenied):
                 standings = ()
+        selection = select_relevant(
+            compose_request(await self._inputs.for_run(run_id)),
+            standings,
+            run_id=run_id,
+        )
         for detail in (True, False):
-            text, cited = _partial_text(reason, standings, rows=detail)
+            text, cited = render_partial(
+                reason,
+                selection,
+                metrics=self._metrics,
+                currency=currency,
+                rows=detail,
+            )
             if principal is None:
                 break
             try:
@@ -836,7 +880,7 @@ class InvestigationRuntime:
                 return _Partial(released.text, cited)
             except (OutputWithheld, AccessDenied):
                 continue
-        return _Partial(f"{reason} No verified findings can be shown.", ())
+        return _Partial(f"{reason}\n\nNo verified findings can be shown.", ())
 
     async def _publish_once(
         self,
@@ -867,6 +911,21 @@ class InvestigationRuntime:
 class _Partial:
     text: str
     cited: tuple[str, ...]
+
+
+_PARTIAL_TRUNCATED = (
+    "Partial answer ready: a result it relies on was cut off, so rows are missing."
+)
+_PARTIAL_INCOMPLETE = (
+    "Partial answer ready: the assistant could not complete every part of the request."
+)
+
+
+def _partial_summary(status: RunStatus, *, truncated: bool) -> str | None:
+    """Why a released answer is partial: a cut result or unfinished work."""
+    if status is not RunStatus.PARTIAL:
+        return None
+    return _PARTIAL_TRUNCATED if truncated else _PARTIAL_INCOMPLETE
 
 
 _TERMINAL_EVENTS: dict[RunStatus, tuple[EventKind, str]] = {
@@ -937,43 +996,6 @@ def _budget_line(snapshot: BudgetSnapshot | None) -> str:
         f"active seconds left: {int(left[BudgetResource.ACTIVE_TIME])}"
         "</budget>"
     )
-
-
-def _cell(value: EvidenceCell) -> str:
-    if value is None:
-        return "-"
-    if isinstance(value, datetime):
-        return value.isoformat()
-    return str(value)
-
-
-def _partial_text(
-    reason: str, standings: Sequence[EvidenceStanding], *, rows: bool
-) -> tuple[str, tuple[str, ...]]:
-    if not standings:
-        return f"{reason} No verified findings were produced yet.", ()
-    lines = [f"{reason} Verified findings so far:"]
-    cited: list[str] = []
-    for standing in standings:
-        evidence = standing.evidence
-        table = evidence.content.table
-        incomplete = " (incomplete result)" if table.truncated else ""
-        lines.append(
-            f"- Evidence {evidence.evidence_id}: {len(table.rows)} rows of "
-            f"{', '.join(table.column_names)}{incomplete}."
-        )
-        if rows:
-            for row in table.rows[:MAX_PARTIAL_ROWS]:
-                lines.append(
-                    "  "
-                    + "; ".join(
-                        f"{name} = {_cell(cell)}"
-                        for name, cell in zip(table.column_names, row, strict=True)
-                    )
-                )
-        cited.append(evidence.evidence_id)
-    lines.append("The remaining work was not completed.")
-    return "\n".join(lines), tuple(cited)
 
 
 def _source_notes(cited: Sequence[EvidenceStanding]) -> str:

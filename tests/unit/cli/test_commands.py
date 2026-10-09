@@ -122,6 +122,9 @@ def test_partial_answers_are_loudly_marked_and_exit_code_differs() -> None:
     result = invoke(backend, "follow", "r1")
     assert result.exit_code == 3
     assert "PARTIAL RESULT" in result.output
+    # The banner does not guess the cause (budget stop vs truncated result).
+    assert "truncated data" not in result.output
+    assert "says what stopped it and what is missing" in result.output
     assert "== DISCLOSURES ==" in result.output
     assert "== NEXT STEPS ==" in result.output
     assert "[ ] Narrow the period." in result.output

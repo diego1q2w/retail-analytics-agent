@@ -31,6 +31,7 @@ from retail_analytics.application.contracts.evaluation import (
 from retail_analytics.application.evaluation.runner import RunConfig, run_manifest
 from retail_analytics.application.golden_seed_library import SEED_SCHEMA_VERSION
 from retail_analytics.application.golden_seeding import seed_principals
+from retail_analytics.application.investigation_runtime import TRUNCATED_NOTE
 from retail_analytics.application.investigations import SubmitMode
 from retail_analytics.application.knowledge import ApprovalChecks, ExampleDraft
 from retail_analytics.bootstrap.access import build_access
@@ -664,3 +665,12 @@ def test_answer_citing_a_cut_result_is_never_recorded_as_complete(
         o=evaluation_executive_id("ac-truncated"),
     )
     assert [s[0] for s in statuses] == ["partial"]
+    answers = _rows(
+        stack,
+        "SELECT m.content FROM messages AS m JOIN sessions AS s ON "
+        "s.session_id = m.session_id WHERE s.executive_id = :o "
+        "AND m.role = 'assistant' ORDER BY m.position",
+        o=evaluation_executive_id("ac-truncated"),
+    )
+    # Real truncation is named as such (unlike a budget stop).
+    assert TRUNCATED_NOTE in answers[-1][0]

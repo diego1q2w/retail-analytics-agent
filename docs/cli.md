@@ -80,7 +80,9 @@ deterministic.
 
 * Progress shows tool and analysis steps only (no private reasoning exists in
   the stream). Retries, pending and outcome-unknown steps are marked.
-* **Partial** answers start with a `PARTIAL RESULT` banner; truncated report
+* **Partial** answers start with a `PARTIAL RESULT` banner; the answer says
+  what stopped the run (a named budget, a cut-off result) and what is missing;
+  truncated report
   evidence is flagged `TRUNCATED`; an answer withheld by the privacy check
   is replaced by the server's notice.
 * Markdown headings, lists, bold and code are rendered; sections that look

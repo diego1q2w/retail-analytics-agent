@@ -75,6 +75,14 @@ _NOT_ADMITTED = {
     BudgetResource.ACTIVE_TIME: (
         "This investigation has used its time budget; no more work can start."
     ),
+    BudgetResource.TOKENS: (
+        "This investigation has used its model token budget (the next model "
+        "request would not fit); no more model requests can be made."
+    ),
+    BudgetResource.PROVIDER_REQUESTS: (
+        "This investigation has used its model request budget; no more model "
+        "requests can be made."
+    ),
     BudgetResource.CORRECTIONS: (
         "This query has been reformulated the maximum number of times."
     ),

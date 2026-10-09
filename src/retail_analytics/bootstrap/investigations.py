@@ -21,6 +21,7 @@ from retail_analytics.adapters.postgres.investigations import (
     PostgresRunPrincipals,
 )
 from retail_analytics.application.budgets import RunBudgets
+from retail_analytics.application.currency_conversion import DeclaredSourceCurrency
 from retail_analytics.application.discovery import DiscoveryService
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.investigation_runtime import InvestigationRuntime
@@ -237,6 +238,11 @@ def build_investigations(
         queries=queries,
         launcher=launcher,
         personas=build_persona(persistence, access.resolver).delivery,
+        source_currency=(
+            DeclaredSourceCurrency(settings.source_currency_declared)
+            if settings.source_currency_declared
+            else None
+        ),
     )
     tools = ToolRunner(
         registry=registry,

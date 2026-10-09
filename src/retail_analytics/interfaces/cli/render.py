@@ -147,8 +147,8 @@ def _inline(text: str) -> str:
 # --- run results ---
 
 PARTIAL_BANNER = (
-    "PARTIAL RESULT: this answer is incomplete or based on truncated data. "
-    "Do not treat its figures as final."
+    "PARTIAL RESULT: the request was not fully answered; the answer below says "
+    "what stopped it and what is missing. Do not treat its figures as final."
 )
 
 
