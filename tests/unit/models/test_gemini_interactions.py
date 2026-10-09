@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
     ModelMessage,
@@ -26,7 +27,10 @@ from pydantic_ai.tools import ToolDefinition
 from retail_analytics.adapters.models.gemini_interactions import (
     FOREIGN_CALL_SIGNATURE,
     PROVIDER,
+    provider_schema,
 )
+from retail_analytics.capabilities.reports import SaveReportInput
+from retail_analytics.domain.reports import MAX_FINDINGS
 from tests.unit.models import stubs
 
 pytestmark = pytest.mark.asyncio
@@ -95,6 +99,70 @@ async def test_tool_catalog_is_exactly_the_given_definitions() -> None:
     body = recorder.requests[0]
     assert [t["name"] for t in body["tools"]] == [ANSWER.name]
     assert body["generation_config"]["tool_choice"] == "auto"
+
+
+async def test_array_length_bounds_are_not_sent_to_the_provider() -> None:
+    # The Interactions API rejects the full catalog's maxItems bounds with
+    # tool_choice "any" (HTTP 400); the application still validates them.
+    bounded = ToolDefinition(
+        name="save_report",
+        description="Save.",
+        parameters_json_schema={
+            "type": "object",
+            "properties": {
+                "maxItems": {"type": "integer"},
+                "findings": {
+                    "type": "array",
+                    "items": {"$ref": "#/$defs/Finding"},
+                    "minItems": 1,
+                    "maxItems": 40,
+                },
+            },
+            "$defs": {
+                "Finding": {
+                    "type": "object",
+                    "properties": {
+                        "ids": {"type": "array", "maxItems": 10, "minItems": 1},
+                        "text": {"type": "string", "maxLength": 1500},
+                    },
+                }
+            },
+        },
+    )
+    recorder = stubs.Recorder([stubs.Reply(events=stubs.gemini_text("Hi."))])
+    params = ModelRequestParameters(
+        function_tools=[bounded], output_tools=[ANSWER], allow_text_output=False
+    )
+    await stubs.gemini(recorder).request(QUESTION, None, params)
+
+    sent = recorder.requests[0]["tools"][0]["parameters"]
+    assert "maxItems" not in json.dumps(sent).replace('"maxItems": {', "")
+    assert sent["properties"]["maxItems"] == {"type": "integer"}  # a field name
+    assert sent["properties"]["findings"]["minItems"] == 1
+    finding = sent["$defs"]["Finding"]["properties"]
+    assert finding["ids"] == {"type": "array", "minItems": 1}
+    assert finding["text"]["maxLength"] == 1500
+    assert bounded.parameters_json_schema["properties"]["findings"]["maxItems"] == 40
+    assert provider_schema([{"maxItems": 2, "type": "array"}]) == [{"type": "array"}]
+
+
+async def test_unsent_list_bounds_are_still_enforced_on_returned_arguments() -> None:
+    # The catalog lists ``input_model.model_json_schema()`` and the tool gateway
+    # validates returned arguments with ``input_model.model_validate``: the
+    # bound the provider is not told about still rejects an over-long list.
+    schema = SaveReportInput.model_json_schema()
+    assert schema["properties"]["findings"]["maxItems"] == MAX_FINDINGS
+    assert "maxItems" not in json.dumps(provider_schema(schema))
+    finding = {"text": "Revenue rose.", "evidence_ids": ["evd_a1"]}
+    arguments = {"title": "T", "summary": "S", "findings": [finding] * MAX_FINDINGS}
+    SaveReportInput.model_validate(arguments)
+    too_many = {**arguments, "findings": [finding] * (MAX_FINDINGS + 1)}
+    with pytest.raises(ValidationError) as caught:
+        SaveReportInput.model_validate(too_many)
+    assert [e["type"] for e in caught.value.errors()] == ["too_long"]
+    nested = {**arguments, "findings": [{**finding, "evidence_ids": ["evd_a1"] * 11}]}
+    with pytest.raises(ValidationError):
+        SaveReportInput.model_validate(nested)
 
 
 async def test_streamed_call_keeps_signatures_and_reported_usage() -> None:

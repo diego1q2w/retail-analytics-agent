@@ -127,3 +127,89 @@ class ScenarioCanaries:
     out_of_scope_product_ids: frozenset[str] = frozenset()
     # Whole-order totals that include items outside the scope.
     full_basket_totals: frozenset[float] = frozenset()
+
+
+# Real-model evaluation (T37): what telemetry recorded about one span. Only the
+# already-sanitized identifiers and codes of the telemetry facade.
+
+SpanValue = str | int | float | bool
+
+
+@dataclass(frozen=True)
+class RecordedSpan:
+    """A finished telemetry span, as an in-process recorder saw it."""
+
+    name: str
+    run_id: str | None
+    attributes: Mapping[str, SpanValue]
+
+
+# Real-model evaluation results (T37). Identifiers, codes, numbers and the
+# expected figures of public manifests only; no answer text.
+
+ProviderLabel = Literal["primary", "fallback", "mixed", "unattributed"]
+
+
+class ProviderUse(ContractModel):
+    """Which providers served one conversation, from telemetry spans.
+
+    ``primary``: every answered run and every successful request came from the
+    primary provider. ``fallback``: the primary served nothing. ``mixed``: both
+    served requests. ``unattributed``: nothing was recorded (e.g. no model
+    request completed).
+    """
+
+    label: ProviderLabel
+    # One entry per run that released a model answer, in run order.
+    answered_by: tuple[str, ...] = ()
+    # "provider:model:outcome" -> request count.
+    attempts: Mapping[str, int] = {}
+    fallback_reasons: tuple[str, ...] = ()
+
+
+class FigureCheck(ContractModel):
+    """One independently computed expected figure, checked twice.
+
+    ``in_evidence``: some released evidence cell matches (whatever its column
+    name); null for labels with no evidence cell to compare. ``in_answer``: the
+    released answers or saved reports state it.
+    """
+
+    name: Identifier
+    kind: Literal["number", "label"]
+    expected: float | None = None
+    in_evidence: bool | None = None
+    in_answer: bool
+
+
+class ConversationOutcome(ContractModel):
+    scenario_id: Identifier
+    suite: Identifier
+    category: Identifier
+    level: int
+    judge_required: bool
+    turns: int
+    run_statuses: tuple[str, ...] = ()
+    runner_status: str
+    runner_reason: str | None = None
+    error_type: str | None = None
+    strict_checks_passed: int = 0
+    strict_checks_total: int = 0
+    figures: tuple[FigureCheck, ...] = ()
+    safety_flags: Mapping[Identifier, bool] = {}
+    provider: ProviderUse
+    measurements: Mapping[Identifier, float] = {}
+    transcript: str | None = None
+
+
+class RealModelEvaluation(ContractModel):
+    schema_version: Literal[1] = 1
+    recorded_on: str
+    code_version: str
+    target_id: str
+    execution_backend: str
+    primary_provider: str
+    configured_models: Mapping[str, str] = {}
+    # manifest id -> manifest version; plus data references (extract digest).
+    datasets: Mapping[str, str] = {}
+    conversations: tuple[ConversationOutcome, ...]

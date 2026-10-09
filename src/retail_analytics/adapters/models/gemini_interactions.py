@@ -193,7 +193,7 @@ class GeminiInteractionsModel(Model):
                 "type": "function",
                 "name": tool.name,
                 "description": tool.description or "",
-                "parameters": tool.parameters_json_schema,
+                "parameters": provider_schema(tool.parameters_json_schema),
             }
             for tool in [*parameters.function_tools, *parameters.output_tools]
         ]
@@ -216,6 +216,32 @@ class GeminiInteractionsModel(Model):
         if config:
             body["generation_config"] = config
         return body
+
+
+# Array-length keywords the Interactions API cannot take in bulk: with
+# ``tool_choice: any`` the full catalog's ``maxItems`` bounds make it reject the
+# request ("invalid argument", HTTP 400). Arguments are still validated against
+# the full schema when the tool call is parsed, so dropping them here only
+# changes what the provider is told, never what the application accepts.
+_UNSENT_KEYWORDS = frozenset({"maxItems"})
+_NAMED_SUBSCHEMAS = frozenset({"properties", "$defs", "definitions"})
+
+
+def provider_schema(schema: Any) -> Any:
+    """``schema`` without the keywords the provider rejects (property names kept)."""
+    if isinstance(schema, list):
+        return [provider_schema(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    cleaned: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in _UNSENT_KEYWORDS:
+            continue
+        if key in _NAMED_SUBSCHEMAS and isinstance(value, dict):
+            cleaned[key] = {name: provider_schema(sub) for name, sub in value.items()}
+        else:
+            cleaned[key] = provider_schema(value)
+    return cleaned
 
 
 def _steps(messages: list[ModelMessage]) -> tuple[list[str], list[dict[str, Any]]]:
