@@ -305,6 +305,10 @@ class Reports:
 class Deletions:
     confirmed: list[str] = field(default_factory=list)
     error: Exception | None = None
+    pending: dict[str, list[DeletionPreview]] = field(default_factory=dict)
+
+    async def list_pending(self, principal: Principal) -> tuple[DeletionPreview, ...]:
+        return tuple(self.pending.get(principal.executive_id, ()))
 
     def _preview(self, proposal_id: str) -> DeletionPreview:
         return DeletionPreview(proposal_id, ProposalStatus.PENDING, T0, ())
@@ -385,6 +389,7 @@ ROUTES: list[tuple[str, str, dict[str, object] | None]] = [
     ("GET", "/v1/reports/rep-1", None),
     ("GET", "/v1/reports/rep-1/versions", None),
     ("GET", "/v1/reports/rep-1/export", None),
+    ("GET", "/v1/deletion-proposals?status=pending", None),
     ("GET", "/v1/deletion-proposals/p-1", None),
     ("POST", "/v1/deletion-proposals/p-1/confirm", {"confirm": True}),
     ("POST", "/v1/deletion-proposals/p-1/cancel", None),
@@ -613,6 +618,24 @@ def test_deletion_confirmation_needs_explicit_approval(
         "message": "It expired.",
         "details": {},
     }
+
+
+def test_pending_deletion_proposals_are_listed_for_the_caller_only(
+    client: TestClient, world: World
+) -> None:
+    world.deletions.pending["exec-a"] = [
+        DeletionPreview("p-1", ProposalStatus.PENDING, T0, ())
+    ]
+    listed = client.get("/v1/deletion-proposals?status=pending", headers=auth())
+    assert listed.status_code == 200
+    assert [p["proposal_id"] for p in listed.json()["proposals"]] == ["p-1"]
+    assert client.get("/v1/deletion-proposals", headers=auth()).status_code == 200
+    other = client.get("/v1/deletion-proposals?status=pending", headers=auth("sub-b"))
+    assert other.json() == {"proposals": []}
+    for status in ("confirmed", "all", ""):
+        bad = client.get(f"/v1/deletion-proposals?status={status}", headers=auth())
+        assert bad.status_code == 422
+    assert world.deletions.confirmed == []
 
 
 def test_v1_is_unavailable_without_services() -> None:

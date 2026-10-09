@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.progress import EventKind, ProgressUpdate
 from retail_analytics.application.contracts.tools import OperationContext
 from retail_analytics.application.report_deletion import (
     ReportDeletionService,
@@ -38,8 +39,17 @@ from tests.unit.reports.support import ReportWorld, draft
 pytestmark = pytest.mark.asyncio
 
 
+class Sink:
+    def __init__(self) -> None:
+        self.updates: list[ProgressUpdate] = []
+
+    async def publish(self, update: ProgressUpdate) -> None:
+        self.updates.append(update)
+
+
 class Env:
     def __init__(self, root: Path) -> None:
+        self.sink = Sink()
         self.w = ReportWorld(root)
         self.repo = FakeDeletionRepository(self.w.repository)
         self.counter = 0
@@ -49,6 +59,7 @@ class Env:
             self.w.store,
             clock=self.w.clock,
             new_id=self._id,
+            progress=self.sink,
         )
 
     def _id(self) -> str:
@@ -271,3 +282,60 @@ async def test_title_hidden_when_access_changed_but_still_deletable(env: Env) ->
     assert seen.items[0].title is None
     await env.service.confirm(A, preview.proposal_id)
     assert env.live() == set()
+
+
+async def test_listing_shows_only_own_pending_unexpired_proposals(env: Env) -> None:
+    one, two, three = await env.save("One"), await env.save("Two"), await env.save("3")
+    kept = await env.service.propose(await env.ctx(), (one,))
+    confirmed = await env.service.propose(await env.ctx(), (two,))
+    await env.service.confirm(A, confirmed.proposal_id)
+    cancelled = await env.service.propose(await env.ctx(), (three,))
+    await env.service.cancel(A, cancelled.proposal_id)
+    listed = await env.service.list_pending(A)
+    assert [p.proposal_id for p in listed] == [kept.proposal_id]
+    assert listed[0].items[0].title == "One" and listed[0].count == 1
+    assert await env.service.list_pending(B) == ()
+    env.w.clock.advance(PROPOSAL_TTL)
+    assert await env.service.list_pending(A) == ()
+    assert env.live() == {one, three}
+
+
+async def test_listing_is_newest_first_and_deletes_nothing(env: Env) -> None:
+    first = await env.service.propose(await env.ctx(), (await env.save("a"),))
+    env.w.clock.advance(timedelta(seconds=5))
+    second = await env.service.propose(await env.ctx(), (await env.save("b"),))
+    listed = await env.service.list_pending(A)
+    assert [p.proposal_id for p in listed] == [second.proposal_id, first.proposal_id]
+    assert len(env.live()) == 2
+
+
+async def test_proposal_publishes_one_event_with_only_the_id(env: Env) -> None:
+    one = await env.save("Confidential title")
+    ctx = await env.ctx("same-op")
+    preview = await env.service.propose(ctx, (one,))
+    (update,) = env.sink.updates
+    assert update.kind is EventKind.DELETION_PROPOSED
+    assert update.deletion_proposal_id == preview.proposal_id
+    assert update.correlation == ctx.execution.correlation
+    dumped = update.model_dump_json()
+    assert "Confidential" not in dumped and one not in dumped
+    assert env.live() == {one}
+
+
+async def test_event_validation_ties_the_id_to_its_kind() -> None:
+    from retail_analytics.application.contracts import Correlation
+
+    correlation = Correlation(session_id="s", run_id="r", trace_id="t")
+    with pytest.raises(ValueError):
+        ProgressUpdate(
+            correlation=correlation,
+            kind=EventKind.DELETION_PROPOSED,
+            summary="x",
+        )
+    with pytest.raises(ValueError):
+        ProgressUpdate(
+            correlation=correlation,
+            kind=EventKind.RUN_STARTED,
+            summary="x",
+            deletion_proposal_id="p1",
+        )

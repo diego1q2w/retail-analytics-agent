@@ -505,6 +505,21 @@ def deletion() -> None:
     """Review and confirm deletions the assistant proposed."""
 
 
+@deletion.command("list")
+@json_option
+@guarded
+def deletion_list(api: ApiClient, as_json: bool) -> None:
+    """List your pending deletion proposals."""
+    pending = api.list_pending_deletions().get("proposals") or []
+    if as_json:
+        click.echo(json.dumps({"proposals": pending}))
+        return
+    if not pending:
+        click.echo("No deletion proposals are waiting for you.")
+    for preview in pending:
+        click.echo(format_deletion_preview(preview))
+
+
 @deletion.command("show")
 @click.argument("proposal_id")
 @json_option

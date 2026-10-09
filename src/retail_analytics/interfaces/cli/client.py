@@ -200,6 +200,9 @@ class ApiClient:
 
     # --- deletion --------------------------------------------------------------------
 
+    def list_pending_deletions(self) -> JsonObject:
+        return self._json("GET", "/v1/deletion-proposals", params={"status": "pending"})
+
     def deletion_preview(self, proposal_id: str) -> JsonObject:
         return self._json("GET", f"/v1/deletion-proposals/{quote(proposal_id)}")
 

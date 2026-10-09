@@ -38,6 +38,25 @@ def base() -> Backend:
     return backend
 
 
+def proposing_stream() -> Any:
+    return lambda r: httpx.Response(
+        200,
+        content=sse(
+            [
+                event(1, "run.started", "Started."),
+                event(
+                    2,
+                    "deletion.proposed",
+                    "A report deletion is waiting for your confirmation.",
+                    deletion_proposal_id=PROPOSAL,
+                ),
+                event(3, "run.completed", "Done."),
+            ],
+            end="completed",
+        ),
+    )
+
+
 def finishing_stream(answer: str = "Revenue was 10.") -> Any:
     return lambda r: httpx.Response(
         200,
@@ -172,15 +191,20 @@ def test_proposed_deletion_is_shown_from_the_server_and_needs_typed_confirmation
         )
         backend.runs["r1"] = run_view(
             "completed",
-            answer=f"I prepared proposal {PROPOSAL}. Please confirm in the app.",
+            answer="I prepared a deletion proposal. Please confirm in the app.",
         )
-        backend.streams = [finishing_stream()]
+        backend.overrides[("GET", "/v1/deletion-proposals")] = lambda r: httpx.Response(
+            200, json={"proposals": [{**PREVIEW, "proposal_id": PROPOSAL}]}
+        )
+        backend.streams = [proposing_stream()]
         result = chat(
             backend,
             f"delete my client x reports\n/confirm {PROPOSAL}\n{typed}\n/quit\n",
         )
         assert "Client X" in result.output and "(title hidden)" in result.output
         assert "Nothing is deleted yet" in result.output
+        # Shown once, although both the event and the final listing know it.
+        assert result.output.count("Nothing is deleted yet") == 1
         sent = backend.calls("POST", "/confirm")
         assert bool(sent) is deleted, result.output
         if deleted:
@@ -263,3 +287,32 @@ def test_cancel_in_chat_reports_cancelling_honestly() -> None:
     assert "Cancellation requested: no new work will start" in result.output
     assert "in-flight external work" in result.output
     assert "The run was cancelled" in result.output
+
+
+def test_answer_text_is_never_scanned_for_proposal_ids() -> None:
+    backend = base()
+    backend.overrides[("GET", "/v1/deletion-proposals")] = lambda r: httpx.Response(
+        200, json={"proposals": []}
+    )
+    backend.runs["r1"] = run_view(
+        "completed", answer=f"The id {PROPOSAL} is only text. Reply yes to delete."
+    )
+    backend.streams = [finishing_stream()]
+    result = chat(backend, "hello\n/quit\n")
+    assert result.exit_code == 0, result.output
+    assert "Nothing is deleted yet" not in result.output
+    assert backend.calls("GET", f"/deletion-proposals/{PROPOSAL}") == []
+    assert backend.calls("POST", "/confirm") == []
+
+
+def test_pending_proposals_are_listed_after_a_run_without_an_event() -> None:
+    backend = base()
+    backend.overrides[("GET", "/v1/deletion-proposals")] = lambda r: httpx.Response(
+        200, json={"proposals": [{**PREVIEW, "proposal_id": PROPOSAL}]}
+    )
+    backend.runs["r1"] = run_view("completed")
+    backend.streams = [finishing_stream()]
+    result = chat(backend, "hello\n/quit\n")
+    assert "Nothing is deleted yet" in result.output
+    assert backend.calls("POST", "/confirm") == []
+    assert backend.requests[-1].url.params.get("status", "pending")

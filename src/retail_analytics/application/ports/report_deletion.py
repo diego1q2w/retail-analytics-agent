@@ -28,6 +28,13 @@ class ReportDeletionRepository(Protocol):
         """Raises ``AccessDenied`` when it is not this owner's."""
         ...
 
+    async def list_pending(
+        self, owner_id: str, *, at: datetime, limit: int
+    ) -> tuple[DeletionProposal, ...]:
+        """This owner's proposals that are pending and not yet expired at ``at``,
+        newest first."""
+        ...
+
     async def confirm(
         self, owner_id: str, proposal_id: str, *, at: datetime, audit_id: str
     ) -> DeletionProposal:

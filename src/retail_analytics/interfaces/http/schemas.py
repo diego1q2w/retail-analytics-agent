@@ -351,6 +351,14 @@ class DeletionPreviewOut(_Response):
         )
 
 
+class DeletionProposalListOut(_Response):
+    proposals: list[DeletionPreviewOut]
+
+    @classmethod
+    def of(cls, previews: tuple[DeletionPreview, ...]) -> DeletionProposalListOut:
+        return cls(proposals=[DeletionPreviewOut.of(p) for p in previews])
+
+
 class DeletionResultOut(_Response):
     proposal_id: str
     report_ids: list[str]

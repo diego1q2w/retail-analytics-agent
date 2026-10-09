@@ -139,6 +139,10 @@ class Reports(Protocol):
 
 
 class Deletions(Protocol):
+    async def list_pending(
+        self, principal: Principal
+    ) -> tuple[DeletionPreview, ...]: ...
+
     async def preview(
         self, principal: Principal, proposal_id: str
     ) -> DeletionPreview: ...

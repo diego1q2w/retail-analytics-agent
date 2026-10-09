@@ -145,7 +145,9 @@ def build_capability_registry(
         )
         specs.append(
             report_deletion_capability(
-                build_report_deletion(persistence, access.resolver)
+                build_report_deletion(
+                    persistence, access.resolver, progress=persistence.run_events
+                )
             )
         )
     return CapabilityRegistry(specs)

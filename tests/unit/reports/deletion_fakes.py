@@ -79,6 +79,19 @@ class FakeDeletionRepository:
             raise AccessDenied("deletion_proposal", proposal_id)
         return proposal
 
+    async def list_pending(
+        self, owner_id: str, *, at: datetime, limit: int
+    ) -> tuple[DeletionProposal, ...]:
+        found = [
+            p
+            for p in self.proposals.values()
+            if p.owner_id == owner_id
+            and p.status is ProposalStatus.PENDING
+            and p.expires_at > at
+        ]
+        found.sort(key=lambda p: p.created_at, reverse=True)
+        return tuple(found[:limit])
+
     async def confirm(
         self, owner_id: str, proposal_id: str, *, at: datetime, audit_id: str
     ) -> DeletionProposal:

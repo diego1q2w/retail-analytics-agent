@@ -138,6 +138,11 @@ class PostgresReportDeletionRepository:
     async def get(self, owner_id: str, proposal_id: str) -> DeletionProposal:
         return await self._db.transaction(self._get, owner_id, proposal_id)
 
+    async def list_pending(
+        self, owner_id: str, *, at: datetime, limit: int
+    ) -> tuple[DeletionProposal, ...]:
+        return await self._db.transaction(self._list_pending, owner_id, at, limit)
+
     async def confirm(
         self, owner_id: str, proposal_id: str, *, at: datetime, audit_id: str
     ) -> DeletionProposal:
@@ -164,6 +169,22 @@ class PostgresReportDeletionRepository:
         if row is None:
             raise AccessDenied(_SUBJECT, proposal_id)
         return _proposal(connection, row)
+
+    @staticmethod
+    def _list_pending(
+        connection: sa.Connection, owner_id: str, at: datetime, limit: int
+    ) -> tuple[DeletionProposal, ...]:
+        rows = connection.execute(
+            sa.select(dp)
+            .where(
+                dp.c.owner_id == owner_id,
+                dp.c.status == ProposalStatus.PENDING.value,
+                dp.c.expires_at > at,
+            )
+            .order_by(dp.c.created_at.desc(), dp.c.proposal_id)
+            .limit(limit)
+        )
+        return tuple(_proposal(connection, row) for row in rows.fetchall())
 
     @staticmethod
     def _propose(

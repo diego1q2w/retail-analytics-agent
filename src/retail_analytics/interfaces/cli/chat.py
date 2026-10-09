@@ -36,7 +36,6 @@ from retail_analytics.interfaces.cli.follow import (
     follow_run,
 )
 from retail_analytics.interfaces.cli.render import (
-    find_hex_ids,
     format_deletion_preview,
     format_error,
     format_event,
@@ -103,6 +102,7 @@ class Chat:
         self.question: Question | None = None
         self.last_event_id: str | None = None
         self.queued = 0
+        self._offered: set[str] = set()
         self._eof = False
         self._line: str | None = None
         self._have_line = False
@@ -220,9 +220,16 @@ class Chat:
         if item.kind == "event":
             event: JsonObject = item.payload
             self.last_event_id = str(event.get("event_id") or self.last_event_id)
-            text = format_event(event)
+            # A proposal is shown in full below, from the server's own record.
+            text = (
+                None
+                if event.get("kind") == "deletion.proposed"
+                else (format_event(event))
+            )
             if text:
                 self.out(text)
+            if event.get("kind") == "deletion.proposed":
+                self._offer_deletion(str(event.get("deletion_proposal_id") or ""))
             if event.get("kind") == "input.required" and self.run_id:
                 question = open_question(self.api, self.run_id, sleep=self._sleep)
                 if question is not None:
@@ -259,25 +266,42 @@ class Chat:
             return
         run = self.api.get_run(finished)
         self.out(format_run_result(run))
-        answer = run.get("answer")
-        if isinstance(answer, dict) and not answer.get("withheld"):
-            self._offer_deletions(str(answer.get("text", "")))
+        self._offer_pending_deletions()
         if self.queued > 0:
             self._start_queued(finished)
 
-    def _offer_deletions(self, text: str) -> None:
-        for candidate in find_hex_ids(text)[:3]:
-            try:
-                preview = self.api.deletion_preview(candidate)
-            except (ApiError, Unreachable):
-                continue
-            if preview.get("status") == "pending":
-                self.out("")
-                self.out(format_deletion_preview(preview))
-                self.out(
-                    f"Nothing is deleted yet. To review and confirm: /confirm "
-                    f"{candidate}   To withdraw it: /decline {candidate}"
-                )
+    def _offer_deletion(self, proposal_id: str) -> None:
+        """Show a pending proposal the server announced, once. The preview is
+        the server's own record; nothing is confirmed here."""
+        if not proposal_id or proposal_id in self._offered:
+            return
+        try:
+            preview = self.api.deletion_preview(proposal_id)
+        except (ApiError, Unreachable):
+            return
+        self._show_proposal(preview)
+
+    def _offer_pending_deletions(self) -> None:
+        """After a run: any pending proposal not shown yet (for example when
+        this chat attached after the announcing event)."""
+        try:
+            pending = self.api.list_pending_deletions().get("proposals") or []
+        except (ApiError, Unreachable):
+            return
+        for preview in pending:
+            self._show_proposal(preview)
+
+    def _show_proposal(self, preview: JsonObject) -> None:
+        proposal_id = str(preview.get("proposal_id", ""))
+        if preview.get("status") != "pending" or proposal_id in self._offered:
+            return
+        self._offered.add(proposal_id)
+        self.out("")
+        self.out(format_deletion_preview(preview))
+        self.out(
+            f"Nothing is deleted yet. To review and confirm: /confirm "
+            f"{proposal_id}   To withdraw it: /decline {proposal_id}"
+        )
 
     def _start_queued(self, finished: str) -> None:
         for _ in range(20):

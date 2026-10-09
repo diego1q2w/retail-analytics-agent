@@ -51,7 +51,10 @@ class World(Env):
         super().__init__(stack, root)
         self.clock = Clock()
         self.deletion: ReportDeletionService = build_report_deletion(
-            self.db, self.access.resolver, clock=self.clock
+            self.db,
+            self.access.resolver,
+            clock=self.clock,
+            progress=self.db.run_events,
         )
 
     def sql(self, statement: str, *args: object) -> list[tuple[object, ...]]:

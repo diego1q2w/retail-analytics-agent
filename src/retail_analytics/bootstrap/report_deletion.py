@@ -10,6 +10,7 @@ from retail_analytics.adapters.postgres.report_deletion import (
     PostgresReportDeletionRepository,
 )
 from retail_analytics.application.authorization import AccessResolver
+from retail_analytics.application.ports.progress import ProgressSink
 from retail_analytics.application.report_deletion import (
     Clock,
     ReportDeletionService,
@@ -22,13 +23,18 @@ def build_report_deletion(
     resolver: AccessResolver,
     *,
     clock: Clock | None = None,
+    progress: ProgressSink | None = None,
 ) -> ReportDeletionService:
     """The service holds ``propose`` for the model-facing capability
     (``capabilities.report_deletion.report_deletion_capability(service)``) and
-    ``preview``/``confirm``/``cancel`` for the authenticated application layer."""
+    ``preview``/``list_pending``/``confirm``/``cancel`` for the authenticated
+    application layer. With ``progress`` a proposal also publishes a
+    ``deletion.proposed`` event (the ID only) on its run."""
     db = Database(persistence.engine)
     repository = PostgresReportDeletionRepository(db)
     scopes = PostgresProductScopeSnapshots(db)
     if clock is None:
-        return ReportDeletionService(repository, resolver, scopes)
-    return ReportDeletionService(repository, resolver, scopes, clock=clock)
+        return ReportDeletionService(repository, resolver, scopes, progress=progress)
+    return ReportDeletionService(
+        repository, resolver, scopes, clock=clock, progress=progress
+    )

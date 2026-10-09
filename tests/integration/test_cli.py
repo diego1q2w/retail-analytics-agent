@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 from contextlib import closing
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -281,6 +282,78 @@ async def test_deletion_needs_typed_phrase_and_declined_confirmation_deletes_not
         cli.run, "deletion", "confirm", pid, stdin="delete 1 report\n"
     )
     assert replay.returncode == 1
+
+
+async def test_cli_lists_only_own_pending_unexpired_proposals(
+    alice: tuple[Cli, Principal, str],
+    world: World,
+    api: Api,
+    tmp_path: Path,
+) -> None:
+    cli, principal, session = alice
+    ids = [await world.report(principal, session, f"Report {n}") for n in range(4)]
+    pending = await world.propose(principal, session, ids[0])
+    confirmed = await world.propose(principal, session, ids[1])
+    await world.deletion.confirm(principal, confirmed.proposal_id)
+    cancelled = await world.propose(principal, session, ids[2])
+    await world.deletion.cancel(principal, cancelled.proposal_id)
+    world.clock.advance(-timedelta(hours=1))
+    expired = await world.propose(principal, session, ids[3])
+    world.clock.advance(timedelta(hours=1))
+    bob, bob_session = await world.executive({"7", "8"})
+    bob_report = await world.report(bob, bob_session, "Bob report")
+    bobs = await world.propose(bob, bob_session, bob_report)
+
+    mine = await asyncio.to_thread(cli.run, "deletion", "list", "--json")
+    assert mine.returncode == 0, mine.stdout
+    listed = json.loads(mine.stdout)["proposals"]
+    assert [p["proposal_id"] for p in listed] == [pending.proposal_id]
+    assert [i["title"] for i in listed[0]["items"]] == ["Report 0"]
+    for hidden in (confirmed, cancelled, expired, bobs):
+        assert hidden.proposal_id not in mine.stdout
+    (tmp_path / "bob").mkdir()
+    bobs_cli = Cli(api.base_url, bob, tmp_path / "bob")
+    theirs = await asyncio.to_thread(bobs_cli.run, "deletion", "list", "--json")
+    assert [p["proposal_id"] for p in json.loads(theirs.stdout)["proposals"]] == [
+        bobs.proposal_id
+    ]
+    text = await asyncio.to_thread(cli.run, "deletion", "list")
+    assert "Report 0" in text.stdout and "Nothing" not in text.stdout
+    # Listing confirms and deletes nothing.
+    assert world.live_ids(principal) == {ids[0], ids[2], ids[3]}
+    rows = world.sql(
+        "SELECT run_id, payload FROM run_events WHERE kind = 'deletion.proposed' "
+        "AND payload->>'deletion_proposal_id' = %s",
+        pending.proposal_id,
+    )
+    assert len(rows) == 1
+    payload = rows[0][1]
+    assert isinstance(payload, dict)
+    assert "Report 0" not in json.dumps(payload) and ids[0] not in json.dumps(payload)
+
+
+async def test_chat_surfaces_a_proposal_without_parsing_answer_text(
+    alice: tuple[Cli, Principal, str],
+    world: World,
+) -> None:
+    cli, principal, session = alice
+    report = await world.report(principal, session, "Quarterly revenue")
+    proposal = await world.propose(principal, session, report)
+    pid = proposal.proposal_id
+    lines = "\n".join(
+        ["Analyze sales for the follow-up.", f"/confirm {pid}", "no", "/quit"]
+    )
+    done = await asyncio.to_thread(cli.run, "chat", stdin=lines + "\n", timeout=240)
+    assert done.returncode == 0, done.stdout
+    out = done.stdout
+    assert PLAIN in out
+    assert pid not in PLAIN
+    shown = out.index("Nothing is deleted yet")
+    assert out.count("Nothing is deleted yet") == 1
+    assert f"/confirm {pid}" in out[shown:]
+    assert "Quarterly revenue" in out[:shown]
+    assert "Nothing was deleted." in out
+    assert world.live_ids(principal) == {report}
 
 
 async def test_scripted_chat_session_ask_follow_up_report_and_delete(

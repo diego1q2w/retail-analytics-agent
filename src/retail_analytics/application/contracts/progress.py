@@ -36,6 +36,7 @@ class EventKind(StrEnum):
     TOOL_SUCCEEDED = "tool.succeeded"
     TOOL_FAILED = "tool.failed"
     INPUT_REQUIRED = "input.required"
+    DELETION_PROPOSED = "deletion.proposed"
     RUN_COMPLETED = "run.completed"
     RUN_PARTIAL = "run.partial"
     RUN_FAILED = "run.failed"
@@ -74,6 +75,8 @@ class ProgressUpdate(ContractModel):
     summary: Summary
     tool: ToolActivity | None = None
     input_request: InputRequest | None = None
+    # Only on deletion.proposed: the ID of a pending proposal, never its content.
+    deletion_proposal_id: Identifier | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -89,6 +92,12 @@ class ProgressUpdate(ContractModel):
         if (self.input_request is not None) != (self.kind is EventKind.INPUT_REQUIRED):
             raise ValueError(
                 "input_request is required on, and only on, input.required"
+            )
+        if (self.deletion_proposal_id is not None) != (
+            self.kind is EventKind.DELETION_PROPOSED
+        ):
+            raise ValueError(
+                "deletion_proposal_id is required on, and only on, deletion.proposed"
             )
         if self.source is EventSource.MODEL and self.kind is not (
             EventKind.ANALYSIS_PROGRESS

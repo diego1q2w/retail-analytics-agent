@@ -16,7 +16,6 @@ import click
 from retail_analytics.interfaces.cli.client import ApiError, JsonObject, Unreachable
 
 _ESCAPES = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?")
-_HEX_ID = re.compile(r"\b[0-9a-f]{32}\b")
 _DISCLOSURE = re.compile(
     r"disclos|assumption|caveat|limitation|truncat|data quality|note|basis|"
     r"definition|currency",
@@ -33,14 +32,6 @@ def safe(text: object) -> str:
 
 def one_line(text: object) -> str:
     return " ".join(safe(text).split())
-
-
-def find_hex_ids(text: str) -> list[str]:
-    seen: list[str] = []
-    for found in _HEX_ID.findall(text):
-        if found not in seen:
-            seen.append(found)
-    return seen
 
 
 # --- events ---
@@ -71,6 +62,12 @@ def format_event(event: JsonObject) -> str | None:
     if kind == "tool.failed":
         code = one_line(tool.get("error_code") or "failed")
         return click.style(f"  x {summary} [{code}]", fg="red")
+    if kind == "deletion.proposed":
+        proposal = one_line(event.get("deletion_proposal_id") or "")
+        return click.style(
+            f"  {summary} Review it with: analytics deletion show {proposal}",
+            fg="yellow",
+        )
     if kind in ("input.required", "run.completed", "run.partial"):
         return None
     if kind == "run.failed":

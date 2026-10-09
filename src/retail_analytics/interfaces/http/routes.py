@@ -4,7 +4,7 @@ application layer."""
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
@@ -18,6 +18,7 @@ from retail_analytics.interfaces.http.schemas import (
     CancelOut,
     ConfirmDeletionRequest,
     DeletionPreviewOut,
+    DeletionProposalListOut,
     DeletionResultOut,
     ErrorResponse,
     InputReceiptOut,
@@ -270,6 +271,16 @@ def build_router(stream: StreamSettings) -> APIRouter:
     # --- deletion proposals ---------------------------------------------------
     # The model can only propose; these are the user's own decisions. There is
     # no restore route: recovery is an operator CLI action.
+
+    @router.get("/deletion-proposals", tags=["deletion"])
+    async def list_deletions(
+        principal: CurrentPrincipal,
+        s: Services,
+        status: Annotated[Literal["pending"], Query()] = "pending",
+    ) -> DeletionProposalListOut:
+        """Your own pending, unexpired proposals, newest first."""
+        del status  # pending is the only listing there is
+        return DeletionProposalListOut.of(await s.deletions.list_pending(principal))
 
     @router.get("/deletion-proposals/{proposal_id}", tags=["deletion"])
     async def preview_deletion(

@@ -58,6 +58,7 @@ records. A missing permission (for example no `reports:delete_own`) is 403
 | `GET /v1/reports/{report_id}` | Read a report and its cited evidence (`version` optional) |
 | `GET /v1/reports/{report_id}/versions` | Its versions |
 | `GET /v1/reports/{report_id}/export` | One Markdown file with the evidence appendix (`text/markdown` attachment) |
+| `GET /v1/deletion-proposals?status=pending` | The caller's own pending, unexpired proposals, newest first: `{"proposals": [<preview>]}`. `pending` is the only status (default); anything else is 422. Confirmed, cancelled and expired proposals and other executives' proposals never appear. Listing deletes nothing |
 | `GET /v1/deletion-proposals/{proposal_id}` | Preview a deletion the assistant proposed |
 | `POST /v1/deletion-proposals/{proposal_id}/confirm` | Delete exactly the proposed reports; body must be `{"confirm": true}` |
 | `POST /v1/deletion-proposals/{proposal_id}/cancel` | Withdraw the proposal |
@@ -108,9 +109,15 @@ data: {"schema_version":1,"correlation":{...},"kind":"input.required","source":"
 `data` is a `ProgressEvent` (`application/contracts/progress.py`): `kind` is
 one of `run.started`, `analysis.progress`, `tool.started`, `tool.retrying`,
 `tool.pending`, `tool.outcome_unknown`, `tool.succeeded`, `tool.failed`,
-`input.required`, `run.completed`, `run.partial`, `run.failed`,
-`run.cancelled`; `sequence` starts at 1 and increases by one per event.
+`input.required`, `deletion.proposed`, `run.completed`, `run.partial`,
+`run.failed`, `run.cancelled`; `sequence` starts at 1 and increases by one per event.
 
+- **Deletion proposals.** When the assistant proposes deleting reports, the
+  run gets one `deletion.proposed` event whose only structured payload is
+  `deletion_proposal_id` (no titles, no report IDs; the summary is fixed text).
+  Clients fetch the proposal with `GET /v1/deletion-proposals/{id}` or list
+  the pending ones; they never parse answer text for IDs. A retried proposal
+  repeats the event with the same ID. The event confirms nothing.
 - **Resume.** Reconnect with the `Last-Event-ID` header (or `?after=<event_id>`)
   set to the last ID received: the stream continues with exactly the later
   events, in order, with no gaps or repeats. Connecting or reconnecting never

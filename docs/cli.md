@@ -96,9 +96,14 @@ lost the CLI says the outcome is unknown and how to check.
 
 ## Deleting reports
 
-The assistant can only *propose* deleting reports. When its answer names a
-proposal, the chat shows the server's own record of it (every report ID,
-version, title and date) and does **not** delete. To delete:
+The assistant can only *propose* deleting reports. When it does, the server
+announces the proposal on the run (a `deletion.proposed` event with the
+proposal ID) and lists it among your pending proposals
+(`GET /v1/deletion-proposals?status=pending`). The chat shows the server's own
+record of each pending proposal once (every report ID, version, title and
+date), right when the event arrives and again after the run for any proposal
+it has not shown yet. The answer text is never scanned for IDs, and nothing is
+ever confirmed automatically. To delete:
 
 ```text
 you> /confirm 3c9a...
@@ -128,6 +133,7 @@ exit 1; usage errors exit 2.
 | `cancel RUN [--wait]` | Cancel |
 | `show RUN`, `runs SESSION`, `sessions` | Inspect state (`--json`) |
 | `reports list\|search Q\|show ID [--version N]\|versions ID\|export ID [-o FILE]` | Saved reports |
+| `deletion list` | Your pending, unexpired proposals (`--json`) |
 | `deletion show\|confirm\|cancel PROPOSAL` | Review and decide on a proposal |
 | `status` | Backend health |
 

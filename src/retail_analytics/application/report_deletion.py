@@ -30,7 +30,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from retail_analytics.application.authorization import AccessDenied, AccessResolver
+from retail_analytics.application.contracts import Correlation
 from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.progress import EventKind, ProgressUpdate
 from retail_analytics.application.contracts.report_deletion import (
     DeletionPreview,
     DeletionResult,
@@ -39,10 +41,12 @@ from retail_analytics.application.contracts.report_deletion import (
 )
 from retail_analytics.application.contracts.tools import OperationContext
 from retail_analytics.application.ports.evidence import ProductScopeSnapshots
+from retail_analytics.application.ports.progress import ProgressSink
 from retail_analytics.application.ports.report_deletion import ReportDeletionRepository
 from retail_analytics.application.reports import ReportAccessRule
 from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.report_deletion import (
+    MAX_PENDING_PROPOSALS,
     PROPOSAL_TTL,
     RECOVERY_PERIOD,
     DeletionError,
@@ -56,6 +60,7 @@ type Clock = Callable[[], datetime]
 type IdFactory = Callable[[], str]
 
 _TITLE_CHARS = 200
+_PROPOSED_SUMMARY = "A report deletion is waiting for your confirmation."
 
 
 def _utc_now() -> datetime:
@@ -81,7 +86,9 @@ class ReportDeletionService:
         *,
         clock: Clock = _utc_now,
         new_id: IdFactory = _new_id,
+        progress: ProgressSink | None = None,
     ) -> None:
+        self._progress = progress
         self._repository = repository
         self._resolver = resolver
         self._rule = ReportAccessRule(scopes)
@@ -116,14 +123,48 @@ class ReportDeletionService:
                 expires_at=now + PROPOSAL_TTL,
             )
         )
+        await self._announce(proposal.proposal_id, execution.correlation)
         return await self._preview(
             proposal, execution.product_scope, duplicate=not created
+        )
+
+    async def _announce(self, proposal_id: str, correlation: Correlation) -> None:
+        """Tell clients of the run that a proposal is pending: its ID only.
+
+        Sent for a retried proposal too, so a lost event is not lost for good;
+        clients treat the ID as the identity of the proposal.
+        """
+        if self._progress is None:
+            return
+        await self._progress.publish(
+            ProgressUpdate(
+                correlation=correlation,
+                kind=EventKind.DELETION_PROPOSED,
+                summary=_PROPOSED_SUMMARY,
+                deletion_proposal_id=proposal_id,
+            )
         )
 
     async def preview(self, principal: Principal, proposal_id: str) -> DeletionPreview:
         scope = await self._scope(principal)
         proposal = await self._repository.get(principal.executive_id, proposal_id)
         return await self._preview(proposal, scope)
+
+    async def list_pending(
+        self, principal: Principal, *, limit: int = MAX_PENDING_PROPOSALS
+    ) -> tuple[DeletionPreview, ...]:
+        """The caller's own pending, unexpired proposals, newest first.
+
+        Another owner's proposals are never visible. Resolved and expired
+        proposals are excluded. Nothing here confirms anything.
+        """
+        scope = await self._scope(principal)
+        proposals = await self._repository.list_pending(
+            principal.executive_id,
+            at=self._clock(),
+            limit=max(1, min(MAX_PENDING_PROPOSALS, limit)),
+        )
+        return tuple([await self._preview(p, scope) for p in proposals])
 
     async def confirm(self, principal: Principal, proposal_id: str) -> DeletionResult:
         """Delete exactly the proposed reports, once.
