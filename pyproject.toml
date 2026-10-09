@@ -50,6 +50,7 @@ retail-analytics-api = "retail_analytics.bootstrap.api:main"
 retail-analytics-worker = "retail_analytics.bootstrap.worker:main"
 retail-analytics-maintenance = "retail_analytics.bootstrap.maintenance:main"
 retail-analytics-persona = "retail_analytics.bootstrap.persona_admin:main"
+retail-analytics-knowledge = "retail_analytics.bootstrap.knowledge_admin:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/retail_analytics"]

@@ -358,7 +358,7 @@ def token_hint(ctx: local_setup.SetupContext) -> str:
     prefix = ""
     if ctx.env_file.resolve() != (ctx.root / ".env").resolve():
         prefix = f"{ENV_FILE_VARIABLE}={ctx.env_file} "
-    return f"{prefix}retail-analytics-dev-access token demo-a"
+    return f"{prefix}retail-analytics-dev-access token local-admin"
 
 
 # --- orchestration ------------------------------------------------------

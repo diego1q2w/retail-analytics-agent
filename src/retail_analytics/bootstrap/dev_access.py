@@ -1,8 +1,10 @@
 """Development-only identities: ``retail-analytics-dev-access``.
 
-Simulated authentication for local work. ``provision`` creates two synthetic
-executives with disjoint product entitlements; ``token`` issues a short-lived
-locally signed token for one of them. Both are explicit operator commands that
+Simulated authentication for local work. ``provision`` creates the local
+administrator (the person evaluating the demo: every role plus an explicit
+grant of every product) and two restricted synthetic executives with disjoint
+product entitlements; ``token`` issues a short-lived locally signed token for
+one of them. Both are explicit operator commands that
 run with the backend's own settings; there is no API route or flag that skips
 authentication. Production identities come from the company identity provider
 (see README "Authentication").
@@ -58,6 +60,22 @@ def _ids(first: int, last: int) -> frozenset[str]:
     return frozenset(str(product_id) for product_id in range(first, last + 1))
 
 
+# Every product ID in the public dataset (1-29120). Admin roles grant no
+# product data, so the local administrator gets this grant explicitly.
+ALL_DEMO_PRODUCT_IDS = _ids(1, 29120)
+
+# The local administrator and reviewer of the demo. It is also the only
+# identity the local self-publication policy names (``knowledge_admin``).
+LOCAL_ADMIN = DemoExecutive(
+    key="local-admin",
+    executive_id="exec-local-admin",
+    subject="local-admin",
+    label="Local demo administrator (all products)",
+    roles=frozenset({Role.EXECUTIVE, Role.EDITOR, Role.REVIEWER, Role.ADMIN}),
+    product_ids=ALL_DEMO_PRODUCT_IDS,
+)
+
+# The restricted identities, kept for optional authorization demonstrations.
 DEMO_EXECUTIVES: tuple[DemoExecutive, ...] = (
     DemoExecutive(
         key="demo-a",
@@ -76,6 +94,9 @@ DEMO_EXECUTIVES: tuple[DemoExecutive, ...] = (
         product_ids=_ids(15990, 29120),
     ),
 )
+
+# Everything ``provision`` (and the bootstrap "executives" step) creates.
+LOCAL_EXECUTIVES: tuple[DemoExecutive, ...] = (LOCAL_ADMIN, *DEMO_EXECUTIVES)
 
 
 async def provision_demo_executives(
@@ -105,7 +126,7 @@ async def provision_demo_executives(
 
 
 def _demo(key: str) -> DemoExecutive:
-    for demo in DEMO_EXECUTIVES:
+    for demo in LOCAL_EXECUTIVES:
         if demo.key == key:
             return demo
     raise click.BadParameter(f"unknown demo executive {key!r}")
@@ -118,12 +139,14 @@ def main() -> None:
 
 @main.command()
 def provision() -> None:
-    """Create the two demo executives with disjoint product entitlements."""
+    """Create the local admin and the two restricted demo executives."""
     settings = _settings()
     persistence = _persistence(settings)
     try:
         results = asyncio.run(
-            provision_demo_executives(persistence.access_admin, settings.auth_issuer)
+            provision_demo_executives(
+                persistence.access_admin, settings.auth_issuer, LOCAL_EXECUTIVES
+            )
         )
     finally:
         persistence.close()
@@ -137,7 +160,11 @@ def provision() -> None:
 
 
 @main.command()
-@click.argument("executive", type=click.Choice([d.key for d in DEMO_EXECUTIVES]))
+@click.argument(
+    "executive",
+    type=click.Choice([d.key for d in LOCAL_EXECUTIVES]),
+    default=LOCAL_ADMIN.key,
+)
 @click.option(
     "--minutes",
     type=click.IntRange(1, 24 * 60),
@@ -146,7 +173,8 @@ def provision() -> None:
     help="Token lifetime.",
 )
 def token(executive: str, minutes: int) -> None:
-    """Print a locally signed token for a provisioned demo executive.
+    """Print a locally signed token for a provisioned demo executive
+    (default: the local admin).
 
     The token goes to stdout only; it is never logged or written to a file.
     Its scopes are the executive's current permissions.

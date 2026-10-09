@@ -314,8 +314,19 @@ class SelfReview(Exception):
     """The author tried to review their own version."""
 
 
-def decide(action: ReviewAction, version: GoldenVersion, actor_id: str) -> Transition:
-    """The allowed transition for ``action`` on ``version`` by ``actor_id``."""
+def decide(
+    action: ReviewAction,
+    version: GoldenVersion,
+    actor_id: str,
+    *,
+    self_review_allowed: bool = False,
+) -> Transition:
+    """The allowed transition for ``action`` on ``version`` by ``actor_id``.
+
+    ``self_review_allowed`` lifts only the independent-reviewer rule, for a
+    caller that has already decided an explicit self-publication policy
+    applies; every other rule still holds.
+    """
     if action is ReviewAction.ERASE:
         if version.status is ReviewStatus.ERASED:
             raise InvalidTransition(
@@ -325,6 +336,10 @@ def decide(action: ReviewAction, version: GoldenVersion, actor_id: str) -> Trans
     transition = _TRANSITIONS.get((action, version.status))
     if transition is None:
         raise InvalidTransition("golden example", version.status.value, action.value)
-    if transition.needs_independent_reviewer and actor_id == version.author_id:
+    if (
+        transition.needs_independent_reviewer
+        and actor_id == version.author_id
+        and not self_review_allowed
+    ):
         raise SelfReview
     return transition

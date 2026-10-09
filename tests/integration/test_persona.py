@@ -492,3 +492,53 @@ async def test_runtime_instructions_carry_the_pinned_persona(world: World) -> No
     assert STYLE_A in await instructions(run) and STYLE_B not in text
     assert STYLE_B in await instructions(await world.run(owner))
     assert "<persona>" not in await instructions(plain_run)
+
+
+async def test_local_admin_drafts_previews_and_publishes_with_the_cli(
+    world: World,
+) -> None:
+    """The local demo administrator needs no second identity for a persona
+    change; the publication records them as the actor."""
+    from click.testing import CliRunner
+
+    from retail_analytics.bootstrap import dev_access, persona_admin
+
+    env = {"APP_DATABASE_URL": world.stack.app_url, "AUTH_SIGNING_KEY": "k" * 48}
+    runner = CliRunner()
+
+    def cli(main: object, *args: str) -> str:
+        result = runner.invoke(main, list(args), env=env)  # type: ignore[arg-type]
+        assert result.exit_code == 0, result.output
+        return result.output
+
+    await asyncio.to_thread(cli, dev_access.main, "provision")
+    admin = dev_access.LOCAL_ADMIN.executive_id
+    created = await asyncio.to_thread(
+        cli,
+        persona_admin.main,
+        "draft",
+        "--as",
+        admin,
+        "--key",
+        _id("k"),
+        "--text",
+        STYLE_C,
+    )
+    draft_id = created.split("version_id=")[1].split()[0]
+    previewed = await asyncio.to_thread(
+        cli, persona_admin.main, "preview", draft_id, "--as", admin
+    )
+    assert "preserved=true" in previewed
+    published = await asyncio.to_thread(
+        cli,
+        persona_admin.main,
+        "publish",
+        draft_id,
+        "--as",
+        admin,
+        "--expected-current",
+        "none",
+    )
+    assert f"version={draft_id}" in published
+    history = await asyncio.to_thread(cli, persona_admin.main, "history", "--as", admin)
+    assert f"version={draft_id}" in history and f"by={admin}" in history

@@ -5,6 +5,10 @@ Three entry points, each with a different trust level:
 - ``KnowledgeService`` takes an authenticated ``Principal``. Authors need
   ``analysis:read``; every review command needs ``knowledge:review`` and, for
   approve/reject/reinstate, must come from someone other than the author.
+  The one exception is an explicit self-publication policy: executives named
+  in ``self_publishers`` (wired only by the local development-admin command)
+  may judge their own versions, and every such review event is recorded with
+  ``checks["self_published"] = True``. It is never independent review.
 - ``GoldenKnowledgeReader`` is the only way examples reach the model. It takes
   the trusted ``ProductScope`` from the run's context and re-checks status,
   access, compatibility and the pinned content digest at delivery time, so a
@@ -76,6 +80,9 @@ from retail_analytics.domain.sensitive_content import screen_fields
 # executive, and no executive can read it through the artifact service.
 KNOWLEDGE_OWNER = "system:golden-knowledge"
 IDEMPOTENCY_KEY_PATTERN = OPAQUE_ID_PATTERN
+# Review-event check recorded when an author judged their own version under
+# the self-publication policy, so the audit never reads as independent review.
+SELF_PUBLISHED_CHECK = "self_published"
 
 
 class KnowledgeErrorCode(StrEnum):
@@ -242,6 +249,7 @@ class KnowledgeService(_Store):
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         new_id: Callable[[], str] = lambda: uuid.uuid4().hex,
+        self_publishers: frozenset[str] = frozenset(),
     ) -> None:
         super().__init__(artifacts)
         self._resolver = resolver
@@ -249,6 +257,9 @@ class KnowledgeService(_Store):
         self._maintenance = maintenance
         self._clock = clock
         self._new_id = new_id
+        # Executive IDs allowed to review their own versions (local
+        # development-admin policy only; empty everywhere else).
+        self._self_publishers = self_publishers
 
     # -- authoring ---------------------------------------------------------
 
@@ -549,8 +560,20 @@ class KnowledgeService(_Store):
             access.product_scope
         ):
             raise AccessDenied("example", ref.example_id)
+        self_published = (
+            action in _CONTENT_JUDGEMENTS
+            and access.executive_id == version.author_id
+            and access.executive_id in self._self_publishers
+        )
+        if self_published:
+            checks = {**(checks or {}), SELF_PUBLISHED_CHECK: True}
         try:
-            transition = decide(action, version, access.executive_id)
+            transition = decide(
+                action,
+                version,
+                access.executive_id,
+                self_review_allowed=self_published,
+            )
         except SelfReview:
             raise KnowledgeError(
                 KnowledgeErrorCode.SELF_REVIEW,

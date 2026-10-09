@@ -244,3 +244,114 @@ async def test_embeddings_persist_across_restart_and_are_erased_with_the_example
         "vector",
         "created_at",
     }
+
+
+async def test_local_admin_self_publishes_with_the_cli_and_others_cannot(
+    stack: Stack, tmp_path: Path
+) -> None:
+    """The documented local admin path, end to end: provision, submit, approve
+    the own example without a second identity, and see it audited as
+    self-published. Restricted demo identities keep the independent rule."""
+    import json
+
+    from click.testing import CliRunner
+
+    from retail_analytics.bootstrap import dev_access, knowledge_admin
+
+    env = {
+        "APP_DATABASE_URL": stack.app_url,
+        "AUTH_SIGNING_KEY": "k" * 48,
+        "ARTIFACT_DIR": str(tmp_path / "artifacts"),
+    }
+    runner = CliRunner()
+
+    def cli(*args: str, ok: bool = True) -> str:
+        main = dev_access.main if args[0] == "provision" else knowledge_admin.main
+        result = runner.invoke(main, list(args), env=env)
+        assert (result.exit_code == 0) is ok, result.output
+        return result.output
+
+    await asyncio.to_thread(cli, "provision")
+    example = tmp_path / "example.json"
+    example.write_text(
+        json.dumps(
+            {
+                "question": "How did monthly revenue trend?",
+                "sql": "SELECT 1 AS answer",
+                "method_summary": "Aggregate completed sales by month.",
+                "report_markdown": "# Trend\n\nCompare complete months only.",
+                "metrics": [],
+                "sanitization_attested": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    async def submit_as(executive: str) -> tuple[str, str]:
+        out = await asyncio.to_thread(
+            cli,
+            "submit",
+            "--as",
+            executive,
+            "--key",
+            f"k-{uuid.uuid4().hex}",
+            "--file",
+            str(example),
+        )
+        assert "status=candidate" in out
+        return out.split("example=")[1].split()[0], "1"
+
+    admin = dev_access.LOCAL_ADMIN.executive_id
+    example_id, version = await submit_as(admin)
+    approve = (
+        "approve",
+        example_id,
+        version,
+        "--rationale",
+        "Checked locally.",
+        "--correct",
+        "--sanitized",
+        "--applicable",
+    )
+    published = await asyncio.to_thread(cli, *approve, "--as", admin)
+    assert "status=published" in published
+    assert "self-published (local policy; not independent review)" in published
+    history = await asyncio.to_thread(
+        cli, "history", example_id, version, "--as", admin
+    )
+    assert f"approve by={admin} to=published self_published=true" in history
+
+    # demo-b holds the reviewer role but is not named by the policy.
+    reviewer = "exec-demo-b"
+    own_id, own_version = await submit_as(reviewer)
+    refused = await asyncio.to_thread(
+        cli,
+        "approve",
+        own_id,
+        own_version,
+        "--rationale",
+        "mine",
+        "--correct",
+        "--sanitized",
+        "--applicable",
+        "--as",
+        reviewer,
+        ok=False,
+    )
+    assert "self_review" in refused
+    # demo-a is not a reviewer at all.
+    denied = await asyncio.to_thread(
+        cli,
+        "approve",
+        own_id,
+        own_version,
+        "--rationale",
+        "x",
+        "--correct",
+        "--sanitized",
+        "--applicable",
+        "--as",
+        "exec-demo-a",
+        ok=False,
+    )
+    assert "not permitted" in denied

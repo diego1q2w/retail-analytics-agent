@@ -240,7 +240,7 @@ def test_token_hint_points_at_a_custom_env_file_without_a_token(
     default = local_setup.SetupContext(
         root=local_setup.ROOT, env_file=local_setup.ROOT / ".env", project="p"
     )
-    assert dev_up.token_hint(default) == "retail-analytics-dev-access token demo-a"
+    assert dev_up.token_hint(default) == "retail-analytics-dev-access token local-admin"
 
 
 def test_next_steps_recommend_the_one_command(tmp_path: Path) -> None:

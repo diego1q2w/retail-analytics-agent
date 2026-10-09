@@ -33,13 +33,23 @@ class KnowledgeServices:
 
 
 def build_knowledge(
-    persistence: Persistence, artifacts: ArtifactServices, resolver: AccessResolver
+    persistence: Persistence,
+    artifacts: ArtifactServices,
+    resolver: AccessResolver,
+    *,
+    self_publishers: frozenset[str] = frozenset(),
 ) -> KnowledgeServices:
+    """``self_publishers`` stays empty except in the local development-admin
+    command (``bootstrap.knowledge_admin``)."""
     db = Database(persistence.engine)
     repository = PostgresKnowledgeRepository(db)
     return KnowledgeServices(
         service=KnowledgeService(
-            resolver, repository, artifacts.service, artifacts.maintenance
+            resolver,
+            repository,
+            artifacts.service,
+            artifacts.maintenance,
+            self_publishers=self_publishers,
         ),
         reader=GoldenKnowledgeReader(repository, artifacts.service),
         index_source=repository,

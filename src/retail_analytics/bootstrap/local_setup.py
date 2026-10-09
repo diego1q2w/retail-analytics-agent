@@ -352,7 +352,7 @@ def step_migrate(ctx: SetupContext) -> StepResult:
 
 def step_executives(ctx: SetupContext) -> StepResult:
     ctx.python("-m", "retail_analytics.bootstrap.dev_access", "provision", show=True)
-    return StepResult("done", "demo executives provisioned")
+    return StepResult("done", "local admin and demo executives provisioned")
 
 
 def step_golden_seeds(ctx: SetupContext) -> StepResult:
@@ -406,7 +406,11 @@ STEPS: tuple[BootstrapStep, ...] = (
         enabled=telemetry_wanted,
     ),
     BootstrapStep("migrate", "apply database migrations", step_migrate),
-    BootstrapStep("executives", "provision the demo executives", step_executives),
+    BootstrapStep(
+        "executives",
+        "provision the local admin and the demo executives",
+        step_executives,
+    ),
     BootstrapStep(
         "golden-seeds", "seed the Golden knowledge library", step_golden_seeds
     ),
@@ -452,7 +456,7 @@ def next_steps(ctx: SetupContext) -> list[str]:
     lines = ["Local environment is ready (fixture mode works offline)."]
     custom = ctx.env_file.resolve() != (ctx.root / ".env").resolve()
     dev = "./scripts/dev.sh"
-    issue_cmd = "retail-analytics-dev-access token demo-a"
+    issue_cmd = "retail-analytics-dev-access token local-admin"
     if custom:
         dev += f" --env-file {ctx.env_file}"
         issue_cmd = f"{ENV_FILE_VARIABLE}={ctx.env_file} {issue_cmd}"
@@ -477,9 +481,11 @@ def next_steps(ctx: SetupContext) -> list[str]:
         "      # worker + API together, prefixed logs, Ctrl-C stops both"
         if temporal
         else "      # the API (hosting the investigations), Ctrl-C stops it",
-        f"  {issue_cmd}   # a dev token (stdout only)",
-        "  (see docs/http-api.md: send the token as Authorization: Bearer)",
-        "  analytics status                           # CLI check against the API",
+        "  then, in another terminal (after: source .venv/bin/activate):",
+        f"  (umask 077; {issue_cmd} > ~/.analytics-token)",
+        "      # the local admin's dev token, written to a private file only",
+        "  export CLI_TOKEN_FILE=~/.analytics-token",
+        "  analytics chat                             # ask a question",
         "  ./scripts/bootstrap.sh                     # rerun any time (idempotent)",
         "  (the production design runs the API and Temporal workers as "
         "separate services; see README, 'Temporal execution')",

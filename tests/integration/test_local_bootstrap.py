@@ -152,6 +152,13 @@ def test_one_command_builds_a_seeded_stack_and_rerun_is_a_noop(run: Run) -> None
     assert "<missing:" in output and "docs/google-access.md" in output
     assert "skipped" in output  # credential check, fixture mode
     assert "exec-demo-a" in output
+    # The local admin: every role and an explicit grant of every product.
+    assert (
+        "exec-local-admin: roles=admin,editor,executive,reviewer products=29120"
+        in output
+    )
+    assert "retail-analytics-dev-access token local-admin" in output
+    assert "analytics chat" in output
     # Local execution is the default: PostgreSQL, no Temporal.
     assert values[local_env.EXECUTION_BACKEND_KEY] == "local"
     assert "Execution: local (default)" in output
@@ -166,7 +173,7 @@ def test_one_command_builds_a_seeded_stack_and_rerun_is_a_noop(run: Run) -> None
     assert _running_services(run.project) >= {"mlflow", "prometheus", "grafana"}
 
     executives, entitlements, golden = _counts(run.env_file)
-    assert executives == 2 and entitlements > 0 and golden >= 10
+    assert executives == 3 and entitlements > 0 and golden >= 10
 
     before = run.env_file.read_bytes()
     second = run.bootstrap()

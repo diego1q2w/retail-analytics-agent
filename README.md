@@ -30,26 +30,59 @@ choices and requirement-by-requirement coverage are in
 
 ## Quick start
 
-On a new machine with Docker (Compose v2) and Python 3.12 (or [uv](https://docs.astral.sh/uv/)) installed:
+**Prerequisites:** Git, Docker with Compose v2, and Python 3.12 (or [uv](https://docs.astral.sh/uv/)). That is all for fixture mode, which runs offline. Real analysis (live mode) also needs a Google Cloud project for BigQuery query jobs with Application Default Credentials, and a Gemini API key; an OpenAI key is an optional backup. See [Google access setup](docs/google-access.md).
+
+**1. Set up** (once; safe to rerun):
 
 ```sh
 ./scripts/bootstrap.sh
 ```
 
-That one command is idempotent and does everything needed for a working, seeded local environment in fixture mode (offline, no credentials):
+**2. Start** the backend (Ctrl-C stops it):
+
+```sh
+./scripts/dev.sh
+```
+
+**3. Chat**, in a second terminal:
+
+```sh
+source .venv/bin/activate
+(umask 077; retail-analytics-dev-access token local-admin > ~/.analytics-token)
+export CLI_TOKEN_FILE=~/.analytics-token
+analytics chat
+```
+
+You are the local administrator, `exec-local-admin`: bootstrap provisions it with the executive, editor, reviewer and admin roles and an explicit grant of every product in the dataset (an admin role alone grants no data). The token is written only to that private file and lasts 60 minutes (`--minutes` up to 1440); run the same line again for a new one. Nothing is printed to the logs.
+
+In fixture mode (the default) every question gets a fixed "no language model is configured" answer: that checks authentication, sessions, runs and streaming without any credentials. For real answers, set `APP_MODE=live`, `BIGQUERY_PROJECT` and `GEMINI_API_KEY` in `.env` (and optionally `OPENAI_API_KEY`), run `gcloud auth application-default login`, then rerun `./scripts/bootstrap.sh` (it verifies BigQuery and Gemini access without printing secrets) and restart `./scripts/dev.sh`. Investigations run inside the API by default; Temporal is [opt-in](#temporal-execution-opt-in).
+
+### Representative conversations (live mode)
+
+Questions to try in `analytics chat`. The assistant's wording and figures depend on the model and the data, so only the shape of each exchange is shown.
+
+1. **Ask, clarify, answer.** `you> How did revenue trend last quarter?` The assistant may ask a clarifying question (for example which period or revenue definition); answer it at the `answer>` prompt. Progress lines show each query; the answer ends with the definitions and limitations used (`== DISCLOSURES ==`) and suggested next steps.
+2. **Save and read a report.** `you> Save that as a report.` Then `/reports` lists your reports, `/report <id>` reads one with its evidence, and `/export <id> report.md` writes the Markdown.
+3. **Delete, with your confirmation.** `you> Delete the report you just saved.` The assistant can only propose a deletion. The chat shows the server's record of the proposal; `/confirm <proposal-id>` asks you to type the exact phrase (for example `delete 1 report`). Anything else keeps the report. The model never confirms.
+
+More: [CLI guide](docs/cli.md) (commands, resuming with `analytics chat --resume`), [local administration](docs/local-admin.md) (restricted demo identities, publishing Golden examples and persona changes; optional, not needed for the steps above), [Google access](docs/google-access.md), [model providers](docs/model-providers.md) (models, time limits, fallback), [investigation runtime](docs/investigation-runtime.md).
+
+**Costs and limits.** Query jobs run in your project; a project without billing uses the BigQuery sandbox. Each query is capped by `QUERY_MAX_BYTES` (1 GiB) and each investigation by `RUN_MAX_BYTES`, `RUN_MAX_QUERIES`, `RUN_MAX_PROVIDER_REQUESTS` and `RUN_MAX_TOKENS` (see `.env.example`). Gemini and OpenAI rate limits and free allowances depend on your key and tier and change over time: check the providers' current pricing and rate-limit pages. This project does not promise any free usage.
+
+**Evaluation.** The offline evaluation runner and its scenario sets are described under [Evaluation runner](#evaluation-runner) and in `evaluation/`. Requirement-by-requirement evidence and pending results: [docs/architecture/requirements.md](docs/architecture/requirements.md) and [known limitations](docs/architecture/known-limitations.md).
+
+### What bootstrap and dev.sh do
+
+`./scripts/bootstrap.sh` is idempotent and does everything needed for a working, seeded local environment in fixture mode (offline, no credentials):
 
 1. creates `.venv` and installs the pinned dependencies if no virtualenv is active;
 2. creates `.env` from `.env.example`, or only adds the keys an existing `.env` lacks. It never overwrites or reorders a value, generates local-only secrets (`AUTH_SIGNING_KEY`, `REFERENCE_KEY`, and the database passwords for a new Compose volume) with `secrets`, and fills the connection defaults. It prints `<generated>`, `<kept>`, `<default>` or `<missing: action>` per key, never a value;
 3. checks Docker, starts PostgreSQL and waits until it is healthy (Temporal only when [selected](#temporal-execution-opt-in));
 4. runs `alembic upgrade head`;
-5. provisions the demo executives and seeds the Golden knowledge library;
+5. provisions the local admin and the two restricted demo executives, and seeds the Golden knowledge library;
 6. validates the configuration and, when BigQuery and Gemini are configured, checks that access.
 
-Then start the backend with one command and call it with a dev token; see [HTTP and SSE API](docs/http-api.md) and the [CLI guide](docs/cli.md):
-
-```sh
-./scripts/dev.sh        # or: python -m retail_analytics.bootstrap.dev_up
-```
+`./scripts/dev.sh` (or `python -m retail_analytics.bootstrap.dev_up`) starts the backend; call it with a dev token through the [CLI](docs/cli.md) or the [HTTP and SSE API](docs/http-api.md).
 
 By default investigations run inside the API process (local execution): `dev.sh` needs only PostgreSQL, and no Temporal server or worker is started. A run keeps going when the CLI disconnects; stopping the API ends running investigations as interrupted (they are not resumed; send the request again). Durable Temporal execution is [opt-in](#temporal-execution-opt-in).
 
@@ -115,7 +148,8 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 | `retail-analytics-api` | `retail_analytics.bootstrap.api` | Authenticated HTTP/SSE investigation API; needs PostgreSQL and the signing key, and runs the investigations itself with local execution (Temporal execution: also Temporal and the worker). See [HTTP and SSE API](docs/http-api.md) |
 | `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
 | `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker, only with `EXECUTION_BACKEND=temporal` (fixture model, or the live Gemini/GPT chain); exits with status 3 otherwise |
-| `retail-analytics-dev-access` | `retail_analytics.bootstrap.dev_access` | Development only: provision the two synthetic executives and issue local tokens; see [Authentication and entitlements](#authentication-and-entitlements) |
+| `retail-analytics-dev-access` | `retail_analytics.bootstrap.dev_access` | Development only: provision the local admin and the two restricted synthetic executives and issue local tokens; see [Authentication and entitlements](#authentication-and-entitlements) |
+| `retail-analytics-knowledge` | `retail_analytics.bootstrap.knowledge_admin` | Development only: submit, review and publish Golden examples; the local admin may publish their own, audited as self-published. See [local administration](docs/local-admin.md) |
 
 Live mode (`APP_MODE=live`) also requires `AUTH_SIGNING_KEY`, and the API requires it in every mode (no route skips authentication).
 
@@ -299,10 +333,10 @@ Each effective change also appends one `access.*` event to `audit_events` in tha
 ```sh
 export AUTH_SIGNING_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 retail-analytics-dev-access provision          # needs APP_DATABASE_URL and migrations at head
-retail-analytics-dev-access token demo-a --minutes 60   # prints a token to stdout only
+retail-analytics-dev-access token local-admin --minutes 60   # prints a token to stdout only
 ```
 
-`provision` is idempotent. It creates `exec-demo-a` (roles executive and editor; product IDs 1–15989, the dataset's "Women" department) and `exec-demo-b` (roles executive and reviewer; product IDs 15990–29120, "Men"), so their data never overlaps. The split was checked against `thelook_ecommerce.products` on 2026-10-08. `token` issues a token whose scopes are the executive's current permissions. These identities are synthetic and for development only.
+`provision` is idempotent. It creates the local administrator `exec-local-admin` (roles executive, editor, reviewer and admin; an explicit grant of product IDs 1–29120, every product in the dataset), `exec-demo-a` (roles executive and editor; product IDs 1–15989, the dataset's "Women" department) and `exec-demo-b` (roles executive and reviewer; product IDs 15990–29120, "Men"), so their data never overlaps. The split was checked against `thelook_ecommerce.products` on 2026-10-08. `token` (default `local-admin`) issues a token whose scopes are the executive's current permissions. These identities are synthetic and for development only; the restricted pair is for authorization demonstrations ([local administration](docs/local-admin.md)).
 
 **Production identity (design only, not deployed).** A company identity provider issues the tokens (asymmetric signatures published as JWKS). A verifier for those keys replaces `LocalJwtAuthority` behind the same `TokenVerifier` port (`retail_analytics.application.authentication`). Executives are provisioned from the directory into `executives` by issuer and subject, and entitlements are still assigned server-side. The authorization path after verification does not change. No identity provider has been chosen or configured.
 
