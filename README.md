@@ -84,6 +84,8 @@ flowchart LR
 
 The [architecture overview](docs/architecture/README.md) has the local and production deployment diagrams, the agent loop and its skills, data flow and trust boundaries, the technology choices with their trade-offs, and how each requirement is met. The production design is not provisioned; its cloud services are proposals.
 
+Framework rationale and my experience with the tools are in [framework choice and author experience](docs/architecture/technology-choices.md#framework-choice-and-author-experience).
+
 ## Project status
 
 Working prototype for local use. Nothing is deployed.

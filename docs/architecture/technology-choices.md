@@ -74,6 +74,23 @@ quickly: its older Temporal wrapper is marked for removal in favour of the
 capability the project uses. Application and domain code do not import
 Pydantic AI; the boundary checks in `tests/architecture` enforce that.
 
+## Framework choice and author experience
+
+I chose **Pydantic AI** because it fits the project's Python architecture and
+supports typed tools, validated inputs and structured responses. It lets one
+agent choose its next step in a flexible loop, while application code handles
+authorization, query validation, budgets and confirmation. This also makes new
+capabilities straightforward to add through tools and skills.
+
+My main experience is with **LangGraph**. Pydantic AI is a more recent addition
+to my toolkit; this project gave me hands-on experience integrating it with
+guarded tools, model fallback, tracing and evaluations.
+
+I also implemented **Temporal as an optional execution backend** to explore
+durable workflow recovery. The local demo uses a simpler in-process manager.
+At the expected production workload, I would keep Temporal optional and adopt
+it when interruption costs or longer investigations justify it.
+
 ## Execution: simpler manager first, Temporal optional (implemented)
 
 **Needs.** Investigations continue when the CLI disconnects, wait for a
