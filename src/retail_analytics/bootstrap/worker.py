@@ -19,14 +19,17 @@ from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationSc
 from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
 from retail_analytics.application.investigation_recovery import InvestigationRecovery
 from retail_analytics.bootstrap.access import build_access, local_token_authority
+from retail_analytics.bootstrap.artifacts import build_artifacts
 from retail_analytics.bootstrap.budgets import build_run_budgets
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError, RuntimeMode
 from retail_analytics.bootstrap.discovery import build_discovery
 from retail_analytics.bootstrap.entrypoint import settings_or_exit
 from retail_analytics.bootstrap.investigations import build_investigations
+from retail_analytics.bootstrap.knowledge import build_knowledge
 from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import persistence_from_settings
 from retail_analytics.bootstrap.query import build_query_execution
+from retail_analytics.bootstrap.retrieval import build_retrieval
 
 
 async def run_worker(settings: BackendSettings) -> None:
@@ -43,9 +46,19 @@ async def run_worker(settings: BackendSettings) -> None:
     try:
         access = build_access(persistence, local_token_authority(settings))
         scheduler = TemporalInvestigationScheduler(client, settings.temporal_task_queue)
+        artifacts = build_artifacts(settings, persistence)
+        retriever = build_retrieval(
+            settings, build_knowledge(persistence, artifacts, access.resolver)
+        )
         if live_model is None:
             services = build_investigations(
-                settings, persistence, access, scheduler, fixture_model()
+                settings,
+                persistence,
+                access,
+                scheduler,
+                fixture_model(),
+                artifacts=artifacts,
+                retriever=retriever,
             )
         else:
             discovery = build_discovery(settings)
@@ -64,6 +77,8 @@ async def run_worker(settings: BackendSettings) -> None:
                 live_model,
                 discovery=discovery,
                 queries=queries,
+                artifacts=artifacts,
+                retriever=retriever,
             )
         recovery = InvestigationRecovery(
             PostgresRecoveryCandidates(Database(persistence.engine)),
@@ -101,7 +116,9 @@ def main(check_config: bool) -> None:
     """Run the durable-execution worker.
 
     Fixture mode uses the offline model and no warehouse tools; live mode
-    uses the Gemini/GPT provider chain with discovery and query tools.
+    uses the Gemini/GPT provider chain with discovery and query tools. Both
+    register Golden methods, preferences, reports, deletion proposals and
+    currency conversion.
     """
     settings = settings_or_exit(check_config)
     try:

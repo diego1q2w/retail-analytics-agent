@@ -1,0 +1,287 @@
+{
+ "plan_set": "realdata-scripted/1",
+ "note": "Scripted plans for the agent_runtime target over the frozen extract. They exercise the runtime and its guards with a known plan; they do not measure model planning quality. Keys are the exact user messages of evaluation/realdata/manifest.json.",
+ "plans": {
+  "What was our revenue in the third quarter of 2025, and how many items and customers were behind it?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "SELECT SUM(sale_amount) AS revenue, COUNT(*) AS completed_items, COUNT(DISTINCT customer_ref) AS distinct_customers FROM sales_items WHERE item_status = 'Complete' AND ordered_date >= DATE '2025-07-01' AND ordered_date < DATE '2025-10-01'",
+     "purpose": "Q3 2025 revenue, items and customers"
+    }
+   },
+   {
+    "answer": {
+     "text": "Revenue in the third quarter of 2025 (1 July to 30 September) was {{value:revenue}} from {{value:completed_items}} completed items bought by {{value:distinct_customers}} distinct customers [{{evidence:revenue}}]. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC). Scope: your permitted products only.",
+     "cite": [
+      "revenue"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "Between 1 October and 31 December 2025, which three states sold the most, and how many customers bought in each?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "WITH st AS (SELECT c.state, SUM(s.sale_amount) AS spend, COUNT(DISTINCT s.customer_ref) AS buyers FROM sales_items AS s JOIN customers AS c ON c.customer_ref = s.customer_ref WHERE s.item_status = 'Complete' AND s.ordered_date >= DATE '2025-10-01' AND s.ordered_date < DATE '2026-01-01' GROUP BY c.state), r1 AS (SELECT state, spend, buyers FROM st ORDER BY spend DESC LIMIT 1), r2 AS (SELECT state, spend, buyers FROM st WHERE spend < (SELECT spend FROM r1) ORDER BY spend DESC LIMIT 1), r3 AS (SELECT state, spend, buyers FROM st WHERE spend < (SELECT spend FROM r2) ORDER BY spend DESC LIMIT 1) SELECT (SELECT state FROM r1) AS state_1, (SELECT spend FROM r1) AS state_1_revenue, (SELECT buyers FROM r1) AS state_1_customers, (SELECT state FROM r2) AS state_2, (SELECT spend FROM r2) AS state_2_revenue, (SELECT buyers FROM r2) AS state_2_customers, (SELECT state FROM r3) AS state_3, (SELECT spend FROM r3) AS state_3_revenue, (SELECT buyers FROM r3) AS state_3_customers",
+     "purpose": "top three states in Q4 2025"
+    }
+   },
+   {
+    "answer": {
+     "text": "From 1 October to 31 December 2025 the top states were {{value:state_1}} ({{value:state_1_revenue}}, {{value:state_1_customers}} customers), {{value:state_2}} ({{value:state_2_revenue}}, {{value:state_2_customers}} customers) and {{value:state_3}} ({{value:state_3_revenue}}, {{value:state_3_customers}} customers) [{{evidence:state_1}}]. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC). Scope: your permitted products only.",
+     "cite": [
+      "state_1"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "Which three products brought in the most revenue from October to December 2025, and how many units of each sold?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "WITH pp AS (SELECT s.product_id, p.product_name, SUM(s.sale_amount) AS spend, COUNT(*) AS units FROM sales_items AS s JOIN products AS p ON p.product_id = s.product_id WHERE s.item_status = 'Complete' AND s.ordered_date >= DATE '2025-10-01' AND s.ordered_date < DATE '2026-01-01' GROUP BY s.product_id, p.product_name), r1 AS (SELECT product_id, product_name, spend, units FROM pp ORDER BY spend DESC LIMIT 1), r2 AS (SELECT product_id, product_name, spend, units FROM pp WHERE spend < (SELECT spend FROM r1) ORDER BY spend DESC LIMIT 1), r3 AS (SELECT product_id, product_name, spend, units FROM pp WHERE spend < (SELECT spend FROM r2) ORDER BY spend DESC LIMIT 1) SELECT (SELECT product_name FROM r1) AS product_1, (SELECT spend FROM r1) AS product_1_revenue, (SELECT units FROM r1) AS product_1_units, (SELECT product_name FROM r2) AS product_2, (SELECT spend FROM r2) AS product_2_revenue, (SELECT units FROM r2) AS product_2_units, (SELECT product_name FROM r3) AS product_3, (SELECT spend FROM r3) AS product_3_revenue, (SELECT units FROM r3) AS product_3_units",
+     "purpose": "top three products in Q4 2025"
+    }
+   },
+   {
+    "answer": {
+     "text": "The top products by revenue from October to December 2025 (grouped by product ID) were {{value:product_1}} ({{value:product_1_revenue}}, {{value:product_1_units}} units), {{value:product_2}} ({{value:product_2_revenue}}, {{value:product_2_units}} units) and {{value:product_3}} ({{value:product_3_revenue}}, {{value:product_3_units}} units) [{{evidence:product_1}}]. Single-unit sales make this ranking sensitive to individual orders. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC). Scope: your permitted products only.",
+     "cite": [
+      "product_1"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "In the last three months of 2025, which age groups spent the most, in total and per customer?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "WITH b AS (SELECT c.age_band, SUM(s.sale_amount) AS spend, COUNT(DISTINCT s.customer_ref) AS buyers FROM sales_items AS s JOIN customers AS c ON c.customer_ref = s.customer_ref WHERE s.item_status = 'Complete' AND s.ordered_date >= DATE '2025-10-01' AND s.ordered_date < DATE '2026-01-01' GROUP BY c.age_band), by_total AS (SELECT age_band, spend FROM b ORDER BY spend DESC LIMIT 1), by_customer AS (SELECT age_band, SAFE_DIVIDE(spend, buyers) AS per_customer, buyers FROM b ORDER BY per_customer DESC LIMIT 1) SELECT (SELECT age_band FROM by_total) AS top_total_band, (SELECT spend FROM by_total) AS top_total_band_spend, (SELECT age_band FROM by_customer) AS top_per_customer_band, (SELECT per_customer FROM by_customer) AS top_per_customer_amount, (SELECT buyers FROM by_customer) AS top_per_customer_band_customers",
+     "purpose": "age bands by total and per-customer spend"
+    }
+   },
+   {
+    "answer": {
+     "text": "From October to December 2025, the {{value:top_total_band}} age band spent the most in total ({{value:top_total_band_spend}}), and the {{value:top_per_customer_band}} band spent the most per customer ({{value:top_per_customer_amount}} across {{value:top_per_customer_band_customers}} customers) [{{evidence:top_total_band}}]. Bands are 5-year age bands. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC). Scope: your permitted products only.",
+     "cite": [
+      "top_total_band"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "How did monthly revenue develop from July to December 2025?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "SELECT SUM(CASE WHEN ordered_date >= DATE '2025-07-01' AND ordered_date < DATE '2025-08-01' THEN sale_amount ELSE 0 END) AS revenue_month_1, SUM(CASE WHEN ordered_date >= DATE '2025-08-01' AND ordered_date < DATE '2025-09-01' THEN sale_amount ELSE 0 END) AS revenue_month_2, SUM(CASE WHEN ordered_date >= DATE '2025-09-01' AND ordered_date < DATE '2025-10-01' THEN sale_amount ELSE 0 END) AS revenue_month_3, SUM(CASE WHEN ordered_date >= DATE '2025-10-01' AND ordered_date < DATE '2025-11-01' THEN sale_amount ELSE 0 END) AS revenue_month_4, SUM(CASE WHEN ordered_date >= DATE '2025-11-01' AND ordered_date < DATE '2025-12-01' THEN sale_amount ELSE 0 END) AS revenue_month_5, SUM(CASE WHEN ordered_date >= DATE '2025-12-01' AND ordered_date < DATE '2026-01-01' THEN sale_amount ELSE 0 END) AS revenue_month_6 FROM sales_items WHERE item_status = 'Complete' AND ordered_date >= DATE '2025-07-01' AND ordered_date < DATE '2026-01-01'",
+     "purpose": "monthly revenue July to December 2025"
+    }
+   },
+   {
+    "answer": {
+     "text": "Monthly revenue, July to December 2025: July {{value:revenue_month_1}}, August {{value:revenue_month_2}}, September {{value:revenue_month_3}}, October {{value:revenue_month_4}}, November {{value:revenue_month_5}}, December {{value:revenue_month_6}} [{{evidence:revenue_month_1}}]. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC). Scope: your permitted products only.",
+     "cite": [
+      "revenue_month_1"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "Which month was the strongest, and by how much did the fourth quarter beat the third?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "WITH m AS (SELECT EXTRACT(MONTH FROM ordered_date) - 6 AS month_index, SUM(sale_amount) AS spend FROM sales_items WHERE item_status = 'Complete' AND ordered_date >= DATE '2025-07-01' AND ordered_date < DATE '2026-01-01' GROUP BY month_index) SELECT (SELECT month_index FROM m ORDER BY spend DESC LIMIT 1) AS best_month_index, (SELECT SUM(spend) FROM m WHERE month_index <= 3) AS third_quarter_revenue, (SELECT SUM(spend) FROM m WHERE month_index > 3) AS fourth_quarter_revenue, (SELECT SUM(spend) FROM m WHERE month_index > 3) - (SELECT SUM(spend) FROM m WHERE month_index <= 3) AS quarter_change",
+     "purpose": "strongest month and quarter comparison"
+    }
+   },
+   {
+    "answer": {
+     "text": "The strongest month was month {{value:best_month_index}} of the period (counting July as 1). The fourth quarter brought {{value:fourth_quarter_revenue}} against {{value:third_quarter_revenue}} in the third, {{value:quarter_change}} more [{{evidence:quarter_change}}]. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC). Scope: your permitted products only.",
+     "cite": [
+      "quarter_change"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "How concentrated is our customer spend in the fourth quarter of 2025? What share of revenue comes from our ten biggest customers?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "WITH spend AS (SELECT customer_ref, SUM(sale_amount) AS amount FROM sales_items WHERE item_status = 'Complete' AND ordered_date >= DATE '2025-10-01' AND ordered_date < DATE '2026-01-01' GROUP BY customer_ref), top10 AS (SELECT amount FROM spend ORDER BY amount DESC LIMIT 10) SELECT (SELECT COUNT(*) FROM spend) AS customers_total, (SELECT SUM(amount) FROM spend) AS total_revenue, (SELECT SUM(amount) FROM top10) AS top10_revenue, SAFE_DIVIDE((SELECT SUM(amount) FROM top10), (SELECT SUM(amount) FROM spend)) AS top10_share, SAFE_DIVIDE((SELECT MAX(amount) FROM spend), (SELECT SUM(amount) FROM spend)) AS top1_share",
+     "purpose": "customer concentration in Q4 2025"
+    }
+   },
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "SELECT customer_ref, SUM(sale_amount) AS spend FROM sales_items WHERE item_status = 'Complete' AND ordered_date >= DATE '2025-10-01' AND ordered_date < DATE '2026-01-01' GROUP BY customer_ref ORDER BY spend DESC LIMIT 3",
+     "purpose": "largest customers in Q4 2025"
+    }
+   },
+   {
+    "answer": {
+     "text": "In the fourth quarter of 2025, {{value:customers_total}} customers generated {{value:total_revenue}}. The ten biggest customers accounted for {{value:top10_revenue}}, a share of {{value:top10_share}}; the largest alone {{value:top1_share}}. The largest customers, by opaque reference: {{value:customer_ref#0}} ({{value:spend#0}}), {{value:customer_ref#1}} ({{value:spend#1}}) [{{evidence:top10_share}}, {{evidence:spend}}]. Spend is spread thinly. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC).",
+     "cite": [
+      "top10_share",
+      "spend"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "Put that in a short summary with what we should keep an eye on.": [
+   {
+    "call": "save_report",
+    "args": {
+     "title": "Customer concentration, Q4 2025",
+     "summary": "Customer spend in the fourth quarter of 2025 is spread thinly: the ten biggest customers account for a share of {{value:top10_share}}.",
+     "findings": [
+      {
+       "text": "{{value:customers_total}} customers generated {{value:total_revenue}}; the top ten accounted for {{value:top10_revenue}} (share {{value:top10_share}}) and the largest for a share of {{value:top1_share}}.",
+       "evidence_ids": [
+        "{{evidence:top10_share}}"
+       ]
+      }
+     ],
+     "definitions": [
+      "Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC).",
+      "Scope: your permitted products only."
+     ],
+     "limitations": [
+      "Statuses are current values; later returns can change the figures."
+     ],
+     "action_items": [
+      {
+       "text": "Track the top-ten share each quarter to spot rising dependence on a few customers.",
+       "based_on": [
+        "{{evidence:top10_share}}"
+       ]
+      },
+      {
+       "text": "Focus retention work on broad repeat purchasing rather than a few large accounts.",
+       "based_on": [
+        "{{evidence:top10_share}}"
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "answer": {
+     "text": "I saved the summary report \"Customer concentration, Q4 2025\" with the finding, its definition and two things to keep an eye on [{{evidence:top10_share}}].",
+     "cite": [
+      "top10_share"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "How did revenue change from the third to the fourth quarter of 2025?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "SELECT SUM(CASE WHEN ordered_date >= DATE '2025-07-01' AND ordered_date < DATE '2025-10-01' THEN sale_amount ELSE 0 END) AS third_quarter_revenue, SUM(CASE WHEN ordered_date >= DATE '2025-10-01' AND ordered_date < DATE '2026-01-01' THEN sale_amount ELSE 0 END) AS fourth_quarter_revenue, SUM(CASE WHEN ordered_date >= DATE '2025-10-01' AND ordered_date < DATE '2026-01-01' THEN sale_amount ELSE 0 END) - SUM(CASE WHEN ordered_date >= DATE '2025-07-01' AND ordered_date < DATE '2025-10-01' THEN sale_amount ELSE 0 END) AS revenue_change FROM sales_items WHERE item_status = 'Complete' AND ordered_date >= DATE '2025-07-01' AND ordered_date < DATE '2026-01-01'",
+     "purpose": "Q3 versus Q4 2025 revenue"
+    }
+   },
+   {
+    "answer": {
+     "text": "Revenue was {{value:third_quarter_revenue}} in the third quarter and {{value:fourth_quarter_revenue}} in the fourth quarter of 2025, a change of {{value:revenue_change}} [{{evidence:revenue_change}}]. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC). Scope: your permitted products only.",
+     "cite": [
+      "revenue_change"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "Which product categories contributed most to that change?": [
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "SELECT p.category, SUM(CASE WHEN s.ordered_date >= DATE '2025-10-01' AND s.ordered_date < DATE '2026-01-01' THEN s.sale_amount ELSE 0 END) - SUM(CASE WHEN s.ordered_date >= DATE '2025-07-01' AND s.ordered_date < DATE '2025-10-01' THEN s.sale_amount ELSE 0 END) AS category_change FROM sales_items AS s JOIN products AS p ON p.product_id = s.product_id WHERE s.item_status = 'Complete' AND s.ordered_date >= DATE '2025-07-01' AND s.ordered_date < DATE '2026-01-01' GROUP BY p.category ORDER BY category_change DESC",
+     "purpose": "change by category"
+    }
+   },
+   {
+    "call": "execute_analysis",
+    "args": {
+     "sql": "WITH d AS (SELECT p.category, SUM(CASE WHEN s.ordered_date >= DATE '2025-10-01' AND s.ordered_date < DATE '2026-01-01' THEN s.sale_amount ELSE 0 END) - SUM(CASE WHEN s.ordered_date >= DATE '2025-07-01' AND s.ordered_date < DATE '2025-10-01' THEN s.sale_amount ELSE 0 END) AS delta FROM sales_items AS s JOIN products AS p ON p.product_id = s.product_id WHERE s.item_status = 'Complete' AND s.ordered_date >= DATE '2025-07-01' AND s.ordered_date < DATE '2026-01-01' GROUP BY p.category), g1 AS (SELECT category, delta FROM d ORDER BY delta DESC LIMIT 1), g2 AS (SELECT category, delta FROM d WHERE delta < (SELECT delta FROM g1) ORDER BY delta DESC LIMIT 1), w AS (SELECT category, delta FROM d ORDER BY delta ASC LIMIT 1) SELECT (SELECT category FROM g1) AS largest_gain_category, (SELECT delta FROM g1) AS largest_gain_amount, (SELECT category FROM g2) AS second_gain_category, (SELECT delta FROM g2) AS second_gain_amount, (SELECT category FROM w) AS weakest_category, (SELECT delta FROM w) AS weakest_amount",
+     "purpose": "largest category contributors"
+    }
+   },
+   {
+    "answer": {
+     "text": "The largest positive contributors were {{value:largest_gain_category}} (+{{value:largest_gain_amount}}) and {{value:second_gain_category}} (+{{value:second_gain_amount}}); the weakest was {{value:weakest_category}} ({{value:weakest_amount}}) [{{evidence:largest_gain_category}}, {{evidence:category_change}}]. These are measured contributors, not established causes. Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC).",
+     "cite": [
+      "largest_gain_category",
+      "category_change"
+     ],
+     "complete": true
+    }
+   }
+  ],
+  "Write that up as a short report with recommended next steps.": [
+   {
+    "call": "save_report",
+    "args": {
+     "title": "Revenue change from Q3 to Q4 2025 by category",
+     "summary": "Revenue moved from {{value:third_quarter_revenue}} in the third to {{value:fourth_quarter_revenue}} in the fourth quarter of 2025, with offsetting category movements.",
+     "findings": [
+      {
+       "text": "Revenue changed by {{value:revenue_change}} between the quarters.",
+       "evidence_ids": [
+        "{{evidence:revenue_change}}"
+       ]
+      },
+      {
+       "text": "{{value:largest_gain_category}} (+{{value:largest_gain_amount}}) and {{value:second_gain_category}} (+{{value:second_gain_amount}}) contributed most positively; {{value:weakest_category}} ({{value:weakest_amount}}) contributed most negatively.",
+       "evidence_ids": [
+        "{{evidence:largest_gain_category}}",
+        "{{evidence:category_change}}"
+       ]
+      }
+     ],
+     "definitions": [
+      "Definition: revenue counts only items whose status is exactly 'Complete' (completed item sales), dated by the order date (orders.created_at, UTC).",
+      "Scope: your permitted products only."
+     ],
+     "limitations": [
+      "Contributors are measured movements, not established causes.",
+      "Statuses are current values and can change after returns."
+     ],
+     "action_items": [
+      {
+       "text": "Review the assortment and pricing of {{value:weakest_category}} for the next season.",
+       "based_on": [
+        "{{evidence:largest_gain_category}}"
+       ]
+      },
+      {
+       "text": "Check stock depth for {{value:largest_gain_category}} to support continued demand.",
+       "based_on": [
+        "{{evidence:largest_gain_category}}"
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "answer": {
+     "text": "I saved the report \"Revenue change from Q3 to Q4 2025 by category\" with findings, definitions, limitations and two recommended next steps [{{evidence:revenue_change}}, {{evidence:largest_gain_category}}].",
+     "cite": [
+      "revenue_change",
+      "largest_gain_category"
+     ],
+     "complete": true
+    }
+   }
+  ]
+ }
+}

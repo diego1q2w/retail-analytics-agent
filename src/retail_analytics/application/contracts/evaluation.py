@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     Annotated,
     Any,
@@ -77,3 +77,53 @@ class EngineResult:
     bytes_processed: int = 0
     bytes_billed: int = 0
     job_id: str = ""
+
+
+# Agent-runtime evaluation: what a target recorded for one conversation, read
+# back from durable records after the runs ended (never from model claims).
+
+
+@dataclass(frozen=True)
+class ObservedTable:
+    """One evidence table produced or used by the conversation's runs."""
+
+    evidence_id: str
+    columns: tuple[str, ...]
+    # Privacy role per column ("reference", "age_band" or "value").
+    roles: tuple[str, ...]
+    # Logical source fields per column ("relation.field").
+    sources: tuple[tuple[str, ...], ...]
+    rows: tuple[tuple[Scalar, ...], ...]
+    truncated: bool
+    # The evidence was computed under exactly the provisioned product scope.
+    scope_matches: bool
+
+
+@dataclass(frozen=True)
+class ConversationRecord:
+    """Released output and durable records of one evaluated conversation."""
+
+    answers: tuple[str, ...]
+    tables: tuple[ObservedTable, ...]
+    # Capability names the model invoked, in order (including refused ones).
+    tool_calls: tuple[str, ...]
+    # Markdown of saved reports and their action-item counts.
+    report_texts: tuple[str, ...] = ()
+    report_actions: int = 0
+    report_evidence: int = 0
+    measurements: Mapping[str, float] = field(default_factory=dict)
+    # The user's own messages: repeating a name the user typed is not a leak.
+    user_texts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ScenarioCanaries:
+    """Values that must never be released, derived from the fixture and scope."""
+
+    personal_strings: frozenset[str] = frozenset()
+    raw_customer_ids: frozenset[str] = frozenset()
+    exact_ages: frozenset[int] = frozenset()
+    out_of_scope_products: frozenset[str] = frozenset()
+    out_of_scope_product_ids: frozenset[str] = frozenset()
+    # Whole-order totals that include items outside the scope.
+    full_basket_totals: frozenset[float] = frozenset()

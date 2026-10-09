@@ -23,19 +23,46 @@ from retail_analytics.application.investigations import (
     InvestigationControl,
     InvestigationLauncher,
 )
+from retail_analytics.application.ports.currency_conversion import (
+    ExchangeRateProvider,
+)
 from retail_analytics.application.ports.investigations import InvestigationScheduler
 from retail_analytics.application.query_execution import QueryExecutionService
+from retail_analytics.application.retrieval import GoldenRetriever
 from retail_analytics.application.tool_runner import ToolRunner
 from retail_analytics.application.tools import CapabilityRegistry, CapabilitySpec
 from retail_analytics.bootstrap.access import AccessServices
+from retail_analytics.bootstrap.artifacts import ArtifactServices
 from retail_analytics.bootstrap.budgets import build_run_budgets
 from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.context import build_context
+from retail_analytics.bootstrap.currency import build_currency_conversion
 from retail_analytics.bootstrap.evidence import build_evidence
 from retail_analytics.bootstrap.persistence import Persistence
 from retail_analytics.bootstrap.preferences import build_preferences
+from retail_analytics.bootstrap.report_deletion import build_report_deletion
+from retail_analytics.bootstrap.reports import build_reports
 from retail_analytics.capabilities.analysis import analysis_capability
+from retail_analytics.capabilities.currency import currency_capability
 from retail_analytics.capabilities.discovery import discovery_capabilities
+from retail_analytics.capabilities.preferences import preference_capabilities
+from retail_analytics.capabilities.report_deletion import report_deletion_capability
+from retail_analytics.capabilities.reports import report_capabilities
+from retail_analytics.capabilities.retrieval import retrieval_capability
+from retail_analytics.domain.logical_catalog import default_logical_catalog
+from retail_analytics.domain.metrics import default_catalog
+
+
+def golden_applicability() -> tuple[str, dict[str, int]]:
+    """Schema label and exact metric versions the running catalogs serve.
+
+    Golden examples are delivered only when written for exactly these.
+    """
+    metrics = default_catalog()
+    return (
+        f"logical-catalog/{default_logical_catalog().version}",
+        {m: metrics.latest_version(m) for m in sorted(metrics.metric_ids())},
+    )
 
 
 @dataclass(frozen=True)
@@ -58,7 +85,19 @@ def build_investigations(
     discovery: DiscoveryService | None = None,
     queries: QueryExecutionService | None = None,
     registry: CapabilityRegistry | None = None,
+    artifacts: ArtifactServices | None = None,
+    retriever: GoldenRetriever | None = None,
+    exchange_rates: ExchangeRateProvider | None = None,
 ) -> InvestigationServices:
+    """Wire the runtime and its permission-filtered tool catalog.
+
+    Registered when their services are supplied: discovery (``discovery``),
+    guarded queries (``queries``), Golden methods (``retriever``) and saved
+    reports with deletion proposals (``artifacts``). Preferences and currency
+    conversion are always registered; ``exchange_rates`` replaces the
+    configured rate provider (offline runs). ``registry`` replaces the whole
+    catalog (tests).
+    """
     db = Database(persistence.engine)
     principals = PostgresRunPrincipals(db)
     inputs = PostgresInvestigationInputs(db)
@@ -79,6 +118,43 @@ def build_investigations(
                     preferences=preferences,
                     budgets=budgets,
                     operations=persistence.tool_executions,
+                )
+            )
+        specs.extend(
+            preference_capabilities(
+                preferences, principals=principals, inputs=inputs, gate=context.gate
+            )
+        )
+        specs.append(
+            currency_capability(
+                build_currency_conversion(
+                    settings, evidence, persistence.preferences, rates=exchange_rates
+                )
+            )
+        )
+        if retriever is not None:
+            schema_version, metric_versions = golden_applicability()
+            specs.append(
+                retrieval_capability(
+                    retriever,
+                    schema_version=schema_version,
+                    metric_versions=metric_versions,
+                )
+            )
+        if artifacts is not None:
+            reports = build_reports(
+                persistence,
+                artifacts.service,
+                evidence,
+                context.gate,
+                access.resolver,
+            )
+            specs.extend(
+                report_capabilities(reports, principals=principals, evidence=evidence)
+            )
+            specs.append(
+                report_deletion_capability(
+                    build_report_deletion(persistence, access.resolver)
                 )
             )
         registry = CapabilityRegistry(specs)

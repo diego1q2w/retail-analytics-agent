@@ -79,6 +79,19 @@ _CORRECTABLE = frozenset(
     }
 )
 _ACCESS = "This data is not available to you."
+# What the restricted compiler accepts; stated up front so the model does not
+# spend correction attempts discovering it.
+SQL_DIALECT_NOTE = (
+    "Allowed: WITH (CTEs), JOIN on the declared joins, WHERE, GROUP BY, HAVING, "
+    "ORDER BY, LIMIT, DISTINCT, scalar subqueries, CASE/IF, + - *, SUM, AVG, "
+    "MIN, MAX, COUNT, COUNTIF, COALESCE, NULLIF, ABS, ROUND, LOWER, UPPER, "
+    "DATE_TRUNC, EXTRACT, DATE_ADD, DATE_SUB, DATE_DIFF, CAST, IN, BETWEEN, "
+    "LIKE, EXISTS. Not allowed: the / operator (use SAFE_DIVIDE(a, b)), window "
+    "functions (OVER; use ORDER BY ... LIMIT in a CTE or a scalar subquery), "
+    "SELECT * (COUNT(*) is fine). Give tables aliases and qualify columns "
+    "(s.product_id) when joining. Pass literal values as named @parameters "
+    "or DATE 'YYYY-MM-DD' literals."
+)
 _CANCELLED = "The query was cancelled and produced no result."
 _RECONCILING = "The query is being stopped; its outcome is being confirmed."
 
@@ -89,7 +102,7 @@ class ExecuteAnalysisInput(ToolInput):
         max_length=20_000,
         description=(
             "One SELECT over the permitted relations (see list_relations and "
-            "describe_relation). Pass literal values as named @parameters."
+            "describe_relation). " + SQL_DIALECT_NOTE
         ),
     )
     parameters: dict[ParameterName, AnalysisValue] = Field(
@@ -281,6 +294,7 @@ def _latest_query(
 
 
 __all__ = [
+    "SQL_DIALECT_NOTE",
     "ExecuteAnalysisInput",
     "ExecuteAnalysisOutput",
     "analysis_capability",

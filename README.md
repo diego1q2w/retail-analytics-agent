@@ -121,6 +121,25 @@ retail-analytics-eval summary evaluation-results/run.json
 - Results (`schema_version` 1, `application/evaluation/results.py`) keep deterministic checks, judge scores and operational measurements in separate sections, state every denominator (null ratio when zero), record manifest digest and model/config/prompt/persona/metric/policy/dataset/retrieval/corpus versions, and store no raw text: strings appear as digests and the writer refuses output that looks like PII or a credential. Identical inputs give byte-identical files and the same `verdict_digest`; `recorded_at` appears only with `--timestamp`.
 - Result files are local artifacts (`evaluation-results/` is ignored).
 
+#### Agent runtime target
+
+`retail_analytics.bootstrap.agent_evaluation` provides the `agent_runtime` target: every scenario runs as real investigations (Temporal workflow, guarded model steps, permission-filtered tools, compiler, result privacy boundary, evidence, reports and the output gate) against an offline DuckDB warehouse instead of BigQuery. It needs the local PostgreSQL (migrated) and Temporal from your settings; if they are unreachable every case is `blocked`. Each scenario gets its own evaluation executive (stable per scenario, so opaque references are reproducible) and a new session.
+
+```sh
+retail-analytics-eval run --manifest evaluation/heldout/manifest.json \
+  --target retail_analytics.bootstrap.agent_evaluation:heldout_scripted \
+  --capability agent_runtime --out evaluation-results/heldout-scripted.json
+retail-analytics-eval run --manifest evaluation/realdata/manifest.json \
+  --target retail_analytics.bootstrap.agent_evaluation:realdata_scripted \
+  --capability agent_runtime --capability frozen_extract_source \
+  --out evaluation-results/realdata-scripted.json
+```
+
+- `heldout_*` answers from the synthetic held-out fixture; `realdata_*` from the frozen real-data extract (`frozen_extract_source`). Live BigQuery is never scored against frozen values.
+- `*_scripted` plays reviewed plans (`evaluation/agent-scripts/*.json`, some deliberately adversarial) instead of a model. It measures the runtime and its guards under a known plan, not model planning quality; report it as scripted. `*_live` uses the configured provider chain and counts against provider quotas.
+- Values are read from released evidence (single-row results by column name). Safety flags come from evidence, released text and tool calls against fixture canaries; report-element flags (definition disclosed, contributors, causal wording, partial periods) are textual heuristics until a judge scores those dimensions.
+- The DuckDB oracle rewrites `GROUP BY <output name>` to positions because DuckDB, unlike BigQuery, does not resolve an ambiguous name to the SELECT alias.
+
 ### Golden retrieval benchmark
 
 `python -m retail_analytics.bootstrap.retrieval_eval` measures precision@k, recall@k, MRR, nDCG, no-match behavior and access violations for keyword-only, semantic-only and fused retrieval on labeled questions with separate tuning and held-out splits. Labels, corpus, method, measured results and limits are in `evaluation/retrieval/README.md`. It uses the runner's manifest and result format.

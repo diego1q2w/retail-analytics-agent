@@ -21,9 +21,30 @@ Gemini primary / GPT backup chain with discovery and guarded query execution;
 see [model providers](model-providers.md).
 
 `bootstrap.investigations.build_investigations` composes the application
-services. An integration can supply discovery, guarded query execution and a
-provider model; the composition root registers `list_relations`,
-`describe_relation` and `execute_analysis` when their services are supplied.
+services and one permission-filtered tool catalog (the same small set on every
+model step; nothing depends on an investigation stage):
+
+- `list_relations`, `describe_relation` (with discovery) and
+  `execute_analysis` (with guarded query execution);
+- `find_analysis_examples` (with a Golden retriever): up to three reviewed
+  methods delivered through the knowledge reader for the running catalog
+  (`logical-catalog/<n>`) and exact metric versions; illustrative report
+  figures are never returned;
+- `inspect_preferences`, `remember_preference`, `forget_preference`,
+  `confirm_preference`, `decline_preference`: memory passes the output gate
+  (destination MEMORY) before it is saved, and an inferred preference is
+  confirmed only after a later user message than the proposal;
+- `save_report`, `read_report`, `list_reports`, `search_reports`,
+  `export_report` and `propose_report_deletion` (with artifact storage):
+  saving passes the gate (REPORT) and links the cited evidence to the run;
+  deletion is only proposed, the user confirms in the application;
+- `convert_currency`, with its declared-currency disclosure.
+
+The model instructions treat the five analytical steps as guidelines, group
+products by ID, date order figures by `orders.created_at`, report
+contributors rather than causes, and disclose definitions and limitations. An
+answer that cites a truncated result is recorded as partial even if the model
+claims it is complete.
 Tests supply a controlled provider and an external-effect fixture, while still
 using real PostgreSQL, Temporal and all application guards.
 
