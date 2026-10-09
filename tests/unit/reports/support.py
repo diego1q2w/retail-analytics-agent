@@ -41,7 +41,7 @@ PRODUCT_ROWS: tuple[tuple[object, ...], ...] = (
 
 
 class ReportWorld(World):
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, declared_currency: str | None = None) -> None:
         super().__init__()
         self.repository = FakeReportRepository(self.clock)
         self.catalog = MemoryCatalog()
@@ -59,6 +59,7 @@ class ReportWorld(World):
             default_catalog(),
             self.store,
             self.preference_store,
+            declared_currency=declared_currency,
         )
         self._counter = 0
 
@@ -72,6 +73,7 @@ class ReportWorld(World):
         rows: tuple[tuple[object, ...], ...] = PRODUCT_ROWS,
         principal: Principal = A,
         analysis: AnalysisStamp | None = None,
+        notes: tuple[tuple[str, str], ...] = (),
     ) -> Evidence:
         ctx = await self.resolver.context_for_run(principal, run_id)
         content = EvidenceContent(
@@ -85,7 +87,7 @@ class ReportWorld(World):
                 preference_fingerprint=FINGERPRINT,
                 period=DateWindow(date(2026, 9, 1), date(2026, 10, 1)),
             ),
-            provenance=Provenance(notes=(("source", "fixture"),)),
+            provenance=Provenance(notes=(("source", "fixture"), *notes)),
             table=EvidenceTable(
                 columns=PRODUCT_COLUMNS,
                 rows=rows,  # type: ignore[arg-type]

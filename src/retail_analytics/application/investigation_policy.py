@@ -267,6 +267,14 @@ def _analytical_rules(tools: frozenset[str]) -> str:
             "Amounts stay in the source currency; you cannot convert "
             "currencies for this user."
         )
+    rules.append(
+        "Never write a currency symbol ($, €, £, ¥). Write amounts as plain "
+        "numbers and say 'source currency, not verified' unless the amounts "
+        "were converted; then use the ISO code the conversion reports. A "
+        "currency the operator declared may be written only as '<CODE> "
+        "(declared by the operator, not independently verified)'. A saved "
+        "report that shows an unsupported currency is rejected."
+    )
     return "Analytical rules:\n" + "\n".join(f"- {rule}" for rule in rules)
 
 

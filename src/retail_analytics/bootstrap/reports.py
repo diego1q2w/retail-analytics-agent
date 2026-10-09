@@ -24,6 +24,7 @@ def build_reports(
     resolver: AccessResolver,
     *,
     metrics: MetricCatalog | None = None,
+    declared_currency: str | None = None,
 ) -> ReportService:
     """``gate`` is ``build_context(...).gate``; ``artifacts`` is
     ``build_artifacts(...).service``."""
@@ -37,4 +38,5 @@ def build_reports(
         metrics or default_catalog(),
         PostgresProductScopeSnapshots(db),
         persistence.preferences,
+        declared_currency=declared_currency,
     )

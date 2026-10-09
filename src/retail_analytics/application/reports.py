@@ -106,6 +106,10 @@ from retail_analytics.application.ports.reports import ReportRepository
 from retail_analytics.application.result_privacy import PRIVACY_POLICY_VERSION
 from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.artifacts import MARKDOWN
+from retail_analytics.domain.currency import (
+    DECLARED_QUALIFIER,
+    unsupported_currency_marks,
+)
 from retail_analytics.domain.evidence import (
     AnalysisCompatibility,
     DefinitionRef,
@@ -226,6 +230,7 @@ class ReportService:
         preferences: PreferenceStore,
         *,
         catalog_version: int | None = None,
+        declared_currency: str | None = None,
     ) -> None:
         self._repository = repository
         self._artifacts = artifacts
@@ -242,6 +247,7 @@ class ReportService:
         self._scopes = scopes
         self._rule = ReportAccessRule(scopes)
         self._preferences = preferences
+        self._declared_currency = declared_currency
 
     # --- create ---------------------------------------------------------------
 
@@ -298,6 +304,7 @@ class ReportService:
 
         cited = draft.cited_evidence
         records = await self._evidence.owned_records(owner, cited)
+        _require_supported_currency(draft, records, self._declared_currency)
         # Fresh authority check immediately before anything is written: the
         # gate re-resolves access and which evidence is usable right now.
         released = await self._gate.check(
@@ -613,6 +620,38 @@ class ReportService:
             owner, record.report_id, record.artifact_version
         )
         return record, content.content.decode(), evidence
+
+
+def _supported_currency_codes(records: Sequence[Evidence]) -> set[str]:
+    """Display currencies of cited conversions. The source currency is never
+    listed: an unconverted amount has no verified code to show."""
+    return {
+        value
+        for record in records
+        for key, value in record.content.provenance.notes
+        if key == "display_currency" and value
+    }
+
+
+def _require_supported_currency(
+    draft: ReportDraft, records: Sequence[Evidence], declared: str | None
+) -> None:
+    marks = unsupported_currency_marks(
+        draft.texts(), _supported_currency_codes(records), declared
+    )
+    if marks:
+        allowed = (
+            f"{declared} only as '{declared} ({DECLARED_QUALIFIER})', or an ISO "
+            "code from a cited conversion"
+            if declared
+            else "an ISO code only from a cited conversion"
+        )
+        raise ReportError(
+            ReportErrorCode.INVALID_DRAFT,
+            "the report shows a currency (" + ", ".join(marks) + ") its evidence "
+            "does not support. Write amounts without a symbol; say 'source "
+            f"currency not verified' for unconverted amounts; allowed: {allowed}.",
+        )
 
 
 def _clamp(value: int, low: int, high: int) -> int:

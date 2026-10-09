@@ -325,3 +325,71 @@ async def test_saving_requires_the_own_report_read_permission(w: ReportWorld) ->
         both, run, draft(evidence.evidence_id), operation_id=w.op()
     )
     assert result.version.version == 1
+
+
+async def _save_with_text(w: ReportWorld, summary: str, **evidence_kw):  # type: ignore[no-untyped-def]
+    run = w.new_run()
+    evidence = await w.product_evidence(run, **evidence_kw)
+    report = replace(draft(evidence.evidence_id), summary=summary)
+    return await w.reports.create(A, run, report, operation_id=w.op())
+
+
+@pytest.mark.parametrize("text", ["Revenue was $1,200.", "Revenue was 1,200 USD."])
+async def test_unverified_currency_report_rejects_symbols_and_codes(
+    w: ReportWorld, text: str
+) -> None:
+    with pytest.raises(ReportError) as error:
+        await _save_with_text(w, text)
+    assert error.value.code is ReportErrorCode.INVALID_DRAFT
+    assert "not verified" in error.value.message
+
+
+async def test_unverified_currency_report_without_a_mark_is_saved(
+    w: ReportWorld,
+) -> None:
+    saved_report = await _save_with_text(
+        w, "Revenue was 1,200 (source currency, not verified)."
+    )
+    assert "$" not in str(saved_report.version.title)
+
+
+async def test_converted_currency_keeps_its_code_but_not_a_symbol(
+    w: ReportWorld,
+) -> None:
+    notes = (("kind", "currency_conversion"), ("display_currency", "EUR"))
+    await _save_with_text(w, "Revenue was EUR 1,100.", notes=notes)
+    with pytest.raises(ReportError):
+        await _save_with_text(w, "Revenue was €1,100.", notes=notes)
+    with pytest.raises(ReportError):
+        await _save_with_text(w, "Revenue was USD 1,200.", notes=notes)
+
+
+QUALIFIED = "USD (declared by the operator, not independently verified)"
+
+
+async def test_declared_currency_allows_only_that_qualified_code(
+    tmp_path: Path,
+) -> None:
+    w = ReportWorld(tmp_path / "artifacts", declared_currency="USD")
+    await _save_with_text(w, f"Revenue was {QUALIFIED} 1,200.")
+    for text in (
+        "Revenue was USD 1,200.",
+        f"Revenue was {QUALIFIED} 1,200 and EUR 1,100.",
+        "Revenue was $1,200 (declared by the operator, not independently verified).",
+    ):
+        with pytest.raises(ReportError) as error:
+            await _save_with_text(w, text)
+        assert "declared by the operator" in error.value.message
+
+
+async def test_usd_without_a_declaration_is_rejected(w: ReportWorld) -> None:
+    with pytest.raises(ReportError):
+        await _save_with_text(w, f"Revenue was {QUALIFIED} 1,200.")
+
+
+async def test_declaration_does_not_block_converted_target_currency(
+    tmp_path: Path,
+) -> None:
+    w = ReportWorld(tmp_path / "artifacts", declared_currency="USD")
+    notes = (("kind", "currency_conversion"), ("display_currency", "EUR"))
+    await _save_with_text(w, "Revenue was EUR 1,100.", notes=notes)

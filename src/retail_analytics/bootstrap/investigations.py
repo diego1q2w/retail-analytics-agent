@@ -149,6 +149,7 @@ def build_capability_registry(
             evidence,
             context.gate,
             access.resolver,
+            declared_currency=settings.source_currency_declared,
         )
         specs.extend(
             report_capabilities(

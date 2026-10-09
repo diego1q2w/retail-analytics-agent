@@ -426,7 +426,12 @@ class AgentRuntimeTarget:
             persistence, access, evidence, build_preferences(persistence, access)
         )
         reports = build_reports(
-            persistence, artifacts.service, evidence, context.gate, access.resolver
+            persistence,
+            artifacts.service,
+            evidence,
+            context.gate,
+            access.resolver,
+            declared_currency=self.settings.source_currency_declared,
         )
         self._harness = _Harness(
             persistence, access, services, reports, evidence, task, manager
