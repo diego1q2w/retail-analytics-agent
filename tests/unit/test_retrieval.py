@@ -498,3 +498,65 @@ async def test_retrieved_examples_pass_the_context_screen(
     clean = [e for e in result.examples if e.ref != legacy.ref]
     assert clean and clean[0].question == CORPUS["revenue"][0]
     assert clean[0].method_summary == CORPUS["revenue"][1]
+
+
+def test_live_defaults_to_gemini_and_fixture_to_hashing() -> None:
+    from retail_analytics.bootstrap.config import load_backend_settings
+
+    assert (
+        load_backend_settings(
+            environ={"APP_MODE": "fixture"}, env_file=None
+        ).embedding_provider
+        == "hashing"
+    )
+    settings = load_backend_settings(
+        environ={"APP_MODE": "fixture", "EMBEDDING_PROVIDER": "gemini"}, env_file=None
+    )
+    assert settings.embedding_provider == "gemini"
+    base = {
+        "APP_MODE": "live",
+        "APP_DATABASE_URL": "postgresql://x/y",
+        "BIGQUERY_PROJECT": "p",
+        "GEMINI_API_KEY": "k",
+        "AUTH_SIGNING_KEY": "k" * 32,
+    }
+    live = load_backend_settings(environ=base, env_file=None)
+    assert live.embedding_provider == "gemini"
+    explicit = load_backend_settings(
+        environ={**base, "EMBEDDING_PROVIDER": "hashing"}, env_file=None
+    )
+    assert explicit.embedding_provider == "hashing"
+
+
+def test_live_embedder_needs_key_and_never_falls_back_to_hashing() -> None:
+    from retail_analytics.bootstrap.config import ConfigError, load_backend_settings
+    from retail_analytics.bootstrap.retrieval import build_embedder
+
+    fixture_gemini = load_backend_settings(
+        environ={"APP_MODE": "fixture", "EMBEDDING_PROVIDER": "gemini"}, env_file=None
+    )
+    with pytest.raises(ConfigError):
+        build_embedder(fixture_gemini)
+    with pytest.raises(ConfigError):
+        load_backend_settings(environ={"APP_MODE": "live"}, env_file=None)
+
+
+def test_gemini_defaults_rejected_for_a_different_model_or_dimensions() -> None:
+    from retail_analytics.bootstrap.config import ConfigError, load_backend_settings
+    from retail_analytics.bootstrap.retrieval import retrieval_config
+
+    base = {
+        "APP_MODE": "fixture",
+        "EMBEDDING_PROVIDER": "gemini",
+        "GEMINI_API_KEY": "x",
+    }
+    for extra in ({"EMBEDDING_DIMENSIONS": "512"}, {"EMBEDDING_MODEL": "other-model"}):
+        settings = load_backend_settings(environ={**base, **extra}, env_file=None)
+        with pytest.raises(ConfigError):
+            retrieval_config(settings)
+        both = {
+            "RETRIEVAL_MIN_SIMILARITY": "0.6",
+            "RETRIEVAL_MIN_LEXICAL_COVERAGE": "0.5",
+        }
+        ok = load_backend_settings(environ={**base, **extra, **both}, env_file=None)
+        assert retrieval_config(ok).min_similarity == 0.6

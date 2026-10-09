@@ -13,6 +13,8 @@ from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 from retail_analytics.bootstrap.knowledge import KnowledgeServices
 from retail_analytics.domain.retrieval import (
     LEXICAL_MIN_COVERAGE,
+    MEASURED_EMBEDDING_DIMENSIONS,
+    MEASURED_EMBEDDING_MODEL,
     PLACEHOLDER_MIN_LEXICAL_COVERAGE,
     PLACEHOLDER_MIN_SIMILARITY,
     SEMANTIC_MIN_SIMILARITY,
@@ -36,6 +38,25 @@ def retrieval_config(settings: BackendSettings) -> RetrievalConfig:
     # Cosine scales differ by model: the measured defaults are for Gemini
     # embeddings; the hashing embedder keeps the unmeasured T24 values.
     measured = settings.embedding_provider == "gemini"
+    if (
+        measured
+        and (
+            settings.embedding_model != MEASURED_EMBEDDING_MODEL
+            or settings.embedding_dimensions != MEASURED_EMBEDDING_DIMENSIONS
+        )
+        and (
+            settings.retrieval_min_similarity is None
+            or settings.retrieval_min_lexical_coverage is None
+        )
+    ):
+        raise ConfigError(
+            [
+                "RETRIEVAL_MIN_SIMILARITY and RETRIEVAL_MIN_LEXICAL_COVERAGE: "
+                "the defaults were measured for "
+                f"{MEASURED_EMBEDDING_MODEL} at {MEASURED_EMBEDDING_DIMENSIONS} "
+                "dimensions; set both for another model or dimension count"
+            ]
+        )
     similarity = settings.retrieval_min_similarity
     if similarity is None:
         similarity = SEMANTIC_MIN_SIMILARITY if measured else PLACEHOLDER_MIN_SIMILARITY

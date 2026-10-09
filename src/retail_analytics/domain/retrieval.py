@@ -32,6 +32,8 @@ _STOPWORDS = frozenset(
 
 
 # T36-F1 measured defaults (gemini-embedding-2, 768 dimensions; tuning split).
+MEASURED_EMBEDDING_MODEL = "gemini-embedding-2"
+MEASURED_EMBEDDING_DIMENSIONS = 768
 SEMANTIC_MIN_SIMILARITY = 0.70
 LEXICAL_MIN_COVERAGE = 0.75
 SEMANTIC_WEIGHT = 2.0

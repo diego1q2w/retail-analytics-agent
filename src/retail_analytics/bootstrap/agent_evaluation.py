@@ -364,6 +364,8 @@ class AgentRuntimeTarget:
             update={
                 "bigquery_project": EVALUATION_PROJECT,
                 "reference_key": SecretStr(EVALUATION_REFERENCE_KEY),
+                # The scripted evaluation retriever is offline by design.
+                "embedding_provider": "hashing",
             }
         )
         warehouse = self.source.warehouse

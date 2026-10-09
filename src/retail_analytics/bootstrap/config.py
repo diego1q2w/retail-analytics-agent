@@ -44,6 +44,7 @@ from pydantic import (
     Field,
     SecretStr,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -165,8 +166,13 @@ class BackendSettings(BaseModel):
     # or model), requests skip it for this long and use the backup.
     model_primary_cooldown_seconds: int = Field(default=60, ge=0, le=3600)
     model_max_output_tokens: int = Field(default=8192, ge=256, le=65536)
-    # Golden retrieval: "hashing" is the offline deterministic embedder.
-    embedding_provider: Literal["hashing", "gemini"] = "hashing"
+    # Golden retrieval: "hashing" is the offline deterministic embedder. Unset:
+    # gemini in live mode (the provider the thresholds were measured with),
+    # hashing in fixture mode. Live mode never substitutes hashing on its own.
+    embedding_provider: Literal["hashing", "gemini"] = Field(
+        default=None,
+        validate_default=True,
+    )
     embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = Field(default=768, ge=128, le=3072)
     # Exchange rates (ECB reference rates through Frankfurter; no API key).
@@ -221,6 +227,14 @@ class BackendSettings(BaseModel):
     # Master key for opaque customer/order/item references. Unset: references
     # are unavailable and queries needing them fail closed.
     reference_key: SecretStr | None = None
+
+    @field_validator("embedding_provider", mode="before")
+    @classmethod
+    def _default_embedding_provider(cls, value: object, info: ValidationInfo) -> object:
+        if value in (None, ""):
+            fixture = info.data.get("mode") is RuntimeMode.FIXTURE
+            return "hashing" if fixture else "gemini"
+        return value
 
     @field_validator("source_currency_declared")
     @classmethod
