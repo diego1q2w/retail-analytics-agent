@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
 
+from retail_analytics.adapters.sql_compiler import SqlglotGrainAudit
 from retail_analytics.application.authorization import (
     AccessResolver,
     OwnershipGuard,
@@ -19,8 +20,10 @@ from retail_analytics.application.authorization import (
 from retail_analytics.application.context import ContextBuilder
 from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.contracts.context import TopicReset
+from retail_analytics.application.contracts.evidence import NewEvidence
 from retail_analytics.application.contracts.tools import OperationContext
 from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.application.evidence_privacy import EvidencePrivacyScreen
 from retail_analytics.application.output_privacy import OutputPrivacyGate
 from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.application.result_privacy import ReleasedResult
@@ -31,13 +34,16 @@ from retail_analytics.domain.conversation import Message, MessageRole
 from retail_analytics.domain.disclosure import ProtectedTerm
 from retail_analytics.domain.evidence import (
     AnalysisStamp,
+    AuthorityStamp,
     Evidence,
+    EvidenceCell,
     EvidenceColumn,
     EvidenceContent,
     EvidenceKind,
     EvidenceTable,
     Provenance,
     ReusePolicy,
+    content_digest,
 )
 from retail_analytics.domain.metrics import default_catalog
 from retail_analytics.domain.runs import RunStatus
@@ -123,6 +129,8 @@ class World:
             clock=self.clock,
             new_id=Ids(prefix=id_prefix),
             policy=ReusePolicy(),
+            # As wired in production: legacy records are re-audited.
+            privacy=EvidencePrivacyScreen(audit=SqlglotGrainAudit()),
         )
         self.directory = Directory()
         self.directory.by_id = {
@@ -237,7 +245,7 @@ class World:
             subject_key=f"x:{next(self._ops)}",
             analysis=AnalysisStamp(
                 catalog_version=1,
-                policy_version=1,
+                policy_version=2,
                 definitions=frozenset(),
                 preference_fingerprint=FINGERPRINT,
             ),
@@ -253,6 +261,59 @@ class World:
         )
         return await self.evidence.record(
             OperationContext(ctx, f"op{next(self._ops)}"), content
+        )
+
+    async def legacy(
+        self,
+        run_id: str,
+        *,
+        sql: str | None,
+        columns: tuple[EvidenceColumn, ...],
+        rows: tuple[tuple[EvidenceCell, ...], ...],
+        relations: tuple[str, ...] = ("customers",),
+        kind: EvidenceKind = EvidenceKind.QUERY,
+        derived_from: tuple[str, ...] = (),
+        principal: Principal = A,
+    ) -> Evidence:
+        """A record as stored before demographics became aggregate-only
+        (result policy version 1), written straight to the store."""
+        ctx = await self.resolver.context_for_run(principal, run_id)
+        n = next(self._ops)
+        query = kind is EvidenceKind.QUERY
+        content = EvidenceContent(
+            kind=kind,
+            subject_key=f"q:legacy-{n}",
+            analysis=AnalysisStamp(
+                catalog_version=1,
+                policy_version=1,
+                definitions=frozenset(),
+                preference_fingerprint=FINGERPRINT,
+            ),
+            provenance=Provenance(
+                logical_sql=sql,
+                relations=relations,
+                executed_query_digest="0" * 64,
+            )
+            if query
+            else Provenance(notes=(("kind", "currency_conversion"),)),
+            table=EvidenceTable(columns=columns, rows=rows, received_rows=len(rows)),
+            grain=(),
+            derived_from=derived_from,
+        )
+        when = self.clock()
+        return await self.store.record(
+            NewEvidence(
+                evidence_id=f"evdlegacy{n}",
+                executive_id=ctx.executive_id,
+                session_id=ctx.correlation.session_id,
+                run_id=run_id,
+                operation_id=f"op{n}",
+                authority=AuthorityStamp.of(ctx.product_scope),
+                content=content,
+                computed_at=when,
+                content_digest=content_digest(content, when),
+                scope_products=ctx.product_scope.product_ids,
+            )
         )
 
     def say(

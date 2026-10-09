@@ -39,8 +39,9 @@ async def test_positive_demographic_answer_with_permitted_reference_is_released(
     evidence, released = await w.query(r1)
     ref = references_of(released)[0]
     text = (
-        f"Women aged 35-39 in CA (US) led spend at 1,234.50; {ref} (band 25-29, "
-        "Texas) bought twice. Revenue means completed item sales, in USD, UTC."
+        f"Women aged 35-39 in CA (US) led spend at 1,234.50; customers aged 25-29 "
+        f"in Texas followed; {ref} bought twice. Revenue means completed item "
+        "sales, in USD, UTC."
     )
     (out,) = await w.gate.check(A, r1, [section(text, evidence.evidence_id)], REPORT)
     assert out.text == text and out.masked == () and out.masked_spans == 0

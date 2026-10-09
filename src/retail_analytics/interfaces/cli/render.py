@@ -325,6 +325,14 @@ def format_sessions(sessions: list[JsonObject]) -> str:
 # --- reports ---
 
 
+_HIDDEN_TITLE = {
+    "privacy_withdrawn": (
+        "(hidden: cites individual customer demographics, which are now shown "
+        "only as group-level statistics)"
+    ),
+}
+
+
 def format_report_list(reports: list[JsonObject]) -> str:
     if not reports:
         return "No saved reports."
@@ -335,7 +343,10 @@ def format_report_list(reports: list[JsonObject]) -> str:
             one_line(r.get("created_at", ""))[:10],
             one_line(r["title"])
             if r.get("title") is not None
-            else "(hidden: your product access changed since it was saved)",
+            else _HIDDEN_TITLE.get(
+                str(r.get("access")),
+                "(hidden: your product access changed since it was saved)",
+            ),
         )
         for r in reports
     ]
@@ -359,7 +370,7 @@ def format_report_search(result: JsonObject) -> str:
     if result.get("withheld"):
         notes.append(
             f"{result['withheld']} report(s) were not searched because your product "
-            "access changed since they were saved"
+            "access or the privacy rules changed since they were saved"
         )
     if result.get("scan_limited"):
         notes.append("only your most recent reports were searched")

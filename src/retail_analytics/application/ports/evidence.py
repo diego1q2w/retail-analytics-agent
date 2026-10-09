@@ -149,3 +149,16 @@ class ProductScopeSnapshots(Protocol):
         """The given digests whose recorded set is a subset of ``scope``'s
         products. Unknown digests are never covered."""
         ...
+
+
+class QueryGrainAudit(Protocol):
+    """Re-checks a stored logical query against the current demographic rule.
+
+    Used for evidence recorded before demographics became aggregate-only.
+    """
+
+    def aggregate_only(self, logical_sql: str) -> bool:
+        """True only when the query provably uses customer demographics as
+        group-level statistics (no identity grain, targeting or identity
+        output). Anything unparsable or unverifiable is False."""
+        ...

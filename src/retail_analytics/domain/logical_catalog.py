@@ -32,6 +32,13 @@ _ORDERS = "orders"
 _PRODUCTS = "products"
 _USERS = "users"
 
+# Demographics are aggregate-only: the compiler rejects any query that would
+# show them for one customer, order or item (see domain.privacy).
+_GROUP_ONLY = (
+    "{}; group-level statistics only (group by it and aggregate; never "
+    "with customer/order/item references or for one customer)."
+)
+
 
 def _col(table: str, column: str, accepted: frozenset[SourceType]) -> SourceColumnRef:
     return SourceColumnRef(table, column, accepted)
@@ -44,9 +51,16 @@ def _direct(
     source: SourceColumnRef,
     *,
     essential: bool = False,
+    demographic: bool = False,
 ) -> FieldDefinition:
     return FieldDefinition(
-        name, type_, description, Derivation.DIRECT, (source,), essential
+        name,
+        type_,
+        description,
+        Derivation.DIRECT,
+        (source,),
+        essential,
+        demographic,
     )
 
 
@@ -199,7 +213,10 @@ def default_logical_catalog() -> LogicalCatalog:
     )
     customers = RelationDefinition(
         name="customers",
-        description="Customers with purchases in your permitted products.",
+        description=(
+            "Customers with purchases in your permitted products. Demographics "
+            "(country, state, age_band) are for group-level statistics only."
+        ),
         grain="one customer reached through permitted items",
         fields=(
             _ref(
@@ -210,21 +227,24 @@ def default_logical_catalog() -> LogicalCatalog:
             _direct(
                 "country",
                 FieldType.STRING,
-                "Customer country.",
+                _GROUP_ONLY.format("Customer country"),
                 _col(_USERS, "country", _STR),
+                demographic=True,
             ),
             _direct(
                 "state",
                 FieldType.STRING,
-                "Customer state or region.",
+                _GROUP_ONLY.format("Customer state or region"),
                 _col(_USERS, "state", _STR),
+                demographic=True,
             ),
             FieldDefinition(
                 "age_band",
                 FieldType.STRING,
-                "Age band derived by trusted code; exact age is unavailable.",
+                _GROUP_ONLY.format("5-year age band (exact age is unavailable)"),
                 Derivation.AGE_BAND,
                 (_col(_USERS, "age", _INT),),
+                demographic=True,
             ),
         ),
     )

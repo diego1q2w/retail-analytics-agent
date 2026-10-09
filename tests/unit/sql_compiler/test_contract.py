@@ -263,8 +263,8 @@ def test_only_referenced_fields_are_projected() -> None:
 
 
 def test_raw_age_is_read_only_inside_the_age_band_binding() -> None:
-    assert "u.age" not in compile_sql("SELECT state FROM customers").sql
-    banded = compile_sql("SELECT age_band FROM customers").sql
+    assert "u.age" not in compile_sql("SELECT DISTINCT state FROM customers").sql
+    banded = compile_sql("SELECT DISTINCT age_band FROM customers").sql
     assert "u.age" in banded
     for forbidden in ("email", "first_name", "last_name", "street_address", "city"):
         assert forbidden not in banded
@@ -274,7 +274,7 @@ def test_privacy_derivations_fail_closed_without_an_implementation() -> None:
     plain = SqlglotQueryCompiler(DATASET)
     for query in (
         "SELECT customer_ref FROM customers",
-        "SELECT age_band FROM customers",
+        "SELECT age_band, COUNT(*) AS n FROM customers GROUP BY age_band",
         "SELECT COUNT(DISTINCT order_ref) AS n FROM sales_items",
         "SELECT s.sale_amount FROM sales_items s JOIN orders o "
         "ON s.order_ref = o.order_ref",

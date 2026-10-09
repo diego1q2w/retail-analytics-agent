@@ -65,8 +65,10 @@ noted, every commit reachable from `HEAD` (77 commits).
   "benchmark artifacts are intact and reproduce from the frozen extract"
   (digests, expected values and the privacy scan).
 
-Pseudonymous references plus demographics are not a guarantee of
-anonymity (see [known limitations](../architecture/known-limitations.md)).
+Customer demographics are released only as group-level statistics (no
+minimum group size); pseudonymous references never accompany them. This is
+not a guarantee of anonymity (see
+[known limitations](../architecture/known-limitations.md)).
 
 ### Frozen extract: redistribution terms (OPEN, blocks public release)
 

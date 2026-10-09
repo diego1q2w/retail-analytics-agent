@@ -128,6 +128,9 @@ class FieldDefinition:
     sources: tuple[SourceColumnRef, ...]
     # Without an essential field the relation cannot be used at all.
     essential: bool = False
+    # A customer demographic (for example state or age band): usable only in
+    # group-level statistics, never next to or about one customer, order or item.
+    demographic: bool = False
 
     def __post_init__(self) -> None:
         if not self.name or not self.description.strip() or not self.sources:
@@ -138,6 +141,8 @@ class FieldDefinition:
             s.accepted <= _COMPATIBLE_SOURCE_TYPES[self.type] for s in self.sources
         ):
             raise CatalogError(f"{self.name}: source types do not fit {self.type}")
+        if self.demographic and self.derivation is Derivation.OPAQUE_REFERENCE:
+            raise CatalogError(f"{self.name}: a reference cannot be a demographic")
 
     def _check_source(self, source: SourceColumnRef) -> None:
         column = source.column
@@ -336,6 +341,12 @@ class FieldView:
     description: str
     derivation: Derivation
     sources: tuple[SourceColumnRef, ...]
+    demographic: bool = False
+
+    @property
+    def is_identity(self) -> bool:
+        """An opaque reference to one customer, order or item."""
+        return self.derivation is Derivation.OPAQUE_REFERENCE
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,7 +423,14 @@ def _relation_view(relation: RelationDefinition, health: CatalogHealth) -> Relat
         )
 
     fields = tuple(
-        FieldView(f.name, f.type, f.description, f.derivation, f.sources)
+        FieldView(
+            f.name,
+            f.type,
+            f.description,
+            f.derivation,
+            f.sources,
+            demographic=f.demographic,
+        )
         for f in relation.fields
         if enabled(relation.name, f.name)
     )

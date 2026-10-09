@@ -77,11 +77,10 @@ RUN = "run-1"
 OP = "op-0001"
 PRINCIPAL = Principal(EXEC_A, frozenset({"analysis:read"}))
 TOP_CUSTOMERS = (
-    "SELECT s.customer_ref AS customer, c.state AS region, c.age_band AS band, "
-    "SUM(s.sale_amount) AS completed_sales "
+    "SELECT s.customer_ref AS customer, SUM(s.sale_amount) AS completed_sales "
     "FROM sales_items s JOIN customers c ON s.customer_ref = c.customer_ref "
     "WHERE s.item_status = @status "
-    "GROUP BY customer, region, band "
+    "GROUP BY customer "
     "ORDER BY completed_sales DESC LIMIT 10"
 )
 VALUES = {"status": "Complete"}

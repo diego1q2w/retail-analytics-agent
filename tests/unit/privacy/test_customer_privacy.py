@@ -47,11 +47,10 @@ from tests.unit.privacy.support import (
 from tests.unit.sql_compiler.support import DATASET, scope, view
 
 TOP_CUSTOMERS = (
-    "SELECT s.customer_ref AS customer, c.state AS region, c.age_band AS band, "
-    "SUM(s.sale_amount) AS completed_sales "
+    "SELECT s.customer_ref AS customer, SUM(s.sale_amount) AS completed_sales "
     "FROM sales_items s JOIN customers c ON s.customer_ref = c.customer_ref "
     "WHERE s.item_status = 'Complete' "
-    "GROUP BY customer, region, band "
+    "GROUP BY customer "
     "ORDER BY completed_sales DESC LIMIT 10"
 )
 
@@ -70,37 +69,33 @@ def test_top_customers_are_useful_without_identifiers(db: Connection) -> None:
     result = released(db, EXEC_A, TOP_CUSTOMERS)
 
     assert result.rows == (
-        (ref(EXEC_A, "customer_ref", 30), "CA", "25-29", 45.0),
-        (ref(EXEC_A, "customer_ref", 10), "CA", "25-29", 40.0),
-        (ref(EXEC_A, "customer_ref", 40), "TX", "90+", 12.0),
-        (ref(EXEC_A, "customer_ref", 50), "NY", None, 5.0),
+        (ref(EXEC_A, "customer_ref", 30), 45.0),
+        (ref(EXEC_A, "customer_ref", 10), 40.0),
+        (ref(EXEC_A, "customer_ref", 40), 12.0),
+        (ref(EXEC_A, "customer_ref", 50), 5.0),
     )
     roles = {c.name: c.role for c in result.columns}
     assert roles == {
         "customer": ColumnRole.REFERENCE,
-        "region": ColumnRole.VALUE,
-        "band": ColumnRole.AGE_BAND,
         "completed_sales": ColumnRole.VALUE,
     }
     assert result.truncation is None and result.masked_cells == 0
     assert_no_pii(result, raw_ids=(10, 30, 40, 50))
 
 
-def test_individual_customer_detail_includes_demographics(db: Connection) -> None:
-    result = released(
-        db,
-        EXEC_A,
-        "SELECT customer_ref, country, state, age_band FROM customers "
-        "ORDER BY state, customer_ref",
-    )
-    assert sorted(result.rows, key=lambda r: str(r[0])) == sorted(
-        [
-            (ref(EXEC_A, "customer_ref", 10), "US", "CA", "25-29"),
-            (ref(EXEC_A, "customer_ref", 30), "US", "CA", "25-29"),
-            (ref(EXEC_A, "customer_ref", 50), "US", "NY", None),
-            (ref(EXEC_A, "customer_ref", 40), "US", "TX", "90+"),
-        ],
-        key=lambda r: str(r[0]),
+def test_individual_customer_detail_excludes_demographics(db: Connection) -> None:
+    # Aggregate-only demographics (T09-F1): a per-customer profile is refused;
+    # the opaque references themselves stay available.
+    with pytest.raises(QueryRejected) as caught:
+        compile_for(
+            EXEC_A,
+            "SELECT customer_ref, country, state, age_band FROM customers",
+            SCOPE_A,
+        )
+    assert caught.value.reason == "individual_demographics"
+    result = released(db, EXEC_A, "SELECT customer_ref FROM customers")
+    assert sorted(cells(result)) == sorted(
+        ref(EXEC_A, "customer_ref", n) for n in (10, 30, 40, 50)
     )
     assert_no_pii(result, raw_ids=(10, 30, 40, 50))
 
@@ -156,11 +151,13 @@ def test_references_join_consistently_across_relations(db: Connection) -> None:
     result = released(
         db,
         EXEC_A,
-        "SELECT o.order_ref, c.age_band, o.visible_item_count FROM orders o "
+        "SELECT o.order_ref, c.customer_ref, o.visible_item_count FROM orders o "
         "JOIN customers c ON o.customer_ref = c.customer_ref "
         "WHERE o.ordered_date = DATE '2026-09-10'",
     )
-    assert result.rows == ((ref(EXEC_A, "order_ref", 100), "25-29", 1),)
+    assert result.rows == (
+        (ref(EXEC_A, "order_ref", 100), ref(EXEC_A, "customer_ref", 10), 1),
+    )
 
 
 # --- drill-down by reference ----------------------------------------------------------
@@ -303,10 +300,11 @@ def test_exact_age_identifiers_and_raw_keys_are_rejected(sql: str) -> None:
 AGE_PROBES = [
     "SELECT age_band, COUNT(*) AS n FROM customers GROUP BY age_band ORDER BY age_band",
     "SELECT MIN(age_band) AS lo, MAX(age_band) AS hi FROM customers",
-    "SELECT customer_ref, age_band FROM customers ORDER BY age_band, customer_ref",
+    "SELECT age_band, COUNT(DISTINCT customer_ref) AS n FROM customers "
+    "GROUP BY age_band ORDER BY age_band",
     "SELECT COUNT(*) AS n FROM customers WHERE age_band LIKE '2%'",
-    "SELECT customer_ref FROM customers WHERE age_band > '26' ORDER BY customer_ref",
-    "SELECT customer_ref FROM customers WHERE age_band BETWEEN '27' AND '28'",
+    "SELECT COUNT(DISTINCT customer_ref) AS n FROM customers WHERE age_band > '26'",
+    "SELECT COUNT(*) AS n FROM customers WHERE age_band BETWEEN '27' AND '28'",
     "SELECT LOWER(age_band) AS b, COUNT(*) AS n FROM customers GROUP BY 1 ORDER BY 1",
     "SELECT c.state, CASE WHEN c.age_band IN ('25-29', '30-34') THEN 'young' "
     "ELSE 'other' END AS seg, SUM(s.sale_amount) AS total FROM sales_items s "
@@ -364,11 +362,10 @@ def test_age_band_cells_are_well_formed(db: Connection) -> None:
         rows = released(
             db,
             EXEC_A,
-            "SELECT customer_ref, age_band FROM customers WHERE customer_ref = @c",
-            values={"c": ref(EXEC_A, "customer_ref", 10)},
+            "SELECT age_band, COUNT(*) AS n FROM customers GROUP BY age_band",
         ).rows
-        (band,) = [r[1] for r in rows]
-        assert is_age_band(band), (age, band)
+        bands = [r[0] for r in rows if r[0] is not None]
+        assert bands and all(is_age_band(b) for b in bands), (age, bands)
 
 
 # --- configuration and secrets --------------------------------------------------------
@@ -410,4 +407,4 @@ def test_key_material_stays_out_of_model_facing_values(db: Connection) -> None:
 
 def test_released_reference_columns_hold_only_references(db: Connection) -> None:
     result = released(db, EXEC_A, TOP_CUSTOMERS)
-    assert all(is_reference(c, "customer_ref") for c in cells(result)[::4])
+    assert all(is_reference(c, "customer_ref") for c in cells(result)[::2])

@@ -298,7 +298,9 @@ def test_reports_list_search_show_and_export(tmp_path: Path) -> None:
     assert "rep1" in listed.output and "your product access changed" in listed.output
     found = invoke(backend, "reports", "search", "revenue")
     assert "matched in content" in found.output
-    assert "not searched because your product access changed" in found.output
+    assert (
+        "not searched because your product access or the privacy rules" in found.output
+    )
     shown = invoke(backend, "reports", "show", "rep1")
     assert shown.exit_code == 0
     assert "TRUNCATED" in shown.output and "\x1b" not in shown.output

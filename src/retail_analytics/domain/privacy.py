@@ -1,12 +1,16 @@
 """Customer-data privacy policy: opaque references and age bands.
 
-Accepted policy: direct identifiers (names, contact details, addresses, raw
-customer/order/item keys) never reach the model; customers are explored through
-opaque references; demographics (country, state, age band) are allowed for
-individuals and populations with no minimum group size; exact ages are never
-available. This is an interpretation of the requirements, not an anonymity
-claim: references are pseudonyms and demographic combinations can still single
-people out.
+Policy: direct identifiers (names, contact details, addresses, raw
+customer/order/item keys) never reach the model; customer purchase behaviour is
+explored through opaque references; demographics (country, state, age band) are
+available ONLY as group-level statistics, never for one customer, order or item
+(confirmed client requirement; pseudonymous references do not make an
+individual demographic profile acceptable). The compiler's grain check
+(``adapters.sql_compiler.grain``) and the result boundary enforce it. There is
+no minimum group size: a naturally small group, even of one customer, is a
+group statistic, while selecting people by reference or rank is refused. This
+is not an anonymity claim: fine group-by combinations can still describe very
+few people.
 
 Opaque references
     Keyed HMAC-SHA256 of ``<kind>:<raw key>``, under a key derived per

@@ -82,7 +82,7 @@ class ReportWorld(World):
             analysis=analysis
             or AnalysisStamp(
                 catalog_version=1,
-                policy_version=1,
+                policy_version=2,
                 definitions=frozenset({REVENUE}),
                 preference_fingerprint=FINGERPRINT,
                 period=DateWindow(date(2026, 9, 1), date(2026, 10, 1)),

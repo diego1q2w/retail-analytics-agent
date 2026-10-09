@@ -33,7 +33,13 @@ from retail_analytics.domain.operations import ToolErrorCode
 from tests.unit.privacy.support import BOUNDARY, EXEC_A, SCOPE_A, compile_for, ref
 from tests.unit.sql_compiler.support import view
 
-DETAIL = "SELECT customer_ref, state, age_band FROM customers"
+# Demographics are aggregate-only, so a reference and an age band never share
+# a result: role checks use one group-level and one reference-only query.
+DETAIL = (
+    "SELECT state, age_band, COUNT(DISTINCT customer_ref) AS n FROM customers "
+    "GROUP BY state, age_band"
+)
+REFS = "SELECT customer_ref FROM customers"
 CUSTOMER = ref(EXEC_A, "customer_ref", 10)
 
 
@@ -71,32 +77,31 @@ def _withheld(
 
 
 def test_valid_rows_are_released_with_roles() -> None:
-    result = _release([(CUSTOMER, "CA", "25-29"), (None, None, None)])
-    assert result.rows == ((CUSTOMER, "CA", "25-29"), (None, None, None))
+    result = _release([("CA", "25-29", 2), (None, None, 0)])
+    assert result.rows == (("CA", "25-29", 2), (None, None, 0))
     assert [c.role for c in result.columns] == [
-        ColumnRole.REFERENCE,
         ColumnRole.VALUE,
         ColumnRole.AGE_BAND,
+        ColumnRole.VALUE,
     ]
-    assert result.records()[0] == {
-        "customer_ref": CUSTOMER,
-        "state": "CA",
-        "age_band": "25-29",
-    }
-    assert result.policy_version == 1
+    assert result.records()[0] == {"state": "CA", "age_band": "25-29", "n": 2}
+    assert result.policy_version == 2
     assert "CA" not in repr(result)
+    refs = _release([(CUSTOMER,), (None,)], REFS)
+    assert [c.role for c in refs.columns] == [ColumnRole.REFERENCE]
+    assert refs.rows == ((CUSTOMER,), (None,))
 
 
 @pytest.mark.parametrize("leak", ["10", 10, "ord_" + "a" * 24, "cus_123", "Alice"])
 def test_reference_column_with_a_non_reference_is_withheld(leak: object) -> None:
-    _withheld(ToolErrorCode.INTERNAL_ERROR, "invalid_reference", [(leak, "CA", None)])
+    _withheld(ToolErrorCode.INTERNAL_ERROR, "invalid_reference", [(leak,)], REFS)
 
 
 @pytest.mark.parametrize("leak", ["27", 27, "25-28", "26-30", "85+", "under 30"])
 def test_age_band_column_with_an_exact_or_off_grid_age_is_withheld(
     leak: object,
 ) -> None:
-    _withheld(ToolErrorCode.INTERNAL_ERROR, "invalid_age_band", [(None, "CA", leak)])
+    _withheld(ToolErrorCode.INTERNAL_ERROR, "invalid_age_band", [("CA", leak, 1)])
 
 
 def test_reference_check_follows_lineage_through_aliases_and_ctes() -> None:
@@ -147,11 +152,11 @@ def test_scalar_types_pass_and_nan_becomes_null() -> None:
 
 def test_result_shape_must_match_the_compiled_outputs() -> None:
     compiled = _compiled()
-    for columns in (("customer_ref", "state"), ("state", "customer_ref", "age_band")):
+    for columns in (("state", "n"), ("n", "state", "age_band")):
         with pytest.raises(ResultWithheld) as caught:
             BOUNDARY.release(compiled, QueryRows(columns, []), catalog=view())
         assert caught.value.reason == "shape_mismatch"
-    _withheld(ToolErrorCode.INTERNAL_ERROR, "shape_mismatch", [(CUSTOMER, "CA")])
+    _withheld(ToolErrorCode.INTERNAL_ERROR, "shape_mismatch", [("CA", 1)])
     _withheld(ToolErrorCode.INTERNAL_ERROR, "shape_mismatch", ["abc"])
 
 
@@ -160,7 +165,7 @@ def test_stale_authorization_withholds_computed_rows() -> None:
     _withheld(
         ToolErrorCode.ACCESS_DENIED,
         "stale_authorization",
-        [(CUSTOMER, "CA", None)],
+        [("CA", None, 1)],
         catalog=newer,
     )
 
@@ -169,7 +174,7 @@ def test_revoked_access_withholds_computed_rows() -> None:
     _withheld(
         ToolErrorCode.ACCESS_DENIED,
         "no_product_scope",
-        [(CUSTOMER, "CA", None)],
+        [("CA", None, 1)],
         catalog=view(visible=False),
     )
 
@@ -184,11 +189,14 @@ def _without_field(catalog: CatalogView, relation: str, field: str) -> CatalogVi
 
 def test_withdrawn_field_withholds_rows_even_if_unselected() -> None:
     # age_band only filters here, yet its withdrawal still blocks release.
-    sql = "SELECT state FROM customers WHERE age_band = '25-29'"
+    sql = (
+        "SELECT state, COUNT(*) AS n FROM customers WHERE age_band = '25-29' "
+        "GROUP BY state"
+    )
     _withheld(
         ToolErrorCode.FIELD_UNAVAILABLE,
         "catalog_changed",
-        [("CA",)],
+        [("CA", 1)],
         sql,
         catalog=_without_field(view(), "customers", "age_band"),
     )
@@ -215,7 +223,7 @@ def test_field_with_a_forbidden_source_is_withheld() -> None:
     _withheld(
         ToolErrorCode.INTERNAL_ERROR,
         "forbidden_source",
-        [(CUSTOMER, "CA", None)],
+        [("CA", None, 1)],
         catalog=tampered,
     )
 
@@ -243,7 +251,7 @@ def test_byte_limit_truncates_truthfully() -> None:
 
 
 def test_incomplete_source_read_is_reported() -> None:
-    result = _release([(CUSTOMER, "CA", None)], complete=False)
+    result = _release([("CA", None, 1)], complete=False)
     assert result.truncation is TruncationReason.SOURCE
 
 

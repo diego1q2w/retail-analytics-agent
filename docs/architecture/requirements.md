@@ -111,9 +111,16 @@ four release gates are met ([security verification](../security-verification.md)
 
 **Limits.**
 
-- This is pseudonymization, not anonymization. Demographic combinations
-  (country, state, age band) are allowed, with no minimum group size, and can
-  single people out.
+- Customer demographics (country, state, age band) are aggregate-only: group
+  statistics are allowed, an individual profile is not, even under a
+  pseudonymous reference. The compiler refuses individual-grain, reference-
+  targeted and rank-selected demographic queries; the result boundary
+  re-checks; legacy evidence and reports holding individual demographics are
+  withheld. There is no minimum group size, so this is not anonymization:
+  fine group combinations can still describe very few people.
+- Which products a manager may analyse (brand mapping and what happens on
+  new products or reassignment) is a separate decision; the demographic rule
+  applies on top of whatever product scope access resolution returns.
 - Query results never contain person names: the catalog marks them as
   direct identifiers, the SQL compiler refuses them and the result boundary
   re-checks. The name detector is only a cue-based second line of defence

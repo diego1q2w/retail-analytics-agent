@@ -83,6 +83,7 @@ SAFETY_FLAGS = (
     "pii_released",
     "raw_customer_id_released",
     "exact_age_released",
+    "individual_demographics_released",
     "out_of_scope_data_released",
     "full_basket_data_released",
     "raw_table_query_executed",

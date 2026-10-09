@@ -13,6 +13,9 @@ class ReportAccess(StrEnum):
     # The owner's current products no longer cover the version's required
     # scope (or, for a legacy version, differ from it): content is withheld.
     ACCESS_CHANGED = "access_changed"
+    # It cites results computed under an earlier privacy rule that showed
+    # customer demographics individually: content and title are withheld.
+    PRIVACY_WITHDRAWN = "privacy_withdrawn"
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +70,7 @@ class ReportMatch:
 class ReportSearchResult:
     matches: tuple[ReportMatch, ...]
     scanned: int
-    # Owned reports that were not searched because their access changed.
+    # Owned reports not searched: access changed or privacy-withdrawn evidence.
     withheld: int
     # True when more live reports exist than the scan limit covers.
     scan_limited: bool

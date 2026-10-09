@@ -62,6 +62,16 @@ definitions are context for the fields the queries read, not proof the SQL
 implemented them, and a notice never certifies that a metric was applied. The saved
 artifact and version are never modified, and a notice never blocks reading.
 
+Legacy individual-level demographics (T09-F1)
+---------------------------------------------
+Customer demographics are aggregate-only. A version citing evidence that the
+current privacy policy withholds (``EvidenceService.privacy_withdrawn``:
+recorded before the rule and not verifiably group-level) cannot be read,
+exported or searched, and listings show it without its title
+(``PRIVACY_WITHDRAWN``). The saved artifact and evidence are kept unchanged
+(no silent rewrite or purge); the owner re-runs the analysis as group-level
+statistics and saves a new version.
+
 Search
 ------
 Search scans the owner's newest live reports (title, then Markdown content)
@@ -138,6 +148,12 @@ from retail_analytics.domain.reports import (
     ReportVersion,
 )
 
+_PRIVACY_WITHDRAWN = (
+    "This report cites results computed under an earlier privacy rule that "
+    "showed customer demographics for individual customers; they can no "
+    "longer be shown. Re-run the analysis as group-level statistics (for "
+    "example by state or age band) and save a new version."
+)
 _ACCESS_CHANGED = (
     "Your product access no longer covers what this report was based on, so it "
     "cannot be shown. Re-run the analysis to save a new version."
@@ -523,10 +539,11 @@ class ReportService:
         scan_limited = len(rows) > SEARCH_SCAN_LIMIT
         rows = rows[:SEARCH_SCAN_LIMIT]
         readable = await self._rule.readable(scope, [_digests(r) for r in rows])
+        withdrawn = await self._privacy_flags(rows)
         matches: list[ReportMatch] = []
         withheld = 0
-        for row, available in zip(rows, readable, strict=True):
-            if not available:
+        for row, available, private in zip(rows, readable, withdrawn, strict=True):
+            if not available or private:
                 withheld += 1
                 continue
             try:
@@ -577,9 +594,30 @@ class ReportService:
         self, rows: Sequence[ReportVersion], scope: ProductScope
     ) -> tuple[ReportListing, ...]:
         readable = await self._rule.readable(scope, [_digests(r) for r in rows])
+        withdrawn = await self._privacy_flags(rows)
         return tuple(
-            _listing(row, available=ok) for row, ok in zip(rows, readable, strict=True)
+            _listing(row, available=ok, privacy_withdrawn=private)
+            for row, ok, private in zip(rows, readable, withdrawn, strict=True)
         )
+
+    async def _privacy_flags(self, rows: Sequence[ReportVersion]) -> tuple[bool, ...]:
+        """Per version: does it cite evidence the privacy policy withholds?"""
+        flags: list[bool] = []
+        for row in rows:
+            try:
+                records = await self._evidence.owned_records(
+                    row.owner_id, row.evidence_ids
+                )
+            except AccessDenied:
+                flags.append(False)  # reading reports it as unavailable anyway
+                continue
+            withdrawn = False
+            for record in records:
+                if await self._evidence.privacy_withdrawn(record):
+                    withdrawn = True
+                    break
+            flags.append(withdrawn)
+        return tuple(flags)
 
     async def _read_scope(self, principal: Principal) -> ProductScope:
         access = await self._resolver.require_permission(
@@ -615,6 +653,11 @@ class ReportService:
                     if item.is_intact
                     else ReportErrorCode.EVIDENCE_UNAVAILABLE,
                     "The evidence this report cites cannot be shown.",
+                )
+        for item in evidence:
+            if await self._evidence.privacy_withdrawn(item):
+                raise ReportError(
+                    ReportErrorCode.EVIDENCE_UNAVAILABLE, _PRIVACY_WITHDRAWN
                 )
         content = await self._artifacts.read(
             owner, record.report_id, record.artifact_version
@@ -662,15 +705,23 @@ def _digests(record: ReportVersion) -> tuple[str | None, str]:
     return record.required_scope_digest, record.scope_digest
 
 
-def _listing(record: ReportVersion, *, available: bool) -> ReportListing:
+def _listing(
+    record: ReportVersion, *, available: bool, privacy_withdrawn: bool = False
+) -> ReportListing:
+    if not available:
+        access = ReportAccess.ACCESS_CHANGED
+    elif privacy_withdrawn:
+        access = ReportAccess.PRIVACY_WITHDRAWN
+    else:
+        access = ReportAccess.AVAILABLE
     return ReportListing(
         report_id=record.report_id,
         version=record.version,
-        title=record.title if available else None,
+        title=record.title if access is ReportAccess.AVAILABLE else None,
         created_at=record.created_at,
         session_id=record.session_id,
         evidence_count=len(record.evidence_ids),
-        access=ReportAccess.AVAILABLE if available else ReportAccess.ACCESS_CHANGED,
+        access=access,
     )
 
 

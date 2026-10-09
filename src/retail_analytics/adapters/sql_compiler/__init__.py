@@ -8,6 +8,7 @@ from retail_analytics.adapters.sql_compiler.bindings import (
 )
 from retail_analytics.adapters.sql_compiler.compiler import (
     CompilerLimits,
+    SqlglotGrainAudit,
     SqlglotQueryCompiler,
 )
 from retail_analytics.adapters.sql_compiler.derivations import (
@@ -25,6 +26,7 @@ __all__ = [
     "ReferenceKey",
     "ReferenceKeyring",
     "ScopedSqlglotCompilers",
+    "SqlglotGrainAudit",
     "SqlglotQueryCompiler",
     "TrustedDerivations",
     "UnavailableDerivations",

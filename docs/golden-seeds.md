@@ -89,10 +89,14 @@ review history.
 6. Assumptions and limits are honest: current statuses, partial periods, small
    groups, overlapping order counts, scope limits.
 7. Contributors are not presented as causes; hypotheses are marked as such.
-8. Customers appear only as opaque references or aggregates; demographics are not
-   called anonymous; no exact ages or fine location.
+8. Customers appear only as opaque references or aggregates; demographics appear
+   only as group-level statistics, never for one customer, and are not called
+   anonymous; no exact ages or fine location.
 9. Nothing claims author experience or presents the seed as a historical record.
 10. The method would not mislead on a different period, population or scope.
+
+Revision 2 rewrites the demographics seed's guidance for the aggregate-only
+rule; reseeding publishes it and retires revision 1.
 
 Current status: the development reviewer identity `demo-b` published revision 1
 on the strength of the automated checks and this checklist as written. A named

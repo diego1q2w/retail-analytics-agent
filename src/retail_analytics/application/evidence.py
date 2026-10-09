@@ -43,6 +43,14 @@ linked through another valid report, or obtained in the session itself, is
 unaffected. Restoring the report only marks its links for re-validation;
 ``revalidate_report_links`` reinstates those that pass every import check
 again and records the outcome.
+
+Aggregate-only demographics (T09-F1)
+------------------------------------
+Every judgement above also asks ``privacy_withdrawn``: a record computed
+before demographics became aggregate-only that is not verifiably group-level
+(``evidence_privacy.EvidencePrivacyScreen``) is withheld everywhere
+(``PRIVACY_POLICY_WITHDRAWN``, an authority block), and so are records derived
+from it. Records are never rewritten; recomputing gives group-level evidence.
 """
 
 from __future__ import annotations
@@ -71,6 +79,10 @@ from retail_analytics.application.contracts.query_compiler import (
 from retail_analytics.application.contracts.tools import (
     ExecutionContext,
     OperationContext,
+)
+from retail_analytics.application.evidence_privacy import (
+    EvidencePrivacyScreen,
+    PrivacyVerdict,
 )
 from retail_analytics.application.ports.evidence import (
     EvidencePins,
@@ -126,6 +138,9 @@ from retail_analytics.domain.preferences import EffectivePreferences, Preference
 
 # Logical fields a query's rows are dated by (UTC calendar dates).
 DATED_FIELDS = frozenset({"ordered_date"})
+# Derived-evidence chains followed by the privacy screen (deeper: withheld).
+_MAX_DERIVATION_DEPTH = 3
+_MAX_PRIVACY_VERDICTS = 4096
 
 
 class EvidenceRejected(Exception):
@@ -324,11 +339,15 @@ class EvidenceService:
         imports: SessionEvidenceImports | None = None,
         scopes: ProductScopeSnapshots | None = None,
         links: ReuseLinkRevalidation | None = None,
+        privacy: EvidencePrivacyScreen | None = None,
     ) -> None:
         """Without ``imports`` and ``scopes`` evidence is strictly
         session-scoped (report evidence cannot be reused elsewhere). Without
         ``links`` a restored report's withdrawn links are never re-validated
-        (they stay withdrawn; reading the report again re-imports)."""
+        (they stay withdrawn; reading the report again re-imports).
+        ``privacy`` screens records made under an earlier privacy policy;
+        without a query audit, legacy records that read demographics are
+        withheld (fail closed)."""
         self._repository = repository
         self._pins = pins
         self._links = links
@@ -337,6 +356,9 @@ class EvidenceService:
         self._clock = clock
         self._new_id = new_id
         self._policy = policy or ReusePolicy()
+        self._privacy = privacy or EvidencePrivacyScreen()
+        # Verdicts per (record, digest): records are immutable.
+        self._privacy_verdicts: dict[tuple[str, str], bool] = {}
 
     @property
     def policy(self) -> ReusePolicy:
@@ -440,7 +462,7 @@ class EvidenceService:
                     raise EvidenceRejected("input_unavailable")
                 continue
             stored = await self._repository.get(input_id)
-            if stored is None or self._own_block(stored, authority):
+            if stored is None or await self._own_block(stored, authority):
                 raise EvidenceRejected("input_unavailable")
         if refreshes is not None:
             previous = await self._repository.get(refreshes)
@@ -520,6 +542,7 @@ class EvidenceService:
                     now=now,
                     invalidated=candidate.invalidated,
                     source_withdrawn=candidate.source_withdrawn,
+                    privacy_withdrawn=await self.privacy_withdrawn(evidence),
                 )
             if block in (ReuseBlock.NOT_OWNED, ReuseBlock.OTHER_SESSION):
                 # Someone else's record looks exactly like a missing one.
@@ -552,7 +575,9 @@ class EvidenceService:
         stored = await self._repository.candidates(
             authority.executive_id, authority.session_id, limit=limit
         )
-        own = [s.evidence for s in stored if self._own_block(s, authority) is None]
+        own = [
+            s.evidence for s in stored if await self._own_block(s, authority) is None
+        ]
         imported = [
             s.evidence
             for s in await self._imported_standings(authority, limit=limit)
@@ -602,7 +627,8 @@ class EvidenceService:
                     stored.append(found)
                     known.add(evidence_id)
         standings = [
-            EvidenceStanding(s.evidence, self._own_block(s, authority)) for s in stored
+            EvidenceStanding(s.evidence, await self._own_block(s, authority))
+            for s in stored
         ]
         standings += imported
         standings.sort(
@@ -725,13 +751,14 @@ class EvidenceService:
         for stored in found:
             evidence = stored.evidence
             if evidence.session_id == authority.session_id:
-                block = self._own_block(stored, authority)
+                block = await self._own_block(stored, authority)
             else:
                 block = self._policy.imported_block(
                     evidence,
                     authority,
                     covered=evidence.authority.scope_digest in covered,
                     invalidated=stored.invalidated,
+                    privacy_withdrawn=await self.privacy_withdrawn(evidence),
                 )
             block = block or compatibility_block(evidence.content, compatibility)
             if block is not None:
@@ -789,6 +816,7 @@ class EvidenceService:
                     covered=i.evidence.authority.scope_digest in covered,
                     invalidated=i.invalidated,
                     withdrawn=i.withdrawn,
+                    privacy_withdrawn=await self.privacy_withdrawn(i.evidence),
                 ),
                 i.source,
             )
@@ -844,6 +872,7 @@ class EvidenceService:
                     CurrentAuthority(owner_id, link.session_id, scope),
                     covered=stored.evidence.authority.scope_digest in covered,
                     invalidated=stored.invalidated or link.superseded,
+                    privacy_withdrawn=await self.privacy_withdrawn(stored.evidence),
                 )
                 if block is None:
                     if link.session_id not in compatibility:
@@ -863,7 +892,37 @@ class EvidenceService:
             audit_id=self._new_id(),
         )
 
-    def _own_block(
+    async def privacy_withdrawn(self, evidence: Evidence) -> bool:
+        """Whether the current privacy policy withholds this record (legacy
+        individual-level demographics; see ``evidence_privacy``). Derived
+        records are withheld when any input is, or cannot be loaded."""
+        return await self._privacy_withdrawn(evidence, depth=0)
+
+    async def _privacy_withdrawn(self, evidence: Evidence, *, depth: int) -> bool:
+        key = (evidence.evidence_id, evidence.content_digest)
+        known = self._privacy_verdicts.get(key)
+        if known is not None:
+            return known
+        verdict = self._privacy.verdict(evidence)
+        if verdict is PrivacyVerdict.DEPENDS_ON_INPUTS:
+            withdrawn = (
+                depth >= _MAX_DERIVATION_DEPTH or not evidence.content.derived_from
+            )
+            for input_id in evidence.content.derived_from:
+                if withdrawn:
+                    break
+                stored = await self._repository.get(input_id)
+                withdrawn = stored is None or await self._privacy_withdrawn(
+                    stored.evidence, depth=depth + 1
+                )
+        else:
+            withdrawn = verdict is PrivacyVerdict.WITHDRAWN
+        if len(self._privacy_verdicts) >= _MAX_PRIVACY_VERDICTS:
+            self._privacy_verdicts.clear()
+        self._privacy_verdicts[key] = withdrawn
+        return withdrawn
+
+    async def _own_block(
         self, stored: StoredEvidence, authority: CurrentAuthority
     ) -> ReuseBlock | None:
         return self._policy.authority_block(
@@ -871,6 +930,7 @@ class EvidenceService:
             authority,
             invalidated=stored.invalidated,
             source_withdrawn=stored.source_withdrawn,
+            privacy_withdrawn=await self.privacy_withdrawn(stored.evidence),
         )
 
     async def _covered(self, scope: ProductScope, digests: set[str]) -> frozenset[str]:

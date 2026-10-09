@@ -24,8 +24,12 @@ fails closed:
   regenerated instead of being saved with gaps;
 - any failure inside the check withholds the section.
 
-Following the accepted policy, demographics (country, state, age bands) and
-small groups are not blocked; there is no minimum group size.
+Customer demographics are aggregate-only. That rule is enforced where data
+is structured (the SQL compiler and result boundary refuse individual-level
+demographics; legacy evidence that holds them is withheld from every use, so
+answers resting on it are withheld here as ``access_changed``). Text naming a
+state or age band is therefore not blocked by this gate, and small groups are
+not suppressed; there is no minimum group size.
 
 ``redact_for_telemetry`` and ``screen_for_memory`` apply the same detectors
 to traces and to memory promotion.
@@ -122,7 +126,8 @@ class OutputWithheld(Exception):
     _MESSAGES: ClassVar[dict[str, str]] = {
         "unavailable_evidence": "It cites findings that are no longer available",
         ACCESS_CHANGED: (
-            "Your access changed since it was produced, so it can no longer be shown"
+            "Your access or the privacy rules changed since it was produced, so "
+            "it can no longer be shown"
         ),
         "unknown_reference": "It refers to records outside your current access",
         "out_of_scope_figure": "It contains figures outside your current access",

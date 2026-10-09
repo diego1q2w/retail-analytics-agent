@@ -42,10 +42,9 @@ SAMPLE_REF = KEYRING.for_executive("demo-a").reference("customer_ref", 1)
 
 QUERIES: list[tuple[str, dict[str, ScalarValue]]] = [
     (
-        "SELECT s.customer_ref AS customer, c.state AS region, c.age_band AS band, "
-        "SUM(s.sale_amount) AS completed_sales FROM sales_items s "
-        "JOIN customers c ON s.customer_ref = c.customer_ref "
-        "WHERE s.item_status = 'Complete' GROUP BY customer, region, band "
+        "SELECT s.customer_ref AS customer, SUM(s.sale_amount) AS completed_sales "
+        "FROM sales_items s JOIN customers c ON s.customer_ref = c.customer_ref "
+        "WHERE s.item_status = 'Complete' GROUP BY customer "
         "ORDER BY completed_sales DESC LIMIT 10",
         {},
     ),
@@ -60,10 +59,14 @@ QUERIES: list[tuple[str, dict[str, ScalarValue]]] = [
         {"customer": SAMPLE_REF},
     ),
     (
-        "SELECT o.order_ref, o.visible_item_count, c.age_band FROM orders o "
-        "JOIN customers c ON o.customer_ref = c.customer_ref "
-        "WHERE o.customer_ref = @customer",
-        {"customer": SAMPLE_REF},
+        # Aggregate-only demographics: a per-customer step aggregated by band.
+        "WITH per AS (SELECT s.customer_ref AS k, MAX(c.age_band) AS band, "
+        "SUM(s.sale_amount) AS spend FROM sales_items s "
+        "JOIN customers c ON s.customer_ref = c.customer_ref "
+        "GROUP BY s.customer_ref) "
+        "SELECT band, COUNT(*) AS customers, AVG(spend) AS avg_spend "
+        "FROM per GROUP BY band",
+        {},
     ),
     (
         "SELECT CASE WHEN age_band IN ('20-24', '25-29') THEN '20-29' "

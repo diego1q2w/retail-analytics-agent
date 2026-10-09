@@ -25,6 +25,19 @@ class ParameterType(StrEnum):
     DATE = "DATE"
 
 
+class DemographicUse(StrEnum):
+    """How a compiled query uses customer demographics (compiler-verified).
+
+    Demographics are aggregate-only: a query that would show them for one
+    customer, order or item is rejected, so no compiled query is "individual".
+    """
+
+    # No demographic field is read anywhere in the query.
+    NONE = "none"
+    # Demographics reach the result only as group-level statistics.
+    AGGREGATE = "aggregate"
+
+
 @dataclass(frozen=True, slots=True)
 class QueryParameter:
     """One named query parameter. ``array`` values are tuples of ``type``."""
@@ -95,6 +108,9 @@ class CompiledQuery:
     # The one calendar window every dated read is filtered to, derived by the
     # compiler from the query itself; None when there is none or several.
     date_window: DateWindow | None = None
+    # Verified by the compiler's grain check; the result boundary withholds
+    # demographic results unless this says AGGREGATE.
+    demographic_use: DemographicUse = DemographicUse.NONE
 
     @property
     def analysis_parameters(self) -> tuple[QueryParameter, ...]:

@@ -33,6 +33,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from types import MappingProxyType
 from typing import TypeGuard
 
 import sqlglot
@@ -54,10 +55,16 @@ from retail_analytics.adapters.sql_compiler.errors import (
     reject,
     unsupported,
 )
+from retail_analytics.adapters.sql_compiler.grain import (
+    GrainUnverifiable,
+    analyze,
+    demographic_use,
+)
 from retail_analytics.adapters.sql_compiler.grammar import check_grammar, is_reserved
 from retail_analytics.application.contracts.query_compiler import (
     AnalysisQuery,
     CompiledQuery,
+    DemographicUse,
     FieldRef,
     OutputColumn,
     ParameterType,
@@ -70,7 +77,14 @@ from retail_analytics.application.query_compiler import (
     QueryRejected,
 )
 from retail_analytics.domain.access import ProductScope, is_valid_product_id
-from retail_analytics.domain.catalog import CatalogView, FieldType
+from retail_analytics.domain.catalog import (
+    CatalogHealth,
+    CatalogView,
+    FieldType,
+    LogicalCatalog,
+    build_view,
+)
+from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.operations import ToolErrorCode
 from retail_analytics.domain.periods import DateWindow
 
@@ -176,6 +190,7 @@ class SqlglotQueryCompiler:
         _check_columns(tree, scopes, catalog)
         for scope in scopes:
             _check_scope(scope, catalog)
+        demographics = _demographic_use(tree, scopes, catalog)
         outputs = _lineage(tree, scopes)
         window = _date_window(scopes, catalog, values)
         literal_parameters = _parameterize(tree, len(values))
@@ -200,6 +215,7 @@ class SqlglotQueryCompiler:
             entitlement_version=catalog.entitlement_version,
             maximum_bytes_billed=self._limits.maximum_bytes_billed,
             date_window=window,
+            demographic_use=demographics,
         )
 
     def _bind(
@@ -264,6 +280,21 @@ class SqlglotQueryCompiler:
             if (table.catalog, table.db, table.name) not in allowed:
                 raise _internal("emitted SQL references an unknown source")
         return sql
+
+
+def _demographic_use(
+    tree: exp.Select, scopes: list[Scope], catalog: CatalogView
+) -> DemographicUse:
+    try:
+        return demographic_use(tree, scopes, catalog)
+    except GrainUnverifiable:
+        # Fail closed: a structure the grain check cannot follow is refused
+        # whether or not it reads demographics.
+        raise reject(
+            ToolErrorCode.UNSUPPORTED_SQL,
+            "grain_unverifiable",
+            "The query's result grain could not be verified; simplify it",
+        ) from None
 
 
 def _physical_tables(tree: exp.Select) -> list[exp.Table]:
@@ -894,3 +925,35 @@ def _structural_literal(literal: exp.Literal, parent: exp.Expr | None) -> bool:
         isinstance(parent, exp.DateAdd | exp.DateSub)
         and literal.arg_key == "expression"
     )
+
+
+# --- legacy evidence audit -------------------------------------------------------
+
+
+class SqlglotGrainAudit:
+    """``QueryGrainAudit``: re-runs the demographic grain check on a stored
+    logical query (evidence recorded before demographics became
+    aggregate-only). The full reviewed catalog is used, so a field that drift
+    hides today does not make an old query unverifiable."""
+
+    def __init__(self, catalog: LogicalCatalog | None = None) -> None:
+        logical = catalog or default_logical_catalog()
+        health = CatalogHealth(
+            logical.version, (), frozenset(), frozenset(), MappingProxyType({})
+        )
+        self._view = build_view(logical, health, entitlement_version=0, visible=True)
+
+    def aggregate_only(self, logical_sql: str) -> bool:
+        try:
+            statements = sqlglot.parse(
+                logical_sql, read=_DIALECT, error_level=ErrorLevel.RAISE
+            )
+            if len(statements) != 1 or type(statements[0]) is not exp.Select:
+                return False
+            tree = _qualify(statements[0], self._view)
+            scopes = list(traverse_scope(tree))
+            _check_columns(tree, scopes, self._view)
+            facts = analyze(tree, scopes, self._view)
+        except Exception:
+            return False
+        return not (facts.individual or facts.targeted or facts.identity_outputs)

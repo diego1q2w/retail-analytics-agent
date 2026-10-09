@@ -159,15 +159,15 @@ ALLOWED: list[tuple[str, list[tuple[Any, ...]]]] = [
         "ON s.customer_ref = c.customer_ref GROUP BY c.state, c.age_band",
         [("CA", "under 30", 1, 60.0)],
     ),
-    ("SELECT country, state, age_band FROM customers", [("US", "CA", "under 30")]),
     (
-        "SELECT o.order_ref, c.state FROM orders o JOIN customers c "
-        "ON o.customer_ref = c.customer_ref ORDER BY o.order_ref",
-        [
-            ("ref-order_ref-100", "CA"),
-            ("ref-order_ref-101", "CA"),
-            ("ref-order_ref-103", "CA"),
-        ],
+        "SELECT country, state, age_band, COUNT(*) AS n FROM customers "
+        "GROUP BY country, state, age_band",
+        [("US", "CA", "under 30", 1)],
+    ),
+    (
+        "SELECT c.state, COUNT(DISTINCT o.order_ref) AS orders FROM orders o "
+        "JOIN customers c ON o.customer_ref = c.customer_ref GROUP BY c.state",
+        [("CA", 3)],
     ),
     (
         "SELECT p.brand, c.age_band, SUM(s.sale_amount) AS total FROM sales_items s "
@@ -177,11 +177,11 @@ ALLOWED: list[tuple[str, list[tuple[Any, ...]]]] = [
         [("Alpha", "under 30", 60.0)],
     ),
     (
-        "SELECT s.item_ref FROM sales_items s "
+        "SELECT COUNT(DISTINCT s.item_ref) AS items FROM sales_items s "
         "JOIN orders o ON s.order_ref = o.order_ref "
         "JOIN customers c ON o.customer_ref = c.customer_ref "
-        "WHERE c.state = 'CA' AND o.visible_item_count = 1 ORDER BY s.item_ref",
-        [("ref-item_ref-1000",), ("ref-item_ref-1002",), ("ref-item_ref-1004",)],
+        "WHERE c.state = 'CA' AND o.visible_item_count = 1",
+        [(3,)],
     ),
     (
         "SELECT CASE WHEN sale_amount >= 25 THEN 'large' ELSE 'small' END AS size, "
@@ -291,12 +291,12 @@ def test_order_counts_cover_only_permitted_items(db: duckdb.DuckDBPyConnection) 
 def test_customers_are_reached_only_through_permitted_items(
     db: duckdb.DuckDBPyConnection,
 ) -> None:
-    query = "SELECT customer_ref, state FROM customers ORDER BY customer_ref"
-    assert run(db, query, ALICE) == [("ref-customer_ref-10", "CA")]
-    assert run(db, query, BOB) == [
-        ("ref-customer_ref-10", "CA"),
-        ("ref-customer_ref-20", "NY"),
-    ]
+    query = "SELECT customer_ref FROM customers ORDER BY customer_ref"
+    assert run(db, query, ALICE) == [("ref-customer_ref-10",)]
+    assert run(db, query, BOB) == [("ref-customer_ref-10",), ("ref-customer_ref-20",)]
+    states = "SELECT state, COUNT(*) AS n FROM customers GROUP BY state ORDER BY state"
+    assert run(db, states, ALICE) == [("CA", 1)]
+    assert run(db, states, BOB) == [("CA", 1), ("NY", 1)]
 
 
 def test_products_include_unsold_permitted_products_only(

@@ -412,4 +412,8 @@ with earlier assumptions or findings, the later message wins; recompute \
 instead of completing the old interpretation.
 - Never reveal personal data; refer to customers only by opaque references. \
 Exact ages are unavailable; use age bands.
+- Customer demographics (country, state, age_band) are group-level only: \
+group by them and aggregate. Never give a demographic for one customer, \
+order or item (named, referenced or rank-selected such as "the top \
+customer"); decline such requests and offer the group-level breakdown.
 """

@@ -19,9 +19,15 @@ actually came back, with the *current* authority, and fails closed:
 - rows are bounded (operational default 500 rows / 256 KiB) with truthful
   truncation flags.
 
-Following the accepted policy there is no minimum group size: small and
-single-customer groups are released like any other. This is not an anonymity
-guarantee.
+Customer demographics are aggregate-only (policy version 2). When any field
+the query read is a demographic (per the *current* catalog view), the result
+is released only if the compiler verified group-level use
+(``CompiledQuery.demographic_use``), no output column passes a reference
+through and no cell has the shape of an opaque reference; otherwise nothing
+is released (``individual_demographics``). Group-level statistics have no
+minimum group size: a naturally small group, even of one customer, is
+released like any other, so this is not an anonymity guarantee. Selecting
+people by reference or by rank is what the compiler refuses.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from enum import StrEnum
 
 from retail_analytics.application.contracts.query_compiler import (
     CompiledQuery,
+    DemographicUse,
     FieldRef,
 )
 from retail_analytics.application.contracts.result_privacy import (
@@ -53,7 +60,8 @@ from retail_analytics.domain.operations import ToolErrorCode
 from retail_analytics.domain.privacy import is_age_band, is_reference
 from retail_analytics.domain.sensitive_content import Finding, screen_text
 
-PRIVACY_POLICY_VERSION = 1
+# 1: demographics allowed per customer; 2: demographics aggregate-only.
+PRIVACY_POLICY_VERSION = 2
 MASK = "[withheld]"
 DEFAULT_MAX_ROWS = 500
 DEFAULT_MAX_BYTES = 256 * 1024
@@ -155,6 +163,12 @@ class ResultPrivacyBoundary:
         columns = _classify(compiled, catalog)
         if result.columns != tuple(c.name for c in columns):
             raise _withheld(ToolErrorCode.INTERNAL_ERROR, "shape_mismatch")
+        demographic = _reads_demographics(compiled, catalog)
+        if demographic and (
+            compiled.demographic_use is not DemographicUse.AGGREGATE
+            or any(c.role is ColumnRole.REFERENCE for c in columns)
+        ):
+            raise _withheld(ToolErrorCode.UNSUPPORTED_SQL, "individual_demographics")
         rows: list[tuple[Cell, ...]] = []
         masked = 0
         masked_columns: set[str] = set()
@@ -165,6 +179,10 @@ class ResultPrivacyBoundary:
                 truncation = TruncationReason.ROWS
                 break
             row, row_masked = _sanitize_row(raw, columns)
+            if demographic and any(is_reference(cell) for cell in row):
+                raise _withheld(
+                    ToolErrorCode.UNSUPPORTED_SQL, "individual_demographics"
+                )
             size += _row_size(row)
             if size > self._limits.max_bytes:
                 truncation = TruncationReason.BYTES
@@ -196,6 +214,11 @@ def _check_authority(compiled: CompiledQuery, catalog: CatalogView) -> None:
             raise _withheld(ToolErrorCode.FIELD_UNAVAILABLE, "catalog_changed")
     for ref in compiled.fields:
         _published(catalog, ref)
+
+
+def _reads_demographics(compiled: CompiledQuery, catalog: CatalogView) -> bool:
+    """Whether the query read a demographic field anywhere (any clause)."""
+    return any(_published(catalog, ref).demographic for ref in compiled.fields)
 
 
 def _published(catalog: CatalogView, ref: FieldRef) -> FieldView:
@@ -286,6 +309,10 @@ def _withheld(code: ToolErrorCode, reason: str) -> ResultWithheld:
         "no_product_scope": "No product data is available to you",
         "stale_authorization": "Your access changed; the query must be run again",
         "catalog_changed": "A field used by this query is no longer available",
+        "individual_demographics": (
+            "Customer demographics can only be released as group-level "
+            "statistics, never for individual customers, orders or items"
+        ),
     }
     return ResultWithheld(
         code, reason, messages.get(reason, "The result could not be released safely")

@@ -19,6 +19,7 @@ from retail_analytics.application.contracts.tools import (
 )
 from retail_analytics.application.evidence import EvidenceService, QueryBasis
 from retail_analytics.application.result_privacy import (
+    PRIVACY_POLICY_VERSION,
     ReleasedResult,
     ResultLimits,
     ResultPrivacyBoundary,
@@ -97,7 +98,7 @@ def basis(**overrides: Any) -> QueryBasis:
 def requirements(compiled: CompiledQuery, **overrides: Any) -> Requirements:
     values: dict[str, Any] = {
         "catalog_version": compiled.catalog_version,
-        "policy_version": 1,
+        "policy_version": PRIVACY_POLICY_VERSION,
         "preference_fingerprint": FINGERPRINT,
         "definitions": frozenset({REVENUE}),
         "period": SEPTEMBER,

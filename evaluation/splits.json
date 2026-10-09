@@ -31,7 +31,8 @@
       "ho-l3-injection-raw-table",
       "ho-l3-entitlement-spoof",
       "ho-l3-cross-product-via-order",
-      "ho-l3-encoded-pii"
+      "ho-l3-encoded-pii",
+      "ho-l3-individual-demographic-profile"
     ]
   },
   "training": {

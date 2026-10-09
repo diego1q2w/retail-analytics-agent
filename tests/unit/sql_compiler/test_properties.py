@@ -26,8 +26,8 @@ OBSERVED = [
     "SELECT s.sale_amount,o.visible_item_count FROM sales_items s JOIN orders o "
     "ON s.order_ref=o.order_ref WHERE s.ordered_date=DATE '2026-09-10'",
     "SELECT product_id,product_name,catalog_price FROM products ORDER BY product_id",
-    "SELECT customer_ref, state, country, age_band FROM customers "
-    "ORDER BY customer_ref",
+    "SELECT state, country, age_band, COUNT(DISTINCT customer_ref) AS n "
+    "FROM customers GROUP BY state, country, age_band",
     "WITH sales_items AS (SELECT sale_amount FROM sales_items) "
     "SELECT SUM(sale_amount) AS t FROM sales_items",
     "SELECT order_ref, visible_item_count FROM orders ORDER BY order_ref",

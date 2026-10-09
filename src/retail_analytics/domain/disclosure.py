@@ -3,9 +3,10 @@
 Applies the accepted direct-identifier policy to generated text, user text and
 history: names, contact details, identifying addresses/locations, raw customer
 or order keys, exact ages and birth dates are masked or blocked; opaque
-references, demographics (country, state, age bands) and figures are not
-personal data by themselves. Following the accepted policy there is no
-minimum group size.
+references, group-level demographics (country, state, age bands) and figures
+are not personal data by themselves. Demographics are aggregate-only, but that
+rule is enforced on structured results (SQL compiler and result boundary),
+not by these text detectors; there is no minimum group size.
 
 Detectors are deterministic and conservative. Text is first normalized (NFKC,
 format characters removed) so look-alike and zero-width tricks collapse, and

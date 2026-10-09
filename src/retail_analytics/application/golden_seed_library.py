@@ -48,7 +48,8 @@ from retail_analytics.domain.metrics import (
 # running catalog version and each referenced metric version.
 SEED_SCHEMA_VERSION = f"logical-catalog/{CATALOG_VERSION}"
 FIXTURE_ID = "golden-seed-fixture/1"
-SEED_LIBRARY_REVISION = 1
+# 2: demographics are aggregate-only (spend-by-state-and-age-band guidance).
+SEED_LIBRARY_REVISION = 2
 
 SEED_AUTHOR_KEY = "demo-a"
 SEED_REVIEWER_KEY = "demo-b"
@@ -753,14 +754,15 @@ ORDER BY c.age_band""",
         ),
     ),
     summary=(
-        "Demographics are allowed for individuals and populations: use the "
-        "customers relation's country, state and age_band. Exact ages and "
-        "finer location are not available and must not be reconstructed; use "
-        "the bands the catalog provides and group by them as given. Show the "
-        "number of customers behind each figure because small groups are "
-        "noisy, even though no minimum group size is enforced. Do not call "
-        "demographic combinations anonymous, and keep customer references out "
-        "of the report."
+        "Demographics are for group-level statistics only: GROUP BY the "
+        "customers relation's country, state or age_band and aggregate "
+        "measures. Never show a demographic next to a customer, order or item "
+        "reference, for a specific or rank-selected customer, or per row; such "
+        "queries are refused. Exact ages and finer location are not available "
+        "and must not be reconstructed. Show the number of customers behind "
+        "each figure because small groups are noisy, even though no minimum "
+        "group size is enforced. Do not call demographic combinations "
+        "anonymous, and keep customer references out of the report."
     ),
     report_body="""
 ## Question
@@ -799,8 +801,8 @@ Which customer states and age groups spend the most per customer?
 - Customer counts are tiny here; with real data, show group sizes and avoid
   reading much into small ones.
 - This describes who spent, not why. Do not infer motives from age or place.
-- Do not describe these combinations as anonymous and do not drill down to
-  identify individuals.
+- Do not describe these combinations as anonymous. Demographics are
+  group-level only: no drill-down to individual customers.
 """,
     metrics=frozenset(
         {

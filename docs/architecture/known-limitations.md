@@ -56,7 +56,24 @@ verified Gemini result.
   queued-request discard and its notice are two separate writes. See
   [production deployment](production-deployment.md#local-mode-limits-implemented-accepted-for-the-local-demo).
 - **Privacy.**
-  - The policy pseudonymizes; it does not anonymize.
+  - Customer demographics are aggregate-only, with no minimum group size:
+    this is not anonymization. A naturally small group (even one customer)
+    is released as a group statistic; selecting people by reference or by
+    rank is refused. Open ambiguous case: grouping by many fine keys (state,
+    age band, product, order date) can yield single-person groups without
+    any reference; the grain check cannot tell this from an ordinary
+    breakdown.
+  - Evidence and reports recorded under the earlier rule (individual
+    demographics allowed) are withheld when they cannot be verified as
+    group-level; they are not rewritten or deleted. Traces and logs from
+    before the change may still hold individual demographics until an
+    operator removes them manually.
+  - The output gate does not parse generated text for a reference written
+    next to a demographic. Released data never pairs them, so such text can
+    only come from what a user typed or what the model invents.
+  - The grain check fails closed: a structure it cannot follow is refused,
+    and a demographic in any clause of a query whose rows are individual
+    (even through an unrelated subquery) refuses the whole query.
   - Query results never contain person names or contact details: the
     catalog marks them `DIRECT_IDENTIFIER_COLUMNS` with no permitted
     derivation, the SQL compiler refuses them

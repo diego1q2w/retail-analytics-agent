@@ -171,7 +171,12 @@ What each boundary enforces:
 | Model providers | Only masked, authorized context leaves the backend. Requests send `store: false`. | Implemented. The free tier of the Gemini API may use submitted content to improve Google products, so production needs a paid tier or an equivalent agreement (see [production deployment](production-deployment.md)) |
 | Telemetry | Attributes are allowlisted and redacted. Sanitized interaction content (prompts, model output, tool arguments and results, SQL, result previews) is exported as span inputs/outputs with personal data and secrets masked; it can be switched off. | Implemented. Masked traces still hold analytical data: operator-only access |
 
-The privacy policy is pseudonymization, not anonymization. Demographic
-combinations (country, state, age band) are allowed and can still single
-people out. Detectors for names in free text are defense in depth, not proof;
+Customer demographics (country, state, age band) are aggregate-only: the SQL
+compiler checks result grain from verified lineage and refuses any query that
+would show them for one customer, order or item (profiles, grouping by or
+filtering on references, rank-selected customers); the result boundary
+re-checks, and evidence recorded under the earlier per-customer rule is
+withheld unless it is verifiably group-level. There is no minimum group size,
+so this is not anonymization: fine group combinations can still describe very
+few people. Detectors for names in free text are defense in depth, not proof;
 see [known limitations](known-limitations.md).

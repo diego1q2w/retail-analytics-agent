@@ -99,6 +99,6 @@ async def test_redisplay_withholds_answer_and_question_after_revocation() -> Non
     again = await env.service.run_view(A, "r-a")
     assert again.answer is not None and again.answer.withheld
     assert "strongest" not in again.answer.text and "12" not in again.answer.text
-    assert "access changed" in again.answer.text
+    assert "access or the privacy rules changed" in again.answer.text
     assert again.question is not None and again.question.text.withheld
     assert "Beta" not in again.question.text.text

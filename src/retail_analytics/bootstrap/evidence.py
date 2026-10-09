@@ -9,7 +9,9 @@ from retail_analytics.adapters.postgres.database import Clock, Database, utc_now
 from retail_analytics.adapters.postgres.product_scopes import (
     PostgresProductScopeSnapshots,
 )
+from retail_analytics.adapters.sql_compiler import SqlglotGrainAudit
 from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.application.evidence_privacy import EvidencePrivacyScreen
 from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.persistence import Persistence
 from retail_analytics.domain.evidence import DEFAULT_CURRENT_FRESHNESS, ReusePolicy
@@ -49,4 +51,7 @@ def build_evidence(
         scopes=PostgresProductScopeSnapshots(Database(persistence.engine)),
         # A restored report's withdrawn links are re-validated before reuse.
         links=persistence.evidence,
+        # Evidence recorded before demographics became aggregate-only is
+        # withheld unless its stored query passes today's grain check.
+        privacy=EvidencePrivacyScreen(audit=SqlglotGrainAudit()),
     )
