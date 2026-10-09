@@ -139,22 +139,42 @@ covered until the list is changed. No wildcard or all-products entitlement
 type exists, and this documentation does not add one. How the CEO's access
 follows new products is an open lifecycle question.
 
+## Production sign-in and lifecycle policy
+
+The design reuses the retailer's existing OIDC identity provider; no separate
+password system is proposed. The CLI uses browser-based sign-in, through device
+authorization or an appropriate browser callback flow supported by that provider.
+The production token verifier/login integration is not implemented. A successful
+sign-in establishes identity, not authority to read brands: roles and effective
+brand/product grants remain authoritative in PostgreSQL.
+
+An authorized company administrator manages brand assignments, with audited
+changes. The local administrative commands implement assignment changes today;
+a production administration interface and organizational owner still need to
+be selected. This policy does not introduce automatic identity-provider group
+to brand mapping.
+
+New products inherit their assigned brand's access at the next successful
+catalog sync. Removing a brand removes access supplied by that grant at the
+next authorization boundary, including subsequent reads of historical reports
+whose required scope is no longer covered. Independent explicit product grants
+still apply; removing one grant does not silently erase another. Saved report
+content is not rewritten or deleted by revocation, and previously exported
+copies cannot be recalled. The documented report-title and CEO snapshot limits
+remain; this policy does not claim they are fixed.
+
 ## Open questions (access lifecycle, out of scope)
 
-Brand-based access is a production requirement. The lifecycle questions below are
-still open and nothing here implements them:
+The policy above is selected for the design. These operational details remain
+open; documentation alone does not implement them:
 
-- Who administers brand assignments in production, and through which tool.
-  Today only local operator commands exist.
+- Which company administrator/team owns assignments and which production tool
+  they use. Today only local operator commands exist.
 - Whether changes need an approval workflow or a second person.
 - Synchronization with the company identity provider or HR directory: who
   creates managers and how their brands follow organizational changes.
 - When revocation takes effect, and who is notified. Today a change applies
   at the next authorization check; nobody is notified.
-- Whether products newly added to an assigned brand, or moved into it, should
-  be granted automatically at the next sync, as they are now, or only after
-  review. Also whether reports saved before a reassignment stay readable;
-  today the existing required-scope rule applies.
 - How often the catalog should be synced, and canonical brand identity (should
   case variants be merged?).
 - How the CEO's all-brand grant follows new products (today an explicit list

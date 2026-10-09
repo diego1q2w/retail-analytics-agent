@@ -1,12 +1,13 @@
 # Production deployment
 
 **Status: designed, not provisioned.** Nothing on this page is deployed or
-tested in a cloud. The page separates three kinds of statement:
+tested in a cloud. The page separates four kinds of statement:
 
 - **Agreed direction**: decisions about how production should work, which
   the documentation and the code already follow.
-- **Proposed**: a specific cloud service suggested for a part, with its
-  alternative. Proposed services are not selected or purchased.
+- **Recommended**: a service selected for the design, but not provisioned.
+- **Proposed**: a service candidate still awaiting a decision, with its
+  alternative. No service has been purchased.
 - **Open**: choices that still need information (listed at the end).
 
 Vendor facts link to official documentation read on 2026-10-09; recheck them
@@ -72,7 +73,11 @@ These are small samples, not percentiles under load.
    only after the whole answer passes the output checks. Releasing validated
    answer sections incrementally is a planned extension
    ([below](#planned-validated-answer-streaming)).
-6. **Kubernetes is not required** for this workload.
+6. **Cloud Run is the recommended initial hosting**, using instance-based
+   billing and one warm instance for the combined API/manager. This avoids
+   VM operating-system maintenance. Kubernetes is not required. Background
+   execution, manager ownership and deployment handover must be validated
+   before production rollout.
 7. **Storage**: PostgreSQL for application state, object storage for report
    files, Golden retrieval kept fast by indexing in PostgreSQL rather than
    reading objects per question.
@@ -88,8 +93,8 @@ flowchart TB
     idp["Company identity provider (open)"]
     cli -- "sign-in" --> idp
 
-    subgraph gcp["Google Cloud project, one region (services proposed)"]
-        api["API service, HTTP + SSE<br/>Cloud Run"]
+    subgraph gcp["Google Cloud project (Cloud Run recommended; other services proposed)"]
+        api["API service + initial manager<br/>HTTP + SSE, Cloud Run (recommended)"]
         subgraph exec["Shared execution boundary: same agent loop, skills, guarded tools, budgets"]
             simple["(a) Initial: simpler manager<br/>one long-lived process (today the<br/>API process), several investigations"]
             workers["(b) Optional: Temporal workers<br/>Cloud Run worker pool,<br/>fixed small capacity"]
@@ -103,7 +108,7 @@ flowchart TB
     end
 
     tc[["Temporal Cloud (optional)<br/>workflow progress, timers, task queue"]]
-    llm["Model providers (external)<br/>Gemini; OpenAI fallback if allowed"]
+    llm["Model providers (external)<br/>Gemini; evaluated cross-provider fallback"]
 
     cli -- "HTTPS + SSE, bearer token" --> api
     api -- "schedule run" --> simple
@@ -121,37 +126,77 @@ own service identity (not drawn). Paths (a) and (b) are **alternative deployment
 engines executing the same run and not a fallback switched during a run.
 Temporal persists workflow progress and hands work to the workers; it does
 not store application records or call models itself. PostgreSQL stays the
-authority for business data either way. The API never queries BigQuery or
-calls models.
+authority for business data either way. HTTP handlers schedule investigations;
+they do not execute analytical queries directly. In path (a), however, the
+manager inside the API process invokes models and BigQuery through guarded
+adapters, so that process needs the corresponding credentials. In path (b),
+those calls and credentials belong to the separate workers.
 
 **Hosting constraint of path (a).** The simpler manager guarantees one
 manager per database with a PostgreSQL lock held by its process. It runs
 several investigations concurrently (bounded by `LOCAL_MAX_CONCURRENT_RUNS`)
 but is **not** horizontally scalable: production would run exactly one such
-process, for example one long-lived instance (Cloud Run with a single
-instance, or a small Compute Engine VM). Platform restarts of that instance
+process on the recommended Cloud Run deployment with one warm instance
+and instance-based billing. Platform restarts of that instance
 interrupt running investigations, which is the accepted trade-off of path
 (a). Today the manager runs inside the API process, so with path (a) the
 API service also runs as a single instance; running the manager as a
 separate process is a deployment change that is not built. Path (b) has no
 such limit: API instances and workers scale independently.
 
+For path (a) on Cloud Run, background investigations must continue after an
+HTTP response or SSE disconnect. Use [instance-based billing and CPU
+allocation](https://docs.cloud.google.com/run/docs/configuring/billing-settings)
+and keep an instance running; ordinary request-only CPU allocation is not
+sufficient. A configured instance count is not a substitute for the
+application's ownership lock or a deployment handover protocol. In particular,
+[revision-level maximums can overlap during deployment](https://docs.cloud.google.com/run/docs/configuring/max-instances-limits).
+Validate lock acquisition, shutdown and replacement startup in staging before
+rolling out this hosting option. A single supervised process on a small VM is
+an alternative with a more explicit stop/start deployment, at the cost of VM
+maintenance and a brief deployment interruption. Neither option adds durable
+run replay or resolves the lock-loss limitation documented below.
+
+For the initial deployment, design a bounded drain: stop admitting new
+investigations, allow active runs to finish where possible, then replace the
+process. This is a production deployment procedure to implement and test,
+not a guarantee supplied by the current shutdown path. Platform termination
+may still interrupt work. With the optional Temporal backend, keep the HTTP
+API on Cloud Run and move execution to separate workers. API and worker
+capacity can then change independently under provider quotas and budgets;
+worker-pool autoscaling is not implied. The agent loop, skills and guarded
+tools remain shared across both modes.
+
+
 ## Parts and proposed services
 
 | Part | Proposed | Alternative | Notes |
 | --- | --- | --- | --- |
 | Cloud platform | Google Cloud | Another cloud with BigQuery access | The data is in BigQuery, and queries run in the data's location; keeping the application, database and storage in the same project and region simplifies IAM and networking. The primary model being Gemini is not a reason by itself (see [models](#models-and-data-handling)). |
-| API + SSE | [Cloud Run service](https://docs.cloud.google.com/run/docs/triggering/https-request) | Compute Engine | HTTP streaming needs no setup. The [request timeout](https://docs.cloud.google.com/run/docs/configuring/request-timeout) defaults to 5 minutes and can be raised to 60; at the limit the stream closes and the CLI reconnects and replays from PostgreSQL (implemented). |
-| Initial execution (a) | One long-lived process running the API and the simpler manager | — | See the hosting constraint above. Open: Cloud Run with a single instance or a small VM. |
+| API + SSE | Recommended: [Cloud Run service](https://docs.cloud.google.com/run/docs/triggering/https-request) | Compute Engine | HTTP streaming needs no setup. The [request timeout](https://docs.cloud.google.com/run/docs/configuring/request-timeout) defaults to 5 minutes and can be raised to 60; at the limit the stream closes and the CLI reconnects and replays from PostgreSQL (implemented). |
+| Initial execution (a) | Recommended: combined API/manager on Cloud Run, instance-based billing, one warm instance | Small Compute Engine VM | Prefer managed hosting to VM maintenance. Bounded concurrent investigations; no horizontal manager scaling. Validate ownership and deployment handover before rollout. |
 | Optional execution (b) | [Temporal Cloud](https://docs.temporal.io/cloud/namespaces) with workers on [Cloud Run worker pools](https://docs.cloud.google.com/run/docs/deploy-worker-pools) | Workers on a small Compute Engine deployment; self-hosted Temporal ([MIT, PostgreSQL/MySQL/Cassandra persistence](https://docs.temporal.io/temporal-service/persistence)) | Worker pools are for continuous background work and are [scaled manually](https://docs.cloud.google.com/run/docs/configuring/workerpools/manual-scaling): start with a small fixed count with bounded concurrency and plan capacity from queue delay; no built-in queue autoscaling is assumed. Temporal Cloud is Temporal's managed service (also sold through Google Cloud Marketplace), not a Google-run server. |
 | Application database | [Cloud SQL for PostgreSQL](https://docs.cloud.google.com/sql/docs/postgres/high-availability) | A zonal instance with backups | Regional HA keeps a synchronous standby in a second zone, failover in about a minute; [point-in-time recovery](https://docs.cloud.google.com/sql/docs/postgres/backup-recovery/pitr); [IAM database authentication](https://docs.cloud.google.com/sql/docs/postgres/iam-authentication) through a connector. Whether HA is needed depends on recovery objectives (open). |
 | Report files and Golden originals | [Cloud Storage](https://docs.cloud.google.com/storage/docs/storage-classes) behind the `BlobStore` port (adapter not built) | Database column for small Markdown | Retrieval reads the indexed representation in PostgreSQL, not objects per question ([below](#golden-retrieval-at-scale)). Object versioning helps against mistakes but purge must then remove noncurrent versions. |
 | Warehouse | BigQuery, company-owned dataset | — | The SQL compiler stays the enforcement boundary; [row-level security](https://docs.cloud.google.com/bigquery/docs/row-level-security-intro) can add a second filter on an owned table. [Cost controls](https://docs.cloud.google.com/bigquery/docs/best-practices-costs): `maximum_bytes_billed` per job (implemented) plus project quotas. |
-| Identity | Company OIDC provider with a JWKS verifier behind `TokenVerifier` (not built); CLI device authorization grant ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)) | — | Provider open. Roles and brand assignments stay server-side. |
+| Identity | Retailer's existing OIDC provider with a JWKS verifier behind `TokenVerifier` (not built); CLI browser sign-in using a supported callback flow or device authorization grant ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)) | — | Reuse company sign-in; vendor/configuration to confirm. An authorized company administrator manages audited roles and brand assignments server-side. |
 | Secrets | [Secret Manager](https://docs.cloud.google.com/secret-manager/docs/overview), read with each workload's own service identity | — | No secret in images or environment files. |
 | Metrics and traces | The company's Grafana with a metrics backend (for example [Cloud Monitoring through OTLP](https://docs.cloud.google.com/stackdriver/docs/otlp-metrics/overview), queryable with PromQL), MLflow for agent traces | Self-hosted Prometheus and Grafana | Owner open. Model spend appears in [MLflow](https://mlflow.org/docs/latest/genai/tracing/token-usage-cost/) and Grafana, but enforcement never depends on them. |
 
 ## Models and data handling
+
+**Production choice: Vertex AI**, using the deployed workload's Google Cloud
+service identity and IAM. This aligns model access with the application's
+cloud access controls rather than distributing a separate Gemini API key.
+The local prototype keeps the Gemini Developer API. Production migration is
+not implemented or validated; verify the exact model, API, authentication,
+usage accounting and tool behavior against the evaluation suite before rollout.
+
+The proposed application region is `us-central1`, aligned geographically
+with the assignment dataset's BigQuery `US` multi-region. These are different
+location types; this does not establish physical co-location or US-only model
+processing. Model endpoint availability and residency commitments must be
+verified independently, as described below.
 
 The prototype's primary model is Gemini (`gemini-3.8-flash`) with GPT-5 mini
 as a different-vendor fallback. Gemini was chosen as the preferred provider
@@ -167,12 +212,16 @@ it is the best choice.
 - **Gemini on Vertex AI** offers service-account IAM, VPC Service Controls
   and regional endpoints with
   [data residency](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/data-residency).
-  The Interactions API the prototype uses is a preview there, so moving
-  would need adapter work and a new evaluation.
+  The Interactions API the prototype uses is currently Preview and
+  [global-endpoint-only](https://ai.google.dev/gemini-api/docs/migrate-to-cloud#migration-considerations).
+  Moving that integration does not guarantee inference in the application
+  region; migration needs adapter verification and a new evaluation.
 - **OpenAI** (fallback). [API data](https://developers.openai.com/api/docs/guides/your-data)
   is not used for training by default and abuse-monitoring logs are kept up
-  to 30 days. Whether masked analytical prompts may go to a second vendor in
-  production is open.
+  to 30 days. Cross-provider fallback with sanitized analytical context is
+  allowed in this design. GPT is the current candidate; another provider/model
+  may replace it after passing the same evaluation gates. This design decision
+  does not claim customer contractual or residency approval for a deployment.
 
 **Before selecting production models (planned, not run):** compare specific
 Gemini, GPT and Claude candidates on the same frozen scenarios, tools,
@@ -183,6 +232,23 @@ default model for straightforward work and an evaluated stronger model for
 difficult investigations, with escalation kept separate from availability
 fallback, its reason recorded and every call charged to the same question.
 This is a proposal to evaluate, not prototype behaviour.
+
+**Selection policy:** choose the lowest estimated total cost per successfully
+resolved question among models that meet the quality, security, latency and
+budget targets. Per-token price alone is insufficient: retries, tool use,
+fallback and incomplete answers affect total cost. Current Gemini results do
+not validate the fallback model. Exercise each candidate directly and test
+forced provider failover, including tool results and conversation continuity.
+
+As operational traces reveal new failure patterns and question types, enrich
+and version the evaluation set using sanitized, reviewed cases. Keep a held-out
+set separate from prompt/Golden tuning, and rescore candidates under the same
+conditions. Use repeated runs and report latency/cost distributions and misses,
+not only averages. Roll out a changed model through a bounded comparison with
+a rollback path. More traces inform the decision; they do not by themselves
+establish answer correctness. Model tiers remain a future evaluated option,
+not a requirement to add routing complexity now.
+
 
 ## Model spend
 
@@ -363,10 +429,12 @@ grows to thousands of examples or memory per process becomes a concern:
 - Public ingress for the API only; the database, workers and any
   telemetry UI are private. Telemetry UIs sit behind the company identity
   provider.
-- One service identity per workload with least privilege. Only workers get
-  BigQuery job access; the API gets none. Workers and the API both get the
-  Cloud SQL client role. The maintenance job gets storage delete rights only
-  on the artifact bucket.
+- One service identity per deployed workload with least privilege. In path
+  (a), the combined API/manager process needs BigQuery job and model access
+  as well as application storage access. In path (b), only workers need
+  BigQuery job and model access; the separate HTTP API does not. Both need
+  application database access. The maintenance job gets storage delete
+  rights only on the artifact bucket.
 - A separate database role per component: application, migrations, and
   any self-hosted telemetry store. Model-generated SQL never runs against PostgreSQL.
 - BigQuery jobs keep the compiled `maximum_bytes_billed`. Project-level
@@ -390,15 +458,18 @@ grows to thousands of examples or memory per process becomes a concern:
 
 ## Open decisions
 
-1. Region and data residency, which decide between the Gemini Developer API
-   and Vertex AI (and the exact API features available there), and whether
-   an external fallback provider may receive masked prompts.
-2. The identity provider, who administers brand assignments, and how
-   assignments are synchronized and revoked ([brand access](../brand-access.md#open-questions-access-lifecycle-out-of-scope)).
+1. Verify model endpoint availability and data-residency commitments for the
+   selected production Vertex AI integration and proposed `us-central1`
+   application region. Cross-provider fallback is allowed by this design;
+   deployment-specific data handling and provider terms still need verification.
+2. Confirm the existing OIDC provider and supported CLI login flow, name the
+   assignment administrator, and set directory synchronization and revocation
+   timing/notifications under the selected lifecycle policy ([brand access](../brand-access.md#open-questions-access-lifecycle-out-of-scope)).
 3. Backup and recovery objectives (RPO/RTO), which decide database HA.
 4. The system owner and the monthly fixed-cost allowance.
-5. Final hosting for the initial execution process and, if adopted, the
-   Temporal hosting and worker platform.
+5. If Temporal is adopted, finalize its hosting and worker platform. Initial
+   hosting is Cloud Run; region, sizing and deployment handover remain to be
+   validated.
 6. Who operates monitoring (the company's Grafana or a self-hosted stack).
 
 ## Not provisioned and not verified

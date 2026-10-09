@@ -72,9 +72,9 @@ Solid arrows are the main request path; dotted arrows are optional or best
 effort. The trust boundary is the API process: the CLI and the model are
 outside it. The model never receives credentials, identity, entitlements or
 the right to execute SQL; it proposes tool calls, and application code
-decides what each call may do. Golden example embeddings come from an offline
-hashing embedder by default, or from the Gemini embeddings API when
-configured; either way the vectors are stored in PostgreSQL.
+decides what each call may do. Golden example embeddings default to Gemini in live mode and the offline
+hashing embedder in fixture mode. Live mode does not silently fall back to
+hashing. In either mode the vectors are stored in PostgreSQL.
 
 **Optional Temporal mode.** With `EXECUTION_BACKEND=temporal`, setup also
 starts a Temporal server in Compose (with its own databases and role), and
