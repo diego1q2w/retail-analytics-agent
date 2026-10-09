@@ -116,13 +116,14 @@ class SqlglotQueryCompiler:
             return self._compile(tree, values, catalog, product_ids)
         except QueryRejected:
             raise
-        except Exception:
+        except Exception as error:
             # Fail closed: an unexpected parser/optimizer exception on model SQL is a
             # rejection, never a crash and never an accepted query.
             raise reject(
                 ToolErrorCode.INVALID_QUERY,
                 "unresolvable_query",
                 "The query cannot be resolved within the supported SQL subset",
+                cause_type=type(error).__name__,
             ) from None
 
     def _parse(self, sql: str) -> exp.Select:
@@ -132,11 +133,12 @@ class SqlglotQueryCompiler:
             )
         try:
             statements = sqlglot.parse(sql, read=_DIALECT, error_level=ErrorLevel.RAISE)
-        except Exception:
+        except Exception as error:
             raise reject(
                 ToolErrorCode.INVALID_QUERY,
                 "syntax_error",
                 "The query could not be parsed as BigQuery SQL",
+                cause_type=type(error).__name__,
             ) from None
         if len(statements) != 1 or type(statements[0]) is not exp.Select:
             raise unsupported(

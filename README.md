@@ -428,9 +428,18 @@ docker compose down                                                       # keep
 | MLflow backend | database and role `mlflow` on the shared PostgreSQL (`COMPOSE_MLFLOW_DB_PASSWORD`, default `local-only-mlflow`); created idempotently by the one-shot `mlflow-db-init` service, so it also works on an existing `postgres-data` volume |
 | Volumes | `mlflow-artifacts`, `prometheus-data`, `grafana-data` |
 
-MLflow uses its own database and role: the application and Temporal roles cannot connect to it, and it cannot connect to theirs. The Grafana Prometheus data source (uid `prometheus`) and the "Local telemetry overview" dashboard are provisioned from `docker/grafana/`. Prometheus scrapes only itself for now; add the application job in `docker/prometheus/prometheus.yml` when metrics are exposed. The MLflow image is built from `docker/mlflow/Dockerfile` (upstream image plus the pinned PostgreSQL driver).
+MLflow uses its own database and role: the application and Temporal roles cannot connect to it, and it cannot connect to theirs. The Grafana Prometheus data source (uid `prometheus`) and the "Local telemetry overview" dashboard are provisioned from `docker/grafana/`. The API and worker push their metrics to Prometheus's OTLP receiver (no scrape job). The MLflow image is built from `docker/mlflow/Dockerfile` (upstream image plus the pinned PostgreSQL driver).
 
 The `docker` tests in `tests/integration/test_telemetry_stack.py` push a synthetic metric (OTLP) and a sanitized sample trace, restart the services and check both are still readable, directly and through Grafana.
+
+#### Application traces, metrics and the "Agent overview" dashboard
+
+Set `RETAIL_ANALYTICS_TELEMETRY_ENABLED=true` (`./scripts/bootstrap.sh --telemetry` does this for a new env file) and start the stack above; the API and worker then export:
+
+- **Traces to MLflow** (OTLP/HTTP protobuf): all spans of a run share one trace (`tr-` plus an id derived from the run id), covering API acceptance, tool attempts, query attempts (BigQuery job id, bytes), retrieval, model attempts (provider, model id, attempt number, fallback from/to and reason class) and a run root span that names the provider that produced the final answer. `python -m retail_analytics.bootstrap.trace_lookup <run_id> [--tree]` prints the trace id, links and the span tree.
+- **Metrics to Prometheus**, shown on the provisioned Grafana dashboard "Agent overview": runs and latency, budget use, query bytes, provider/fallback rates and final-answer provider, gate withholds, compiler rejections by class and exception type, retrieval hit/no-match, tool failures.
+
+Telemetry is best effort: bounded queues and short timeouts drop data when MLflow or Prometheus is down and never delay a run; mutation audits stay in PostgreSQL. Spans and metrics hold identifiers, codes and sizes only (no prompts, SQL, rows, personal data or credentials). See [docs/observability.md](docs/observability.md).
 
 ### Package layout and dependency rules
 

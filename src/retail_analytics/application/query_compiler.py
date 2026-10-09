@@ -41,6 +41,7 @@ class QueryRejected(Exception):
         relation: str | None = None,
         field: str | None = None,
         available_fields: tuple[str, ...] = (),
+        cause_type: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -49,6 +50,9 @@ class QueryRejected(Exception):
         self.relation = relation
         self.field = field
         self.available_fields = available_fields
+        # Class name of the parser/optimizer exception that caused a fail-closed
+        # rejection (never its message): counted by telemetry.
+        self.cause_type = cause_type
 
     @property
     def correctable(self) -> bool:

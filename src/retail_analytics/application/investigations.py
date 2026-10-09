@@ -44,6 +44,7 @@ from retail_analytics.application.contracts.persistence import (
     RunRequest,
 )
 from retail_analytics.application.contracts.progress import ProgressEvent
+from retail_analytics.application.contracts.telemetry import Label, Metric, Span
 from retail_analytics.application.ports.investigations import (
     InvestigationInputs,
     InvestigationScheduler,
@@ -54,6 +55,7 @@ from retail_analytics.application.ports.persistence import (
     RunRepository,
     SessionRepository,
 )
+from retail_analytics.application.telemetry import telemetry
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.investigations import (
@@ -165,6 +167,32 @@ class InvestigationLauncher:
         Ownership and permission are the caller's job.
         """
         run_id = run_id_for(session_id, submission_key)
+        with telemetry().span(
+            Span.ACCEPT,
+            run_id=run_id,
+            attributes={"run_id": run_id, "session_id": session_id},
+        ) as span:
+            handle = await self._launch(
+                principal,
+                run_id=run_id,
+                session_id=session_id,
+                text=text,
+                submission_key=submission_key,
+            )
+            span.set({"status": handle.status.value, "created": handle.created})
+        if handle.created:
+            telemetry().count(Metric.RUNS_STARTED, {Label.STATUS: handle.status.value})
+        return handle
+
+    async def _launch(
+        self,
+        principal: Principal,
+        *,
+        run_id: str,
+        session_id: str,
+        text: str,
+        submission_key: str,
+    ) -> RunHandle:
         request_input = input_id_for(run_id, "request")
         await self._principals.record(run_id, principal)
         started = await self._runs.start_run(

@@ -61,6 +61,7 @@ from retail_analytics.application.contracts.query_compiler import (
     CompiledQuery,
 )
 from retail_analytics.application.contracts.query_execution import QueryAuthority
+from retail_analytics.application.contracts.telemetry import Label, Metric, Span
 from retail_analytics.application.contracts.warehouse_jobs import (
     JobRef,
     JobSnapshot,
@@ -87,6 +88,7 @@ from retail_analytics.application.result_privacy import (
     ResultPrivacyBoundary,
     ResultWithheld,
 )
+from retail_analytics.application.telemetry import SpanRecorder, Stopwatch, telemetry
 from retail_analytics.application.warehouse_jobs import (
     JobAlreadyExists,
     SubmissionRejected,
@@ -348,6 +350,63 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _observe_outcome(
+    span: SpanRecorder, outcome: QueryOutcome, watch: Stopwatch
+) -> None:
+    """Span attributes and metrics for one attempt: codes, sizes and job ids."""
+    labels: dict[Label, str] = {}
+    match outcome:
+        case QuerySucceeded():
+            stats = outcome.statistics
+            kind = "succeeded"
+            attributes: dict[str, object] = {
+                "job_id": outcome.job.job_id,
+                "record_count": len(outcome.result.rows),
+                "bytes_processed": stats.bytes_processed or 0,
+                "bytes_billed": stats.bytes_billed or 0,
+                "cache_hit": bool(stats.cache_hit),
+                "masked_cells": outcome.result.masked_cells,
+            }
+            for label, amount in (
+                ("processed", stats.bytes_processed),
+                ("billed", stats.bytes_billed),
+            ):
+                if amount:
+                    telemetry().count(
+                        Metric.QUERY_BYTES, {Label.KIND: label}, float(amount)
+                    )
+        case QueryPending():
+            kind = "pending"
+            attributes = {"job_id": outcome.job.job_id}
+        case QueryOutcomeUnknown():
+            kind = "unknown"
+            attributes = {"reason": outcome.reason}
+            if outcome.job is not None:
+                attributes["job_id"] = outcome.job.job_id
+        case QueryFailed():
+            kind = "failed"
+            attributes = {
+                "error_code": outcome.code.value.lower(),
+                "reason": outcome.reason,
+            }
+            labels = {
+                Label.ERROR_CODE: outcome.code.value.lower(),
+                Label.REASON: outcome.reason,
+            }
+        case QueryCancelled():
+            kind = "cancelled"
+            attributes = {"confirmed": outcome.confirmed}
+    attributes["outcome"] = kind
+    span.set(attributes)
+    if kind == "failed":
+        span.fail(str(attributes["error_code"]))
+    telemetry().count(Metric.QUERIES, {Label.OUTCOME: kind, **labels})
+    if kind in ("succeeded", "failed"):
+        telemetry().observe(
+            Metric.QUERY_SECONDS, watch.seconds(), {Label.OUTCOME: kind}
+        )
+
+
 class QueryExecutionService:
     def __init__(
         self,
@@ -383,11 +442,23 @@ class QueryExecutionService:
     async def execute(self, attempt: QueryAttempt) -> QueryOutcome:
         """Run or continue one attempt of the operation. Never raises for
         warehouse, authorization or policy outcomes; they become outcomes."""
-        try:
-            return await self._execute(attempt)
-        except (_Superseded, InvalidTransition):
-            job = await self._jobs.get_job(attempt.operation_id)
-            return QueryOutcomeUnknown(job, "superseded_attempt")
+        watch = Stopwatch()
+        with telemetry().span(
+            Span.QUERY,
+            run_id=attempt.run_id,
+            attributes={
+                "run_id": attempt.run_id,
+                "operation_id": attempt.operation_id,
+                "attempt": attempt.attempt,
+            },
+        ) as span:
+            try:
+                outcome = await self._execute(attempt)
+            except (_Superseded, InvalidTransition):
+                job = await self._jobs.get_job(attempt.operation_id)
+                outcome = QueryOutcomeUnknown(job, "superseded_attempt")
+            _observe_outcome(span, outcome, watch)
+        return outcome
 
     async def cancel(self, run_id: str, operation_id: str) -> QueryOutcome:
         """Stop the operation and reconcile its job.
@@ -469,6 +540,14 @@ class QueryExecutionService:
                 scope=authority.context.product_scope,
             )
         except QueryRejected as rejected:
+            telemetry().count(
+                Metric.COMPILER_REJECTIONS,
+                {
+                    Label.ERROR_CODE: rejected.code.value.lower(),
+                    Label.REASON: rejected.reason,
+                    Label.CAUSE_TYPE: rejected.cause_type or "none",
+                },
+            )
             if op.status.is_terminal:
                 return QueryFailed(rejected.code, rejected.reason, rejected.message)
             await self._stop_job(job)

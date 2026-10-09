@@ -39,6 +39,7 @@ from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.investigations import build_investigations
 from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import Persistence, build_persistence
+from retail_analytics.bootstrap.telemetry import install_from_settings
 from retail_analytics.domain.executions import ToolExecutionStatus
 from retail_analytics.domain.operations import RecoveryMode, SideEffect
 
@@ -202,6 +203,19 @@ async def main() -> None:
         auth_signing_key=SecretStr("test-key-" + "x" * 32),
     )
     assert settings.database_url is not None
+    if os.environ.get("T30_TRACES_ENDPOINT"):
+        install_from_settings(
+            settings.model_copy(
+                update={
+                    "telemetry_enabled": True,
+                    "telemetry_traces_endpoint": os.environ["T30_TRACES_ENDPOINT"],
+                    "telemetry_metrics_endpoint": os.environ["T30_METRICS_ENDPOINT"],
+                    "telemetry_export_timeout_seconds": 1.0,
+                    "telemetry_metric_interval_seconds": 1.0,
+                }
+            ),
+            "worker",
+        )
     db = build_persistence(settings.database_url.get_secret_value())
     client = await Client.connect(
         settings.temporal_address or "", plugins=[PydanticAIPlugin()]

@@ -48,6 +48,7 @@ from retail_analytics.bootstrap.persona import build_persona
 from retail_analytics.bootstrap.preferences import build_preferences
 from retail_analytics.bootstrap.report_deletion import build_report_deletion
 from retail_analytics.bootstrap.reports import build_reports
+from retail_analytics.bootstrap.telemetry import install_from_settings
 from retail_analytics.interfaces.http.app import create_app
 from retail_analytics.interfaces.http.services import HttpServices, StreamSettings
 
@@ -121,6 +122,8 @@ def build_http_services(
 def build_app(
     settings: BackendSettings, stream: StreamSettings | None = None
 ) -> FastAPI:
+    install_from_settings(settings, "api")
+
     @asynccontextmanager
     async def services() -> AsyncIterator[HttpServices]:
         require_api_settings(settings)

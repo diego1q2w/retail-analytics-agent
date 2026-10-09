@@ -188,6 +188,9 @@ def step_environment(ctx: SetupContext) -> StepResult:
         for k, v in (
             (local_env.POSTGRES_PORT_KEY, ctx.postgres_port),
             (local_env.TEMPORAL_PORT_KEY, ctx.temporal_port),
+            # A new environment file that asked for the telemetry stack also
+            # switches the application's exporters on.
+            (local_env.PREFIX + "TELEMETRY_ENABLED", "true" if ctx.telemetry else ""),
         )
         if v
     }

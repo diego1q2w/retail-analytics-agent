@@ -18,8 +18,10 @@ from retail_analytics.application.contracts.progress import (
     ProgressUpdate,
     ToolActivity,
 )
+from retail_analytics.application.contracts.telemetry import Label, Metric, Span
 from retail_analytics.application.contracts.tools import OperationContext
 from retail_analytics.application.ports.progress import ProgressSink
+from retail_analytics.application.telemetry import Stopwatch, telemetry
 from retail_analytics.application.tools.contracts import (
     InputIssue,
     ToolCall,
@@ -47,6 +49,61 @@ type _Outcome = ToolSucceeded[Any] | ToolPending | ToolOutcomeUnknown | ToolFail
 
 
 async def invoke(
+    registry: CapabilityRegistry,
+    call: ToolCall,
+    context: OperationContext,
+    progress: ProgressSink,
+) -> ToolResult[Any]:
+    """Run one tool call; the span and metrics hold codes and identifiers only."""
+    # Model-supplied names that resolve to nothing never become metric labels.
+    known = registry.resolve(call.name, context.execution)
+    capability = known.name if known is not None else "unknown_tool"
+    correlation = context.correlation
+    watch = Stopwatch()
+    with telemetry().span(
+        Span.TOOL,
+        run_id=correlation.run_id,
+        attributes={
+            "run_id": correlation.run_id,
+            "session_id": correlation.session_id,
+            "operation_id": context.operation_id,
+            "capability": capability,
+            "capability_version": known.version if known is not None else 0,
+            "attempt": context.attempt,
+        },
+    ) as span:
+        result = await _invoke(registry, call, context, progress)
+        outcome, error_code, summary = _describe(result.outcome)
+        span.set(
+            {"outcome": outcome, "error_code": error_code, "error_summary": summary}
+        )
+        if error_code != "none":
+            span.fail(error_code)
+    labels = {
+        Label.CAPABILITY: capability,
+        Label.OUTCOME: outcome,
+        Label.ERROR_CODE: error_code,
+    }
+    telemetry().count(Metric.TOOL_CALLS, labels)
+    telemetry().observe(
+        Metric.TOOL_SECONDS, watch.seconds(), {Label.CAPABILITY: capability}
+    )
+    return result
+
+
+def _describe(outcome: _Outcome) -> tuple[str, str, str]:
+    match outcome:
+        case ToolSucceeded():
+            return ("empty" if outcome.empty else "succeeded"), "none", ""
+        case ToolPending():
+            return "pending", "none", ""
+        case ToolOutcomeUnknown():
+            return "unknown", "none", ""
+        case ToolFailed():
+            return "failed", outcome.code.value.lower(), outcome.message
+
+
+async def _invoke(
     registry: CapabilityRegistry,
     call: ToolCall,
     context: OperationContext,

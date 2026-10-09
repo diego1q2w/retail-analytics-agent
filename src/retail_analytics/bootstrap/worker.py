@@ -30,11 +30,13 @@ from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import persistence_from_settings
 from retail_analytics.bootstrap.query import build_query_execution
 from retail_analytics.bootstrap.retrieval import build_retrieval
+from retail_analytics.bootstrap.telemetry import install_from_settings
 
 
 async def run_worker(settings: BackendSettings) -> None:
     if settings.temporal_address is None:
         raise ConfigError(["RETAIL_ANALYTICS_TEMPORAL_ADDRESS: required for worker"])
+    install_from_settings(settings, "worker")
     # Fail on configuration problems before connecting to anything.
     live_model = provider_chain(settings) if settings.mode is RuntimeMode.LIVE else None
     client = await Client.connect(

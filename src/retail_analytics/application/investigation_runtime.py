@@ -51,6 +51,12 @@ from retail_analytics.application.contracts.progress import (
     InputRequest,
     ProgressUpdate,
 )
+from retail_analytics.application.contracts.telemetry import (
+    Label,
+    Metric,
+    ProviderAttribution,
+    Span,
+)
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.investigation_policy import (
     FETCH_EVIDENCE,
@@ -78,6 +84,7 @@ from retail_analytics.application.query_execution import (
     QueryCancelled,
     QueryExecutionService,
 )
+from retail_analytics.application.telemetry import telemetry
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     ExecutionContext,
@@ -181,6 +188,8 @@ class AnswerDraft:
     text: str
     cited_evidence: tuple[str, ...] = ()
     complete: bool = True
+    # Which provider produced the answer; for telemetry only, never shown.
+    served_by: ProviderAttribution | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,7 +429,9 @@ class InvestigationRuntime:
                     stop_reason=StopReason.CANCELLED,
                 )
             return StepOutcome(StepResult.SUPERSEDED)
-        return await self._after_close(closure.run, status, retried=False)
+        return await self._after_close(
+            closure.run, status, retried=False, served_by=draft.served_by
+        )
 
     async def ask(self, draft: QuestionDraft) -> StepOutcome:
         """Pause for a clarification; waiting costs no model calls or time."""
@@ -507,6 +518,13 @@ class InvestigationRuntime:
         if run.status.is_terminal:
             return await self._after_close(run, run.status, retried=True)
         reason = stop_message(request.reason, request.resource)
+        telemetry().count(
+            Metric.BUDGET_STOPS,
+            {
+                Label.REASON: request.reason.value,
+                Label.RESOURCE: request.resource.value if request.resource else "none",
+            },
+        )
         sections = await self._partial_findings(request.run_id, reason)
         status = RunStatus.PARTIAL if sections.cited else RunStatus.FAILED
         closure = await self._inputs.close_run(
@@ -593,6 +611,7 @@ class InvestigationRuntime:
             run = (
                 await self._inputs.close_run(run_id, RunStatus.CANCELLED, force=True)
             ).run
+            await self._record_run_end(run, None)
         summary = (
             "Cancelled. Work that already completed is kept."
             if settled
@@ -656,15 +675,73 @@ class InvestigationRuntime:
         )
 
     async def _after_close(
-        self, run: Run, status: RunStatus, *, retried: bool
+        self,
+        run: Run,
+        status: RunStatus,
+        *,
+        retried: bool,
+        served_by: ProviderAttribution | None = None,
     ) -> StepOutcome:
         if run.status is not status and retried:
             return StepOutcome(StepResult.STOPPED, status=run.status)
+        if not retried:
+            await self._record_run_end(run, served_by)
         await self._inputs.discard_pending(run.run_id)
         kind, summary = _TERMINAL_EVENTS[run.status]
         await self._publish_once(run, kind, summary)
         await self._launcher.promote_next(run.session_id)
         return StepOutcome(StepResult.RELEASED, status=run.status)
+
+    async def _record_run_end(
+        self, run: Run, served_by: ProviderAttribution | None
+    ) -> None:
+        """Run outcome, duration, budget use and answering provider, once."""
+        now = self._clock()
+        status = run.status.value
+        seconds = max((now - run.created_at).total_seconds(), 0.0)
+        attributes: dict[str, object] = {
+            "run_id": run.run_id,
+            "session_id": run.session_id,
+            "status": status,
+        }
+        if served_by is not None:
+            attributes.update(
+                answered_by=served_by.provider,
+                answered_model=served_by.model,
+                fallback_from=served_by.fallback_from or "none",
+                fallback_reason=served_by.fallback_reason or "none",
+            )
+        snapshot = await self._budgets.snapshot(run.run_id)
+        if snapshot is not None:
+            for resource, left in snapshot.remaining().items():
+                limit = _limit_of(snapshot, resource)
+                if limit > 0:
+                    used = min(max(1 - left / limit, 0.0), 1.0)
+                    attributes[f"budget_used_{resource.value}"] = round(used, 3)
+                    telemetry().observe(
+                        Metric.RUN_BUDGET_USE,
+                        used,
+                        {Label.RESOURCE: resource.value},
+                    )
+        with telemetry().span(
+            Span.RUN,
+            run_id=run.run_id,
+            attributes=attributes,
+            start=run.created_at,
+            root=True,
+        ):
+            pass
+        telemetry().count(Metric.RUNS, {Label.STATUS: status})
+        telemetry().observe(Metric.RUN_SECONDS, seconds, {Label.STATUS: status})
+        if served_by is not None:
+            telemetry().count(
+                Metric.FINAL_ANSWERS,
+                {
+                    Label.PROVIDER: served_by.provider,
+                    Label.MODEL: served_by.model,
+                    Label.OUTCOME: "fallback" if served_by.fallback_from else "primary",
+                },
+            )
 
     async def _partial_findings(self, run_id: str, reason: str) -> _Partial:
         principal = await self._principals.get(run_id)
@@ -765,6 +842,19 @@ def compose_request(inputs: Sequence[RunInput]) -> str:
             case _:
                 continue
     return "\n\n".join(parts) if parts else "(no request text)"
+
+
+def _limit_of(snapshot: BudgetSnapshot, resource: BudgetResource) -> float:
+    limits = snapshot.limits
+    return float(
+        {
+            BudgetResource.ACTIVE_TIME: limits.active_seconds,
+            BudgetResource.PROVIDER_REQUESTS: limits.provider_requests,
+            BudgetResource.TOKENS: limits.tokens,
+            BudgetResource.QUERIES: limits.queries,
+            BudgetResource.RUN_BYTES: limits.bytes_per_run,
+        }.get(resource, 0)
+    )
 
 
 def _check_budget(snapshot: BudgetSnapshot | None) -> None:

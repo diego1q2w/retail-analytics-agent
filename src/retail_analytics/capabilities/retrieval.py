@@ -16,17 +16,22 @@ enforced by the application, not by the model following instructions.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
+from contextlib import suppress
 from datetime import timedelta
 from typing import Annotated
 
 from pydantic import Field, StringConstraints
 
 from retail_analytics.application.contracts import ContractModel
+from retail_analytics.application.contracts.telemetry import Label, Metric, Span
 from retail_analytics.application.retrieval import (
     GoldenRetriever,
+    RetrievalResult,
     RetrievalUnavailable,
 )
+from retail_analytics.application.telemetry import Stopwatch, telemetry
 from retail_analytics.application.tools import (
     AuthorizationSpec,
     CapabilitySpec,
@@ -82,6 +87,41 @@ class FindAnalysisExamplesOutput(ToolOutput):
     guidance: str
 
 
+REVIEW_SAMPLE_ONE_IN = 10
+
+
+def _review_sample(operation_id: str) -> bool:
+    """Deterministic ~1-in-10 sample of retrievals for human relevance review.
+
+    Marks the trace only; no precision is claimed without labeled reviews.
+    """
+    digest = hashlib.sha256(operation_id.encode()).digest()
+    return digest[0] % REVIEW_SAMPLE_ONE_IN == 0
+
+
+def _retrieval_attributes(
+    result: RetrievalResult, outcome: str, sampled: bool
+) -> dict[str, object]:
+    return {
+        "outcome": outcome,
+        "result_count": len(result.examples),
+        "eligible_count": result.eligible_count,
+        "refused_count": len(result.refused),
+        "embedding_model": result.embedding_model,
+        "config_version": result.config_version,
+        "review_sample": sampled,
+        "examples_returned": ",".join(
+            f"{hit.ref.example_id}:{hit.ref.version}" for hit in result.hits
+        ),
+        "top_similarity": max(
+            (hit.semantic_similarity for hit in result.hits), default=0.0
+        ),
+        "top_lexical_coverage": max(
+            (hit.lexical_coverage for hit in result.hits), default=0.0
+        ),
+    }
+
+
 def retrieval_capability(
     retriever: GoldenRetriever,
     *,
@@ -96,14 +136,35 @@ def retrieval_capability(
     async def find_analysis_examples(
         args: FindAnalysisExamplesInput, ctx: OperationContext
     ) -> ToolOutcome[FindAnalysisExamplesOutput]:
-        try:
-            result = await retriever.retrieve(
-                ctx.execution.product_scope, applicability, args.question
-            )
-        except RetrievalUnavailable:
-            return ToolFailed(
-                code=ToolErrorCode.TEMPORARY_FAILURE, message=_UNAVAILABLE
-            )
+        correlation = ctx.execution.correlation
+        watch = Stopwatch()
+        with telemetry().span(
+            Span.RETRIEVAL,
+            run_id=correlation.run_id,
+            attributes={
+                "run_id": correlation.run_id,
+                "operation_id": ctx.operation_id,
+            },
+        ) as span:
+            try:
+                result = await retriever.retrieve(
+                    ctx.execution.product_scope, applicability, args.question
+                )
+            except RetrievalUnavailable:
+                span.set({"outcome": "unavailable"})
+                span.fail("RetrievalUnavailable")
+                telemetry().count(Metric.RETRIEVALS, {Label.OUTCOME: "unavailable"})
+                return ToolFailed(
+                    code=ToolErrorCode.TEMPORARY_FAILURE, message=_UNAVAILABLE
+                )
+            outcome = "hit" if result.examples else "no_match"
+            sampled = _review_sample(ctx.operation_id)
+            with suppress(Exception):  # telemetry never changes the outcome
+                span.set(_retrieval_attributes(result, outcome, sampled))
+        telemetry().count(Metric.RETRIEVALS, {Label.OUTCOME: outcome})
+        telemetry().observe(Metric.RETRIEVAL_SECONDS, watch.seconds())
+        if sampled:
+            telemetry().count(Metric.RETRIEVAL_SAMPLES, {Label.OUTCOME: outcome})
         examples = tuple(
             AnalysisExample(
                 example=f"{e.ref.example_id}:{e.ref.version}",

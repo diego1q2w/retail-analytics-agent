@@ -32,6 +32,10 @@ with workflow.unsafe.imports_passed_through():
         StepResult,
         StopReason,
     )
+    from retail_analytics.application.telemetry import (
+        ATTRIBUTION_METADATA_KEY,
+        attribution_from_metadata,
+    )
     from retail_analytics.domain.budgets import BudgetResource
     from retail_analytics.domain.request_scope import AdmissionDecision
     from retail_analytics.domain.runs import RunStatus
@@ -178,6 +182,11 @@ class InvestigationWorkflow(PydanticAIWorkflow):
                         output.text,
                         tuple(output.cited_evidence),
                         output.complete,
+                        attribution_from_metadata(
+                            (result.response.metadata or {}).get(
+                                ATTRIBUTION_METADATA_KEY
+                            )
+                        ),
                     ),
                     **_OPTIONS,
                 )

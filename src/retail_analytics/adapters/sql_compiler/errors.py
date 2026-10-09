@@ -18,6 +18,7 @@ def reject(
     relation: str | None = None,
     field: str | None = None,
     available_fields: tuple[str, ...] = (),
+    cause_type: str | None = None,
 ) -> QueryRejected:
     return QueryRejected(
         code,
@@ -26,6 +27,7 @@ def reject(
         relation=relation[:_MAX_ECHO] if relation else None,
         field=field[:_MAX_ECHO] if field else None,
         available_fields=available_fields,
+        cause_type=cause_type,
     )
 
 

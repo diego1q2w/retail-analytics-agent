@@ -1,6 +1,7 @@
 # Local Prometheus. No project-specific retention: server defaults apply.
-# The application scrape job is added with the metrics instrumentation task;
-# synthetic/test metrics can be pushed through the OTLP receiver enabled in compose.
+# The API and worker push their metrics (OTLP/HTTP) to the receiver enabled in
+# compose, so no application scrape job is needed (and a worker has no port to
+# scrape). Each process reports as its own `instance`; sum across instances.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s

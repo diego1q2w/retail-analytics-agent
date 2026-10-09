@@ -38,8 +38,10 @@ from typing import ClassVar
 from retail_analytics.application.authorization import AccessResolver
 from retail_analytics.application.context import user_supplied_terms
 from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.telemetry import Label, Metric
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.ports.context import MessageHistory
+from retail_analytics.application.telemetry import telemetry
 from retail_analytics.domain.context import EvidenceStanding
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.disclosure import (
@@ -262,9 +264,11 @@ class OutputPrivacyGate:
         """The section as it may leave, or ``OutputWithheld``."""
         try:
             return _release(policy, section, destination)
-        except OutputWithheld:
+        except OutputWithheld as withheld:
+            _count_withheld(withheld.reason, destination)
             raise
         except Exception:
+            _count_withheld("check_failed", destination)
             raise OutputWithheld(
                 "check_failed",
                 section=section.name,
@@ -284,6 +288,13 @@ class OutputPrivacyGate:
         """Fresh policy, then all sections or nothing (first withheld raises)."""
         policy = await self.policy_for_run(principal, run_id, trace_id=trace_id)
         return tuple(self.release(policy, s, destination) for s in sections)
+
+
+def _count_withheld(reason: str, destination: OutputDestination) -> None:
+    telemetry().count(
+        Metric.GATE_WITHHOLDS,
+        {Label.REASON: reason, Label.KIND: destination.value},
+    )
 
 
 def _release(

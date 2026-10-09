@@ -36,7 +36,8 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import replace
+from contextvars import ContextVar
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 from pydantic_ai.exceptions import FallbackExceptionGroup, ModelAPIError, ModelHTTPError
@@ -48,8 +49,24 @@ from pydantic_ai.profiles import DEFAULT_PROFILE, ModelProfile
 from pydantic_ai.settings import ModelSettings
 
 from retail_analytics.adapters.models.budgeted import current_run_id
+from retail_analytics.adapters.models.deadlines import ModelResponseTimeout
 from retail_analytics.application.budgets import RetryDecision
+from retail_analytics.application.contracts.telemetry import (
+    Label,
+    Metric,
+    ProviderAttribution,
+    ReasonClass,
+    Span,
+)
 from retail_analytics.application.investigation_runtime import RunStopped, StopReason
+from retail_analytics.application.telemetry import (
+    ATTRIBUTION_METADATA_KEY,
+    Stopwatch,
+    attribution_from_metadata,
+    attribution_to_metadata,
+    classify_reason_text,
+    telemetry,
+)
 
 TRANSIENT_STATUS = frozenset({408, 409, 429, 500, 502, 503, 504})
 MISCONFIGURED = frozenset({401, 403, 404})
@@ -87,6 +104,61 @@ def retry_after_seconds(error: Exception) -> float | None:
     except ValueError:
         return None
     return seconds if seconds is not None and seconds >= 0 else None
+
+
+def reason_class(error: BaseException) -> ReasonClass:
+    """Coarse class of a failed model request (never the error text)."""
+    if isinstance(error, ProviderCoolingDown):
+        return ReasonClass.COOLING_DOWN
+    if isinstance(error, ModelResponseTimeout):
+        return ReasonClass.TIMEOUT
+    if isinstance(error, RunStopped):
+        return ReasonClass.BUDGET
+    if isinstance(error, ModelHTTPError):
+        return classify_reason_text(error.status_code)
+    if isinstance(error, ModelAPIError):
+        return ReasonClass.CONNECTION
+    return ReasonClass.OTHER
+
+
+@dataclass
+class RequestTrace:
+    """What happened to one logical model request across the provider chain.
+
+    ``failed`` lists each provider that did not answer, with the failure class,
+    in order; the provider that finally answers reports a fallback from the
+    last one. Shared through a context variable because the chain members are
+    separate wrapper models.
+    """
+
+    attempts: int = 0
+    failed: list[tuple[str, ReasonClass]] = field(default_factory=list)
+
+
+_request_trace: ContextVar[RequestTrace | None] = ContextVar(
+    "model_request_trace", default=None
+)
+
+
+def _safe_run_id(run_id: Callable[[], str]) -> str | None:
+    try:
+        return run_id()
+    except RunStopped:
+        return None
+
+
+def _served_attributes(served: ProviderAttribution) -> dict[str, object]:
+    return {
+        "answered_by": served.provider,
+        "answered_model": served.model,
+        "fallback_from": served.fallback_from or "none",
+        "fallback_reason": served.fallback_reason or "none",
+    }
+
+
+def _usage_counts(response: ModelResponse) -> tuple[int, int]:
+    usage = response.usage
+    return max(usage.input_tokens, 0), max(usage.output_tokens, 0)
 
 
 def without_foreign_reasoning(
@@ -146,32 +218,143 @@ class ProviderAttempts(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
+        trace = _request_trace.get()
         if self.cooling_down:
-            raise ProviderCoolingDown(self.model_name, "provider cooling down")
+            error = ProviderCoolingDown(self.model_name, "provider cooling down")
+            if trace is not None:
+                trace.failed.append((self._reasoning_owner, ReasonClass.COOLING_DOWN))
+            telemetry().count(
+                Metric.MODEL_REQUESTS,
+                {
+                    Label.PROVIDER: self._reasoning_owner,
+                    Label.MODEL: self.model_name,
+                    Label.OUTCOME: "skipped",
+                    Label.REASON_CLASS: ReasonClass.COOLING_DOWN.value,
+                },
+            )
+            raise error
         messages = without_foreign_reasoning(messages, self._reasoning_owner)
         failures = 0
         while True:
             try:
-                return await self.wrapped.request(
-                    messages, model_settings, model_request_parameters
+                return await self._attempt(
+                    messages,
+                    model_settings,
+                    model_request_parameters,
+                    failures + 1,
+                    trace,
                 )
             except ModelAPIError as error:
                 if not is_transient(error):
                     if is_misconfigured(error):
                         self._cool_down(0.0)
+                    self._failed(trace, error)
                     raise
                 failures += 1
                 hint = retry_after_seconds(error)
                 if hint is not None and hint > self._max_wait:
                     self._cool_down(hint)
+                    self._failed(trace, error)
                     raise
                 decision = await self._retries.retry_decision(
                     self._run_id(), failures, retry_after=hint
                 )
                 if not decision.allowed:
                     self._cool_down(hint or 0.0)
+                    self._failed(trace, error)
                     raise
                 await self._sleep(decision.delay_seconds)
+
+    def _failed(self, trace: RequestTrace | None, error: BaseException) -> None:
+        if trace is not None:
+            trace.failed.append((self._reasoning_owner, reason_class(error)))
+
+    async def _attempt(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        attempt: int,
+        trace: RequestTrace | None,
+    ) -> ModelResponse:
+        """One request to this provider, observed: provider, model, attempt
+        number, outcome and (when a previous provider failed) the fallback."""
+        provider, model = self._reasoning_owner, self.model_name
+        if trace is not None:
+            trace.attempts += 1
+        origin = trace.failed[-1] if trace is not None and trace.failed else None
+        watch = Stopwatch()
+        labels = {Label.PROVIDER: provider, Label.MODEL: model}
+        with telemetry().span(
+            Span.MODEL_ATTEMPT,
+            run_id=_safe_run_id(self._run_id),
+            attributes={
+                "provider": provider,
+                "model": model,
+                "attempt": attempt,
+                "request_sequence": trace.attempts if trace is not None else 1,
+                "fallback_from": origin[0] if origin else "none",
+                "fallback_reason": origin[1].value if origin else "none",
+            },
+        ) as span:
+            try:
+                response = await self.wrapped.request(
+                    messages, model_settings, model_request_parameters
+                )
+            except Exception as error:
+                reason = reason_class(error)
+                span.set({"outcome": "failed", "reason_class": reason.value})
+                telemetry().count(
+                    Metric.MODEL_REQUESTS,
+                    {
+                        **labels,
+                        Label.OUTCOME: "failed",
+                        Label.REASON_CLASS: reason.value,
+                    },
+                )
+                telemetry().observe(Metric.MODEL_SECONDS, watch.seconds(), labels)
+                raise
+            tokens_in, tokens_out = _usage_counts(response)
+            span.set(
+                {
+                    "outcome": "succeeded",
+                    "reason_class": "none",
+                    "input_tokens": tokens_in,
+                    "output_tokens": tokens_out,
+                }
+            )
+        telemetry().count(
+            Metric.MODEL_REQUESTS,
+            {**labels, Label.OUTCOME: "succeeded", Label.REASON_CLASS: "none"},
+        )
+        telemetry().observe(Metric.MODEL_SECONDS, watch.seconds(), labels)
+        telemetry().count(
+            Metric.MODEL_TOKENS, {**labels, Label.DIRECTION: "input"}, tokens_in
+        )
+        telemetry().count(
+            Metric.MODEL_TOKENS, {**labels, Label.DIRECTION: "output"}, tokens_out
+        )
+        if origin is not None:
+            telemetry().count(
+                Metric.MODEL_FALLBACKS,
+                {
+                    Label.FROM_PROVIDER: origin[0],
+                    Label.TO_PROVIDER: provider,
+                    Label.REASON_CLASS: origin[1].value,
+                },
+            )
+        attribution = ProviderAttribution(
+            provider,
+            model,
+            attempt,
+            origin[0] if origin else None,
+            origin[1].value if origin else None,
+        )
+        metadata = {
+            **(response.metadata or {}),
+            ATTRIBUTION_METADATA_KEY: attribution_to_metadata(attribution),
+        }
+        return replace(response, metadata=metadata)
 
     def _cool_down(self, hint: float) -> None:
         if self._cooldown > 0:
@@ -181,10 +364,16 @@ class ProviderAttempts(WrapperModel):
 class ProviderRouting(WrapperModel):
     """The configured chain as the investigation's single model."""
 
-    def __init__(self, members: Sequence[Model]) -> None:
+    def __init__(
+        self,
+        members: Sequence[Model],
+        *,
+        run_id: Callable[[], str] = current_run_id,
+    ) -> None:
         if not members:
             raise ValueError("at least one provider is required")
         super().__init__(FallbackModel(*members))
+        self._run_id = run_id
 
     async def request(
         self,
@@ -192,14 +381,40 @@ class ProviderRouting(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
-        try:
-            return await self.wrapped.request(
-                messages, model_settings, model_request_parameters
+        trace = RequestTrace()
+        token = _request_trace.set(trace)
+        with telemetry().span(
+            Span.MODEL_REQUEST, run_id=_safe_run_id(self._run_id)
+        ) as span:
+            try:
+                response = await self.wrapped.request(
+                    messages, model_settings, model_request_parameters
+                )
+            except (ModelAPIError, FallbackExceptionGroup) as error:
+                span.set(
+                    {
+                        "outcome": "exhausted",
+                        "attempts": trace.attempts,
+                        "providers_failed": len(trace.failed),
+                    }
+                )
+                # Retries and fallback are spent; never multiply them through
+                # activity retries. The run ends with its verified findings.
+                raise RunStopped(StopReason.MODEL_UNAVAILABLE) from error
+            finally:
+                _request_trace.reset(token)
+            served = attribution_from_metadata(
+                (response.metadata or {}).get(ATTRIBUTION_METADATA_KEY)
             )
-        except (ModelAPIError, FallbackExceptionGroup) as error:
-            # Retries and fallback are spent; never multiply them through
-            # activity retries. The run ends with its verified findings.
-            raise RunStopped(StopReason.MODEL_UNAVAILABLE) from error
+            span.set(
+                {
+                    "outcome": "succeeded",
+                    "attempts": trace.attempts,
+                    "fallback": bool(trace.failed),
+                    **({} if served is None else _served_attributes(served)),
+                }
+            )
+        return response
 
     @property
     def profile(self) -> ModelProfile:

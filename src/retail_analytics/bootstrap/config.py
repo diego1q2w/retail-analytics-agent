@@ -157,6 +157,15 @@ class BackendSettings(BaseModel):
     auth_issuer: str = Field(default="retail-analytics-local", min_length=1)
     auth_audience: str = Field(default="retail-analytics-api", min_length=1)
     auth_signing_key: SecretStr | None = None
+    # Telemetry (design section 20): MLflow traces over OTLP/HTTP protobuf and
+    # Prometheus metrics through its OTLP receiver. Best effort: bounded
+    # queues and short timeouts; a backend outage drops telemetry only.
+    telemetry_enabled: bool = False
+    telemetry_traces_endpoint: str = "http://127.0.0.1:55500/v1/traces"
+    telemetry_metrics_endpoint: str = "http://127.0.0.1:59090/api/v1/otlp/v1/metrics"
+    telemetry_experiment_id: str = Field(default="0", pattern=r"^[0-9]{1,18}$")
+    telemetry_export_timeout_seconds: float = Field(default=2.0, ge=0.5, le=10.0)
+    telemetry_metric_interval_seconds: float = Field(default=10.0, ge=1.0, le=300.0)
     # Master key for opaque customer/order/item references. Unset: references
     # are unavailable and queries needing them fail closed.
     reference_key: SecretStr | None = None

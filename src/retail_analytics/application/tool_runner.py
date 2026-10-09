@@ -43,12 +43,14 @@ from retail_analytics.application.contracts.progress import (
     ProgressUpdate,
     ToolActivity,
 )
+from retail_analytics.application.contracts.telemetry import Label, Metric
 from retail_analytics.application.ports.investigations import RunPrincipals
 from retail_analytics.application.ports.persistence import (
     RunRepository,
     ToolExecutionRepository,
 )
 from retail_analytics.application.ports.progress import ProgressSink
+from retail_analytics.application.telemetry import telemetry
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     CapabilitySpec,
@@ -188,6 +190,9 @@ class ToolRunner:
                     decision = await self._budgets.retry_decision(run_id, failures)
                     if not decision.allowed:
                         return result
+                    telemetry().count(
+                        Metric.TOOL_RETRIES, {Label.CAPABILITY: spec.name}
+                    )
                     await self._progress.publish(
                         ProgressUpdate(
                             correlation=op_context.correlation,

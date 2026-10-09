@@ -18,6 +18,7 @@ from retail_analytics.interfaces.http.errors import install_error_handlers
 from retail_analytics.interfaces.http.routes import build_router
 from retail_analytics.interfaces.http.schemas import API_VERSION
 from retail_analytics.interfaces.http.services import ServicesProvider, StreamSettings
+from retail_analytics.interfaces.http.telemetry import TelemetryMiddleware
 
 
 class HealthResponse(BaseModel):
@@ -54,6 +55,7 @@ def create_app(
         lifespan=lifespan,
     )
     install_error_handlers(app)
+    app.add_middleware(TelemetryMiddleware)
 
     @app.get("/healthz")
     def healthz() -> HealthResponse:
