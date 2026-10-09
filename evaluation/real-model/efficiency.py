@@ -62,6 +62,7 @@ from retail_analytics.application.evaluation.efficiency import (
     RunFacts,
     attempted_query,
     query_outcome,
+    released_texts,
     render_summary,
     rescore,
     resolve_figures,
@@ -446,10 +447,34 @@ def _transcript(
     return [line.rstrip() for line in lines]
 
 
-def _rescore(out: Path, label: str, suite_path: Path, baseline: Path | None) -> int:
+def _rescore(
+    out: Path,
+    label: str,
+    suite_path: Path,
+    baseline: Path | None,
+    rescored_label: str | None = None,
+) -> int:
+    """Recompute targets of a saved run; with ``rescored_label`` the result
+    is written beside the recorded run (kept unchanged), and text checks are
+    recomputed from the released text in its transcripts."""
     suite = EfficiencySuite.model_validate_json(suite_path.read_text("utf-8"))
     path = out / f"{label}.json"
-    run = rescore(EfficiencyRun.model_validate_json(path.read_text("utf-8")), suite)
+    recorded = EfficiencyRun.model_validate_json(path.read_text("utf-8"))
+    if rescored_label is None:
+        _write(out, rescore(recorded, suite), baseline)
+        return 0
+    released: dict[str, str] = {}
+    for transcript in sorted(
+        {r.transcript for r in recorded.repetitions if r.transcript}
+    ):
+        released.update(released_texts((out / transcript).read_text("utf-8")))
+    run = rescore(recorded, suite, released).model_copy(
+        update={
+            "label": rescored_label,
+            "rescored_from": recorded.label,
+            "rescored_from_scoring_version": recorded.scoring_version,
+        }
+    )
     _write(out, run, baseline)
     return 0
 
@@ -493,9 +518,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="recompute targets of <out>/<label>.json; runs nothing",
     )
+    parser.add_argument(
+        "--rescored-label",
+        help="with --rescore: write <out>/<this>.json beside the recorded run "
+        "(kept unchanged) and recompute text checks from its transcripts",
+    )
     args = parser.parse_args(argv)
     if args.rescore:
-        return _rescore(args.out, args.label, args.suite, args.baseline)
+        return _rescore(
+            args.out, args.label, args.suite, args.baseline, args.rescored_label
+        )
 
     problems = verify(EVALUATION / "realdata")
     if problems:

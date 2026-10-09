@@ -38,6 +38,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from retail_analytics.application.answer_completion import (
+    Completion,
+    answer_completion,
+    recorded_restrictions,
+)
 from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
@@ -57,6 +62,7 @@ from retail_analytics.application.contracts.investigations import (
     FinishRequest,
     ModelStep,
     QuestionDraft,
+    Restriction,
     StepOutcome,
     StepResult,
     StopReason,
@@ -454,11 +460,12 @@ class InvestigationRuntime:
         run = await self._runs.get_run(draft.run_id)
         if run is None:
             return StepOutcome(StepResult.STOPPED, stop_reason=StopReason.ACCESS)
-        status = RunStatus.COMPLETED if draft.complete else RunStatus.PARTIAL
+        completion = await self._completion(draft)
+        status = completion.status
         if run.status.is_terminal:
             # A retry after the answer was closed as partial (it cited an
             # incomplete result) is the same release.
-            if draft.complete and run.status is RunStatus.PARTIAL:
+            if status is RunStatus.COMPLETED and run.status is RunStatus.PARTIAL:
                 status = RunStatus.PARTIAL
             return await self._after_close(run, status, retried=True)
         if run.status is RunStatus.CANCELLING:
@@ -514,6 +521,7 @@ class InvestigationRuntime:
             draft,
             released=answer if closure.closed else None,
             status=status if closure.closed else None,
+            completion=completion,
         )
         if not closure.closed:
             if closure.run.status.is_terminal:
@@ -530,6 +538,18 @@ class InvestigationRuntime:
             served_by=draft.served_by,
             summary=_partial_summary(status, truncated=truncated),
             answer=answer,
+        )
+
+    async def _completion(self, draft: AnswerDraft) -> Completion:
+        """Run status for the draft; declined parts count only when the
+        application confirms their restriction (``answer_completion``)."""
+        recorded: frozenset[Restriction] = frozenset()
+        if draft.declined:
+            recorded = recorded_restrictions(
+                await self._operations.for_run(draft.run_id)
+            )
+        return answer_completion(
+            complete=draft.complete, declined=draft.declined, recorded=recorded
         )
 
     async def ask(self, draft: QuestionDraft) -> StepOutcome:
@@ -1150,6 +1170,7 @@ def _trace_answer(
     released: str | None = None,
     status: RunStatus | None = None,
     withheld: OutputWithheld | None = None,
+    completion: Completion | None = None,
 ) -> None:
     """The model's draft beside what the output gate released (or why not)."""
     if withheld is not None:
@@ -1175,9 +1196,13 @@ def _trace_answer(
                 "model_draft": draft.text,
                 "cited_evidence": list(draft.cited_evidence),
                 "complete": draft.complete,
+                "declined": [r.value for r in draft.declined],
             }
         )
         result: dict[str, object] = {"outcome": outcome}
+        if completion is not None and draft.declined:
+            result["declined_confirmed"] = [r.value for r in completion.confirmed]
+            result["declined_unconfirmed"] = [r.value for r in completion.unconfirmed]
         if released is not None:
             result["released_answer"] = released
         if status is not None:

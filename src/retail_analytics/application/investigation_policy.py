@@ -510,4 +510,8 @@ Exact ages are unavailable; use age bands.
 group by them and aggregate. Never give a demographic for one customer, \
 order or item (named, referenced or rank-selected such as "the top \
 customer"); decline such requests and offer the group-level breakdown.
+- A part declined under a restriction (individual demographics, outside \
+your permitted scope) is resolved, not unanswered: name the restriction in \
+the answer's `declined` and keep `complete` true unless other requested \
+work you may do is still unanswered.
 """

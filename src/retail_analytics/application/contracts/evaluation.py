@@ -409,6 +409,10 @@ class EfficiencyRun(ContractModel):
     suite_version: Identifier
     # Version of the target scoring applied (results may be rescored later).
     scoring_version: int = 1
+    # Set on a rescoring written beside the recorded run: that run's label
+    # and scoring version (no model was run again).
+    rescored_from: str | None = None
+    rescored_from_scoring_version: int | None = None
     recorded_at: str
     code_revision: str
     target_id: str

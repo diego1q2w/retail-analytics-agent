@@ -51,7 +51,7 @@ _SPACE = re.compile(r"\s+")
 
 
 # Bumped when target scoring changes; ``rescore`` brings saved runs up to date.
-SCORING_VERSION = 3
+SCORING_VERSION = 4
 
 
 class SuiteError(ValueError):
@@ -247,10 +247,37 @@ _QUALIFIERS = (
 )
 _HEADING = re.compile(r"^\s*(#+\s|\*\*[^*]+\*\*:?\s*$|[^.!?]{1,80}:\s*$)")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
+# Recommended actions: a heading over them, or a label leading the line.
+_PROPOSAL_WORDS = (
+    r"recommend\w*|suggested actions?|proposed actions?|action items?|next steps?"
+)
+_PROPOSAL_HEADING = re.compile(_PROPOSAL_WORDS)
+_PROPOSAL_LABEL = re.compile(rf"^[\W\d]*(?:{_PROPOSAL_WORDS})[*_ ]*:")
+# Levers the business itself pulls: a proposal may name one ("review
+# promotional support") without claiming it caused anything.
+_LEVERS = ("marketing", "campaign", "promotion", "promotional", "advertis")
+# Wording that attributes a cause, which a proposal may not do unlabelled.
+_CAUSAL = (
+    "because",
+    "due to",
+    "driven by",
+    "drove",
+    "caused",
+    "led to",
+    "result of",
+    "resulted",
+    "thanks to",
+    "explain",
+    "attributable",
+)
 
 
 def _qualified(text: str) -> bool:
     return any(q in text for q in _QUALIFIERS)
+
+
+def _lever(term: str) -> bool:
+    return _fold(term).startswith(_LEVERS)
 
 
 def unqualified_terms(terms: Sequence[str], text: str) -> tuple[str, ...]:
@@ -260,24 +287,38 @@ def unqualified_terms(terms: Sequence[str], text: str) -> tuple[str, ...]:
     (hypothesis, not tested, may, cannot show ...) or sit under a heading
     that does, so a labelled "Hypotheses" section passes and an unlabelled
     heading such as "Seasonal demand drove growth" fails.
+
+    Recommended actions (under a recommendations heading or led by a
+    "Recommendation:" label) are proposals, not findings: naming a lever the
+    business pulls (marketing, campaign, promotion) there is not a causal
+    claim, unless the sentence attributes a cause ("because the campaign
+    drove growth"). Conditions such as traffic, seasonality or new customers
+    are still claims there (scoring v4; v3 flagged every lever too).
     """
     missed: dict[str, None] = {}
     heading_qualified = False
+    in_proposals = False
     for raw in text.splitlines():
         line = _fold(raw)
         if not line.strip():
             continue
         if _HEADING.match(line):
             heading_qualified = _qualified(line)
+            in_proposals = bool(_PROPOSAL_HEADING.search(line))
             sentences = [line]
         else:
             sentences = _SENTENCE.split(line)
+        proposal = in_proposals or bool(_PROPOSAL_LABEL.match(line))
         for sentence in sentences:
             if heading_qualified or _qualified(sentence):
                 continue
+            causal = any(c in sentence for c in _CAUSAL)
             for term in terms:
-                if _fold(term) in sentence:
-                    missed[term] = None
+                if _fold(term) not in sentence:
+                    continue
+                if proposal and _lever(term) and not causal:
+                    continue
+                missed[term] = None
     return tuple(missed)
 
 
@@ -406,36 +447,77 @@ def turn_targets(
     return targets
 
 
-def rescore(run: EfficiencyRun, suite: EfficiencySuite) -> EfficiencyRun:
-    """Recompute targets from a saved run (scoring changes, no new model run)."""
+def rescore(
+    run: EfficiencyRun,
+    suite: EfficiencySuite,
+    released: Mapping[str, str] | None = None,
+) -> EfficiencyRun:
+    """Recompute targets from a saved run (scoring changes, no new model run).
+
+    ``released`` maps run IDs to the released text recorded in the run's
+    transcript; with it, text checks (``unqualified_terms``) are recomputed
+    too, otherwise their saved results are kept.
+    """
     specs = {s.id: s for s in suite.scenarios}
+    texts = released or {}
     repetitions = []
     for rep in run.repetitions:
         scenario = specs[rep.scenario_id]
-        turns = tuple(
-            t.model_copy(
-                update={
-                    "targets_met": turn_targets(
-                        scenario.turns[t.turn - 1],
-                        run_status=t.run_status,
-                        queries=t.queries_succeeded,
-                        model_requests=t.model_requests,
-                        queries_before_question=t.queries_before_question,
-                        asked_clarification=t.asked_clarification,
-                        report_saved=t.report_saved,
-                        report_actions=t.report_actions,
-                        tools=t.tools,
-                        unscoped=t.unscoped_queries,
-                        unqualified=t.unqualified_terms,
-                    )
-                }
+        turns = []
+        for t in rep.turns:
+            spec = scenario.turns[t.turn - 1]
+            unqualified = (
+                unqualified_terms(spec.qualified_terms, texts[t.run_id])
+                if t.run_id in texts
+                else t.unqualified_terms
             )
-            for t in rep.turns
-        )
-        repetitions.append(rep.model_copy(update={"turns": turns}))
+            targets = turn_targets(
+                spec,
+                run_status=t.run_status,
+                queries=t.queries_succeeded,
+                model_requests=t.model_requests,
+                queries_before_question=t.queries_before_question,
+                asked_clarification=t.asked_clarification,
+                report_saved=t.report_saved,
+                report_actions=t.report_actions,
+                tools=t.tools,
+                unscoped=t.unscoped_queries,
+                unqualified=unqualified,
+            )
+            turns.append(
+                t.model_copy(
+                    update={"targets_met": targets, "unqualified_terms": unqualified}
+                )
+            )
+        repetitions.append(rep.model_copy(update={"turns": tuple(turns)}))
     return run.model_copy(
         update={"repetitions": tuple(repetitions), "scoring_version": SCORING_VERSION}
     )
+
+
+_TURN_HEADING = re.compile(r"^### Turn \d+: `([^`]+)`")
+_REPETITION_HEADING = re.compile(r"^## \S+ \(repetition \d+\)$")
+
+
+def released_texts(transcript: str) -> dict[str, str]:
+    """Run ID -> released text, from a transcript the harness wrote."""
+    found: dict[str, str] = {}
+    run_id: str | None = None
+    lines: list[str] | None = None
+    for line in transcript.splitlines():
+        heading = _TURN_HEADING.match(line)
+        if heading or _REPETITION_HEADING.match(line):
+            if run_id is not None and lines is not None:
+                found[run_id] = "\n".join(lines).strip()
+            run_id = heading.group(1) if heading else None
+            lines = None
+        elif line == "**Released:**" and run_id is not None:
+            lines = []
+        elif lines is not None:
+            lines.append(line)
+    if run_id is not None and lines is not None:
+        found[run_id] = "\n".join(lines).strip()
+    return found
 
 
 def score_turn(
@@ -661,6 +743,16 @@ def render_summary(run: EfficiencyRun, baseline: EfficiencyRun | None = None) ->
         "",
         f"- Recorded {run.recorded_at}; code `{run.code_revision}`; suite "
         f"`{run.suite_id}` v{run.suite_version}; scoring v{run.scoring_version}",
+        *(
+            [
+                f"- Rescored from `{run.rescored_from}` (scoring "
+                f"v{run.rescored_from_scoring_version}) with scoring "
+                f"v{run.scoring_version}; recorded runs and transcripts "
+                "unchanged, no model was run again"
+            ]
+            if run.rescored_from
+            else []
+        ),
         f"- Target `{run.target_id}` (backend `{run.execution_backend}`), "
         f"warehouse `{run.warehouse}` (`{run.data_ref}`, digest "
         f"`{run.extract_digest[:12]}`)",
@@ -765,6 +857,7 @@ __all__ = [
     "attempts_for_run",
     "citations",
     "figure_results",
+    "released_texts",
     "render_summary",
     "rescore",
     "resolve_figures",

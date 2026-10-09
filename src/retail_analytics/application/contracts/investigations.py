@@ -153,6 +153,16 @@ class BeginOutcome:
     message: str | None = None
 
 
+class Restriction(StrEnum):
+    """An application-enforced restriction under which a part of a request
+    is declined (with an alternative offered) rather than left unanswered."""
+
+    # One customer's demographics or profile (demographics are group-level only).
+    INDIVIDUAL_DEMOGRAPHICS = "individual_demographics"
+    # Data outside the executive's permitted products or brands.
+    OUTSIDE_PERMITTED_SCOPE = "outside_permitted_scope"
+
+
 @dataclass(frozen=True, slots=True)
 class AnswerDraft:
     run_id: str
@@ -160,9 +170,14 @@ class AnswerDraft:
     sequence: int
     text: str
     cited_evidence: tuple[str, ...] = ()
+    # The model's claim that no permitted requested work is left unanswered.
     complete: bool = True
     # Which provider produced the answer; for telemetry only, never shown.
     served_by: ProviderAttribution | None = None
+    # Restrictions under which the model declined part of the request. A
+    # declined part counts as resolved only when the application confirms the
+    # restriction (``application.answer_completion``).
+    declined: tuple[Restriction, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

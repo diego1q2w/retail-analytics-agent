@@ -17,6 +17,7 @@ from retail_analytics.application.contracts.evaluation import (
 )
 from retail_analytics.application.evaluation.efficiency import (
     RunFacts,
+    released_texts,
     rescore,
     resolve_figures,
     score_turn,
@@ -237,3 +238,92 @@ def test_age_band_labels_match_across_dash_styles() -> None:
         1, spec, figures, _facts(f"The 65{chr(0x2013)}69 band spent most.", ()), []
     )
     assert result.figures[0].in_answer
+
+
+# The read/export turns of the T26-F9 report (scored v3 as a "promotion" miss).
+REPORT_ACTIONS = """\
+### Limitations
+- Underlying causal drivers (such as traffic, seasonal demand shifts, marketing \
+campaigns, or stockouts) are hypotheses not tested by transaction data alone.
+
+### Recommended Actions
+*(Recommendations are proposals to weigh; they are not observed results.)*
+- **Inventory & Merchandising Support:** Review inventory, merchandising, and \
+promotional support for high-growth categories such as Dresses and Sweaters.
+"""
+LIFECYCLE_TERMS = (*CAUSES, "campaign", "promotion", "acquired")
+
+
+def test_a_lever_in_a_recommended_action_is_not_a_causal_claim() -> None:
+    assert unqualified_terms(LIFECYCLE_TERMS, REPORT_ACTIONS) == ()
+    labelled = (
+        "- **Recommendation:** Review promotional support for Dresses. "
+        "(based on [evd_x])"
+    )
+    assert unqualified_terms(LIFECYCLE_TERMS, labelled) == ()
+
+
+def test_recommendations_that_attribute_a_cause_or_state_a_condition_fail() -> None:
+    causal = "## Recommended actions\n- Extend the campaign, because it drove growth."
+    assert unqualified_terms(LIFECYCLE_TERMS, causal) == ("campaign",)
+    # Conditions the data cannot measure stay claims inside recommendations.
+    assert "new customer" in unqualified_terms(LIFECYCLE_TERMS, UNSUPPORTED)
+    seasonal = "### Next steps\n- Stock up for seasonal demand in Dresses."
+    assert unqualified_terms(LIFECYCLE_TERMS, seasonal) == ("seasonal",)
+    # Outside recommendations a lever is still a claim.
+    finding = "## Findings\nThe promotion lifted Dresses."
+    assert unqualified_terms(LIFECYCLE_TERMS, finding) == ("promotion",)
+
+
+def test_released_texts_are_read_back_from_a_transcript() -> None:
+    transcript = (
+        "# Transcripts: x\n\n## s1 (repetition 1)\n\n"
+        "### Turn 1: `run_a` (completed)\n\n**User:** Show it\n\n"
+        "**Released:**\n\n## Summary\nRevenue rose.\n\n"
+        "### Turn 2: `run_b` (partial)\n\n**Released:**\n\n_nothing_\n\n"
+        "## s2 (repetition 1)\n\n### Turn 1: `run_c` (completed)\n\n"
+        "**Released:**\n\nLast.\n"
+    )
+    assert released_texts(transcript) == {
+        "run_a": "## Summary\nRevenue rose.",
+        "run_b": "_nothing_",
+        "run_c": "Last.",
+    }
+
+
+def test_the_recorded_t26f9_result_is_kept_and_the_rescoring_reproduces() -> None:
+    results = SUITE.parent / "results"
+    suite = EfficiencySuite.model_validate_json(SUITE.read_text("utf-8"))
+    recorded = EfficiencyRun.model_validate_json(
+        (results / "t26f9-intent.json").read_text("utf-8")
+    )
+    saved = EfficiencyRun.model_validate_json(
+        (results / "t26f9-intent-rescored.json").read_text("utf-8")
+    )
+    assert recorded.scoring_version == 3 and recorded.rescored_from is None
+    assert saved.rescored_from == "t26f9-intent"
+    assert saved.rescored_from_scoring_version == 3
+
+    def turns(run: EfficiencyRun) -> dict[tuple[str, int], dict[str, bool]]:
+        return {
+            (rep.scenario_id, t.turn): dict(t.targets_met)
+            for rep in run.repetitions
+            for t in rep.turns
+        }
+
+    before, after = turns(recorded), turns(saved)
+    changed = {k for k in before if before[k] != after[k]}
+    assert changed == {
+        ("comparison-report-lifecycle", 2),
+        ("comparison-report-lifecycle", 3),
+    }
+    for key in changed:
+        assert before[key]["claims_qualified"] is False
+        assert after[key]["claims_qualified"] is True
+    # The individual-demographics run stays a miss: it ended partial.
+    assert after[("individual-demographics-explicit", 1)]["completed"] is False
+    texts: dict[str, str] = {}
+    for transcript in {r.transcript for r in recorded.repetitions if r.transcript}:
+        texts.update(released_texts((results / transcript).read_text("utf-8")))
+    again = rescore(recorded, suite, texts)
+    assert turns(again) == after

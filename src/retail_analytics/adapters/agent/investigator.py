@@ -64,6 +64,7 @@ from retail_analytics.application.contracts.investigations import (
     ContextRestartCause,
     ModelStep,
     QuestionDraft,
+    Restriction,
     StopReason,
 )
 from retail_analytics.application.contracts.telemetry import Label, Metric, Span
@@ -120,7 +121,21 @@ class AnswerOutput(BaseModel):
     )
     complete: bool = Field(
         default=True,
-        description="False when part of the question could not be answered.",
+        description=(
+            "False only when requested work the user may see is still "
+            "unanswered. A part declined under a restriction (listed in "
+            "`declined`, alternative offered) is resolved, not unanswered."
+        ),
+    )
+    declined: list[Restriction] = Field(
+        default_factory=list,
+        max_length=len(Restriction),
+        description=(
+            "Restrictions under which you declined part of the request: "
+            "individual_demographics (one customer's demographics or profile), "
+            "outside_permitted_scope (products or brands outside the user's "
+            "permitted scope). Empty when nothing was declined."
+        ),
     )
 
 
@@ -524,5 +539,6 @@ def proposal(
             attribution_from_metadata(
                 (result.response.metadata or {}).get(ATTRIBUTION_METADATA_KEY)
             ),
+            declined=tuple(dict.fromkeys(output.declined)),
         )
     return QuestionDraft(run_id, sequence, output.question)
