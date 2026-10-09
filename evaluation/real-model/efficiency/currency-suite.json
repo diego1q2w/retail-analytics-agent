@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "suite_id": "currency-request",
+  "suite_version": "1",
+  "declared_on": "2026-10-09",
+  "spend": {
+    "max_total_tokens": 300000,
+    "max_model_attempts": 60,
+    "run_tokens_limit": 100000,
+    "run_requests_limit": 20
+  },
+  "scenarios": [
+    {
+      "id": "currency-request",
+      "title": "Explicit currency request; the rate basis is answered if asked",
+      "category": "currency",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "What was our revenue in September 2025 in euros?",
+          "kind": "cold",
+          "clarification_reply": "Use the exchange rate at the end of September 2025.",
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"], ["2025"]],
+          "sql_terms": [["complete"]]
+        }
+      ]
+    }
+  ]
+}

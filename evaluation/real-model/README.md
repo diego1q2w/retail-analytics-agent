@@ -501,6 +501,109 @@ extra queries to classify; the earlier run's extra queries cannot be
 classified after the fact. Nine runs on one day: observations, not a
 guarantee that the model always writes supported SQL.
 
+### Analytical skills on demand (T26-F7)
+
+The focused tool groups were replaced by four versioned analytical skills
+loaded with `load_skill` (see `docs/investigation-runtime.md`). Baseline: the
+T39-F3 candidate above (`candidate.json`, runtime of `1ea43de`). The
+differences below come from **all changes since that baseline combined**,
+mainly T39-F5 (join guidance: the first query is now accepted, which removed
+the refused-query round trip) and T26-F7 (skills); this suite does not
+separate their effects, and it does not show that skills alone made the
+scalar turns cheaper. Code `e32be51` (this task before rebase), local
+backend, throwaway PostgreSQL, 2026-10-09 13:00-13:18 UTC, Gemini
+`gemini-3.8-flash` on every request, no failed attempts, fallbacks or context
+restarts. Repetitions and ceilings were declared before running: the full
+suite as declared (3,000,000 tokens / 500 attempts), and a new three-scenario
+file `efficiency/skills-suite.json` (one repetition each, 700,000 tokens /
+140 attempts) for report save/read/export, preference correction and an
+explicit currency request. Results:
+[`t26f7-skills.md`](efficiency/results/t26f7-skills.md)
+([JSON](efficiency/results/t26f7-skills.json),
+[transcripts](efficiency/results/transcripts/t26f7-skills.md)) and
+[`t26f7-skill-scenarios.md`](efficiency/results/t26f7-skill-scenarios.md)
+([JSON](efficiency/results/t26f7-skill-scenarios.json),
+[transcripts](efficiency/results/transcripts/t26f7-skill-scenarios.md)).
+
+Suite: every turn met its targets with every figure right (24 runs, 304,504
+tokens / 51 attempts; candidate 360,876 / 63). No scalar, follow-up, reuse
+or clarification turn loaded a skill.
+
+| turn | input tokens (median) candidate -> now | requests | queries | skill loads |
+| --- | --- | --- | --- | --- |
+| scalar-ordinary | 13,915 -> 8,891 | 3 -> 2 | 1 -> 1 | none |
+| scalar-typo / explicit | 8,375 / 8,331 -> 8,914 / 8,944 | 2 -> 2 | 1 -> 1 | none |
+| followup-context cold / August | 8,355 / 9,010 -> 8,873 / 9,402 | 2 -> 2 | 1 -> 1 | none |
+| reuse-evidence cold / reuse | 18,681 / 4,505 -> 9,165 / 4,698 | 4 / 1 -> 2 / 1 | 3 / 0 -> 1 / 0 | none |
+| clarify-missing-month | 12,246 -> 17,639 | 3 -> 4 | 1 -> 1 | none |
+| why-category-change | 25,227 -> 23,705 | 4 -> 4 | 3 -> 2 | one load (id not recorded) |
+| report-concentration | 46,258 -> 34,606 | 6 -> 4 | 4 -> 3 | one load, then `save_report` |
+
+The scalar and reuse reductions match what the T39-F5 rerun already showed
+(for example ordinary 13,915 -> 9,049 input tokens before skills). On turns
+that need no skill, the skill catalog costs about 500 input tokens per
+request (+4-7% against the candidate). A load costs one tool call; in both
+complex scenarios the run used no more requests than before.
+
+Skill scenarios (one run each, 7 runs, 141,944 tokens / 23 attempts). The
+results record tool names; the later currency runs below also record each
+non-query call's arguments and result:
+
+- **Report save, read, export:** `load_skill` then `save_report`,
+  `read_report`, `export_report`. The figure (25,105.97, source currency not
+  verified) and a separate recommended action were right; read and export
+  ran no query. The suite's `report_with_actions` check reads reports only on
+  a scenario's last turn, so it reports false for this three-turn scenario
+  although the saved report has its action (harness limitation, transcript).
+- **Preference correction:** "Just give me that as a one-line answer this
+  time" changed the answer only (no tool, no saved preference). "From now on
+  keep my answers brief. Please remember that as my default" loaded a skill
+  and saved `detail_level=brief` (two `remember_preference` calls; this run
+  did not record why the first was repeated).
+- **Explicit currency request: a miss, now explained.** It ended partial
+  after four failed `convert_currency` calls and an unexpected question.
+
+**Currency root cause.** A bounded rerun with tool-call capture
+(`t26f7-currency-repro`, same scenario, 41,490 tokens / 7 attempts) showed
+the four calls: (1) no rate basis, refused with `INVALID_INPUT` "ask whether
+to convert at the current rate or at the rate on a specific date"; (2) the
+same request unchanged, refused the same way; then the model asked the user
+the basis question, as the tool told it to; the scenario's scripted reply
+("I don't know which currency the data is in") did not answer it; (3)
+current rate and (4) the 2025-09-30 rate were both `FIELD_UNAVAILABLE`,
+because the evaluation harness publishes no exchange rates at all
+(`AgentRuntimeTarget` used an empty fixture rate provider). The source
+currency was operator-declared (USD) in the configuration, so it was not the
+cause. So: no rate existed, the reply did not answer the question, and one
+unchanged repeat was wasted.
+
+Fixes and checks: the tool runner now refuses to run again an unchanged
+request (same tool, same arguments) that already failed for a reason only the
+request determines (invalid input or query, unsupported SQL, unavailable
+field or rate), and returns the earlier message with "repeating it unchanged
+gives the same result" (unit-tested; temporary, budget and access failures
+are not remembered). The harness accepts `--fixture-rate CODE=RATE` (USD to
+CODE published on 2025-09-30) and `--declare-source-currency`, and the
+transcripts list every non-query tool call with its sanitized arguments and
+result. A separate suite `efficiency/currency-suite.json` (one repetition,
+300,000 tokens / 60 attempts) answers the basis question with "Use the
+exchange rate at the end of September 2025":
+
+| run | rate | calls after the basis question | result | tokens / attempts |
+| --- | --- | --- | --- | --- |
+| `t26f7-currency-rate` | USD->EUR 0.92 fixture | one historical 2025-09-30 call, succeeded | 23,097.49 EUR = 25,105.97 USD x 0.92 (declared, not verified), rate source and date stated | 29,077 / 5 |
+| `t26f7-currency-norate` | none | one historical call, `FIELD_UNAVAILABLE`, not repeated | 25,105.97 unconverted, "could not be completed because no exchange rate is available" | 30,754 / 5 |
+
+Both runs asked the basis question first (the tool requires it for a past
+period); the scoring counts it as an unexpected question because the turn
+does not declare one, and the no-rate run is partial because the requested
+conversion could not be done. In the no-rate answer the amount was labelled
+"source currency, not verified" rather than with the declared code; nothing
+was relabelled as converted. Code `4dd3b1a` plus this follow-up's
+uncommitted changes (the repro run had the harness change only; the rate and
+no-rate runs also had the repeat refusal; the revision field does not show `+dirty` for these runs: a
+harness path bug, now fixed). One run each: observations, not guarantees.
+
 ### Live smoke: HTTP API and real BigQuery
 
 `live_smoke.py` ran once against the shipped local default: a live-mode API

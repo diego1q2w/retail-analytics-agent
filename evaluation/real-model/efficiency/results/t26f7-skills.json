@@ -1,0 +1,2756 @@
+{
+  "code_revision": "e32be51",
+  "configured_models": {
+    "google-interactions": "gemini-3.8-flash",
+    "openai": "gpt-5-mini"
+  },
+  "data_ref": "thelook-realdata-extract-1",
+  "execution_backend": "local",
+  "extract_digest": "8ba6e7f4060217811b81bfe8cb33fb19fe8723dda6e141dae9f853e8cbaaa382",
+  "label": "t26f7-skills",
+  "primary_provider": "google-interactions",
+  "recorded_at": "2026-10-09T13:15:24+00:00",
+  "repetitions": [
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-44610c91d5c239ad",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-ordinary",
+      "session_id": "ses-6036614b5bb1447a86de6e9107085ef6",
+      "started_at": "2026-10-09T13:07:34+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 14.3,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4090,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 358,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4621,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 798,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 9867,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8711,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1156,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_f4d462b633eb4a2f92e19d84158481be",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "9"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND EXTRACT(MONTH FROM `s`.`ordered_date`) = @_value_1 AND EXTRACT(YEAR FROM `s`.`ordered_date`) = (SELECT MAX(EXTRACT(YEAR FROM `x`.`ordered_date`)) AS `_col_0` FROM `sales_items` AS `x` WHERE EXTRACT(MONTH FROM `x`.`ordered_date`) = @_value_1)",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_2e1881693ab912f909c1a0d1ec4f852f",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 9867,
+          "turn": 1,
+          "wall_seconds": 14.4
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-44610c91d5c239ad",
+      "repetition": 2,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-ordinary",
+      "session_id": "ses-ebee856a1bf94078a7164058a3a3e7fc",
+      "started_at": "2026-10-09T13:07:49+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 14.1,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4090,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 530,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4801,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 684,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10105,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8891,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1214,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_5d7a58a629164a21abb5f76f8f669287",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "9"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, EXTRACT(YEAR FROM `s`.`ordered_date`) AS `year`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND EXTRACT(MONTH FROM `s`.`ordered_date`) = @_value_1 AND EXTRACT(YEAR FROM `s`.`ordered_date`) = (SELECT MAX(EXTRACT(YEAR FROM `x`.`ordered_date`)) AS `_col_0` FROM `sales_items` AS `x` WHERE EXTRACT(MONTH FROM `x`.`ordered_date`) = @_value_1) GROUP BY EXTRACT(YEAR FROM `s`.`ordered_date`)",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_87c8e545c25fc79883ae24d3565b290d",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10105,
+          "turn": 1,
+          "wall_seconds": 14.1
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-44610c91d5c239ad",
+      "repetition": 3,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-ordinary",
+      "session_id": "ses-90f4abe15add4c38ad5ffea61639627e",
+      "started_at": "2026-10-09T13:08:03+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 16.1,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4090,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 848,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5110,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 962,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 11010,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 9200,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1810,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_f3a5bbe18f9b433c8b867b8751c3f1eb",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "9"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND EXTRACT(MONTH FROM `s`.`ordered_date`) = @_value_1 AND EXTRACT(YEAR FROM `s`.`ordered_date`) = (SELECT MAX(EXTRACT(YEAR FROM `x`.`ordered_date`)) AS `_col_0` FROM `sales_items` AS `x` WHERE EXTRACT(MONTH FROM `x`.`ordered_date`) = @_value_1)",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_01b1185fbbe3ad8779ebcdb5956158ad",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 11010,
+          "turn": 1,
+          "wall_seconds": 16.1
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-2b03e557ca3e647a",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-typo",
+      "session_id": "ses-65be707f224b45d08b9615e08f8e3f1e",
+      "started_at": "2026-10-09T13:08:19+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 15.5,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4095,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 774,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5078,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 789,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10736,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 9173,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1563,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_176c44730b8f4c14a56c50abd61a7f52",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_c150469524a1fbd5c7cc9d076c87c3a3",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10736,
+          "turn": 1,
+          "wall_seconds": 15.5
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-2b03e557ca3e647a",
+      "repetition": 2,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-typo",
+      "session_id": "ses-a9cb4bc095c243bba8bd56bd5497b8b5",
+      "started_at": "2026-10-09T13:08:35+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 14.6,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4095,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 495,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4819,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 749,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10158,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8914,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1244,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_15a56bf7d2034f85ad305fda6cf5320c",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items`, COUNT(DISTINCT `s`.`order_ref`) AS `completed_orders` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_73cfb1732cca326965f644d6e24274c2",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10158,
+          "turn": 1,
+          "wall_seconds": 14.6
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-2b03e557ca3e647a",
+      "repetition": 3,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-typo",
+      "session_id": "ses-ebdee76b01194ace9852898975328f54",
+      "started_at": "2026-10-09T13:08:50+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 13.6,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4095,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 346,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4652,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 820,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 9913,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8747,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1166,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_e1d327da7fba4003a18795f6f258f135",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_date`, MAX(`s`.`ordered_date`) AS `last_date`, COUNT(`s`.`item_ref`) AS `completed_items_count`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_b2dcb295a71833f77c85395549562c2d",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 9913,
+          "turn": 1,
+          "wall_seconds": 13.6
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-017273c949f6df73",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-explicit",
+      "session_id": "ses-0063724ef1124019ada4dfe230a8a580",
+      "started_at": "2026-10-09T13:09:04+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 13.7,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4104,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 695,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5008,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 807,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10614,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 9112,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1502,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_46a778d78d25460197ff2e0c1908ae78",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-09-30",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_be5cdc9043a22b780e6a0924b55bd147",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10614,
+          "turn": 1,
+          "wall_seconds": 13.7
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-017273c949f6df73",
+      "repetition": 2,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-explicit",
+      "session_id": "ses-faf3c52dba4b4ae1ae4bc2e9916baed9",
+      "started_at": "2026-10-09T13:09:18+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 13.0,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4104,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 302,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4614,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 650,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 9670,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8718,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 952,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_08b13aebcff24100afe9f9fe1971b470",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-09-30",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `total_revenue`, COUNT(*) AS `completed_items` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_7c5a3100e55f919623a9559774b752ab",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 9670,
+          "turn": 1,
+          "wall_seconds": 13.0
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-017273c949f6df73",
+      "repetition": 3,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-explicit",
+      "session_id": "ses-9523807a90254dbc82663cdd9d3d5d64",
+      "started_at": "2026-10-09T13:09:31+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 12.9,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4104,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 535,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4840,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 741,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10220,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8944,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1276,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_3d93aa1b295e4ce7a181cc3204209d13",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-09-30",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `total_revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_fe483ad57347aa75a1c790c3773d7c36",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10220,
+          "turn": 1,
+          "wall_seconds": 12.9
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-bbb11c47e7116080",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "followup-context",
+      "session_id": "ses-efb02367bae34162b27c55f85bc33e5f",
+      "started_at": "2026-10-09T13:09:45+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 12.4,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4093,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 357,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4655,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 809,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 9914,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8748,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1166,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_3a338fb794ef49e4a3eed61d720edbfe",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": null,
+          "report_saved": null,
+          "restarts": [],
+          "run_id": "run_ca6b81d607135d8341dbe0919ab055b5",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 9914,
+          "turn": 1,
+          "wall_seconds": 12.4
+        },
+        {
+          "active_seconds": 14.4,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4389,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 911,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5484,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 574,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 11358,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            }
+          ],
+          "input_tokens": 9873,
+          "kind": "follow_up",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1485,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_e8205a547af2479994f7b6959a45c354",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "8",
+                "_value_1": "Complete",
+                "_value_2": "2025"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_1 AND EXTRACT(YEAR FROM `s`.`ordered_date`) = @_value_2 AND EXTRACT(MONTH FROM `s`.`ordered_date`) = @_value_0",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_eb06aabc1a45b0e66aa3de8d1a5ee8d3",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 11358,
+          "turn": 2,
+          "wall_seconds": 14.4
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-bbb11c47e7116080",
+      "repetition": 2,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "followup-context",
+      "session_id": "ses-5b5130584906432a9eb7755fa5858894",
+      "started_at": "2026-10-09T13:10:12+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 19.2,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4093,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 491,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4789,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 629,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10002,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8882,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1120,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_021abd577c3f49598a919bafefea1ca8",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, COUNT(*) AS `completed_items`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": null,
+          "report_saved": null,
+          "restarts": [],
+          "run_id": "run_ee08ab29ac1468f904d690298aa0c496",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10002,
+          "turn": 1,
+          "wall_seconds": 19.2
+        },
+        {
+          "active_seconds": 11.0,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4386,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 410,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5004,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 714,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10514,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            }
+          ],
+          "input_tokens": 9390,
+          "kind": "follow_up",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1124,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_908b73b832e4432d9a1aeaea9004260e",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-08-31",
+                "_value_2": "2025-08-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, COUNT(*) AS `completed_items`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_cc8033ef07a4e6b0afb7cf10d5502315",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10514,
+          "turn": 2,
+          "wall_seconds": 11.0
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-bbb11c47e7116080",
+      "repetition": 3,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "followup-context",
+      "session_id": "ses-95b8a3a96a724ea79218f55eb8e7190e",
+      "started_at": "2026-10-09T13:10:43+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 14.1,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4093,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 482,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4780,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1011,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10366,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 8873,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1493,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_11c86ec8819f4cecacf9eb399670e80c",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, COUNT(`s`.`item_ref`) AS `completed_items`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": null,
+          "report_saved": null,
+          "restarts": [],
+          "run_id": "run_820ad629a1d326cc5160dde846448d14",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10366,
+          "turn": 1,
+          "wall_seconds": 14.1
+        },
+        {
+          "active_seconds": 12.3,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4389,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 413,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5013,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 794,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 10609,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            }
+          ],
+          "input_tokens": 9402,
+          "kind": "follow_up",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1207,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_424765954e264c188e9738c393a86f42",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-09-01",
+                "_value_2": "2025-08-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, COUNT(*) AS `completed_items`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_0a6ca2fe9de7dd2b748c424bb385da88",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 10609,
+          "turn": 2,
+          "wall_seconds": 12.3
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-eee2f5a0e3586498",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "reuse-evidence",
+      "session_id": "ses-7dcf7f1730094f469774faaf278e582f",
+      "started_at": "2026-10-09T13:11:09+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 20.6,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4097,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1067,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5533,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1253,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 11950,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 22767.75,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "july_revenue"
+            },
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 9630,
+          "kind": "cold",
+          "max_evidence_rows": 3,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 2320,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_e0b37ced639c4883be904a8a3c6edfa3",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-07-01"
+              },
+              "reason": null,
+              "rows": 3,
+              "sql": "SELECT EXTRACT(YEAR FROM `s`.`ordered_date`) AS `order_year`, EXTRACT(MONTH FROM `s`.`ordered_date`) AS `order_month`, MIN(`s`.`ordered_date`) AS `min_date`, MAX(`s`.`ordered_date`) AS `max_date`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items`, COUNT(DISTINCT `s`.`order_ref`) AS `completed_orders` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1 GROUP BY 1, 2 ORDER BY `order_year`, `order_month`",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": null,
+          "report_saved": null,
+          "restarts": [],
+          "run_id": "run_29efa32f647c12e261b0c07abfde2e0d",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 11950,
+          "turn": 1,
+          "wall_seconds": 20.6
+        },
+        {
+          "active_seconds": 19.3,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4768,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 2504,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 7272,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 2523.34,
+              "in_answer": true,
+              "in_evidence": false,
+              "kind": "number",
+              "name": "august_minus_july"
+            }
+          ],
+          "input_tokens": 4768,
+          "kind": "reuse",
+          "max_evidence_rows": 3,
+          "model_requests": 1,
+          "model_requests_failed": 0,
+          "output_tokens": 2504,
+          "queries": [],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 0,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_ad2a6cfe4806545548259fdc3acd6f76",
+          "run_status": "completed",
+          "sql_terms_met": [],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [],
+          "total_tokens": 7272,
+          "turn": 2,
+          "wall_seconds": 19.3
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-eee2f5a0e3586498",
+      "repetition": 2,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "reuse-evidence",
+      "session_id": "ses-9dfe3d0d667743079ebfe0954a51be82",
+      "started_at": "2026-10-09T13:11:50+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 16.1,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4097,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 619,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5031,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1341,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 11088,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 22767.75,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "july_revenue"
+            },
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 9128,
+          "kind": "cold",
+          "max_evidence_rows": 3,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1960,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_857e78ed446e430f9dd5bb57b98e9e72",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-07-01"
+              },
+              "reason": null,
+              "rows": 3,
+              "sql": "SELECT EXTRACT(YEAR FROM `s`.`ordered_date`) AS `yr`, EXTRACT(MONTH FROM `s`.`ordered_date`) AS `mo`, MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1 GROUP BY 1, 2 ORDER BY `yr`, `mo`",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": null,
+          "report_saved": null,
+          "restarts": [],
+          "run_id": "run_b763f0ddd31400bcf48e59a88a1292c0",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 11088,
+          "turn": 1,
+          "wall_seconds": 16.1
+        },
+        {
+          "active_seconds": 11.7,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4698,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1428,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 6126,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 2523.34,
+              "in_answer": true,
+              "in_evidence": false,
+              "kind": "number",
+              "name": "august_minus_july"
+            }
+          ],
+          "input_tokens": 4698,
+          "kind": "reuse",
+          "max_evidence_rows": 3,
+          "model_requests": 1,
+          "model_requests_failed": 0,
+          "output_tokens": 1428,
+          "queries": [],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 0,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_6640b1105acb87e3f0ad559ecc0efc79",
+          "run_status": "completed",
+          "sql_terms_met": [],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [],
+          "total_tokens": 6126,
+          "turn": 2,
+          "wall_seconds": 11.7
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-eee2f5a0e3586498",
+      "repetition": 3,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "reuse-evidence",
+      "session_id": "ses-ba5ceeb022cd437ab81f67451a36e090",
+      "started_at": "2026-10-09T13:12:18+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 16.3,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4097,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 654,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5068,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1260,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 11079,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 22767.75,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "july_revenue"
+            },
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 9165,
+          "kind": "cold",
+          "max_evidence_rows": 3,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1914,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_9577df9dab4c4cec949bbb5db3810fd1",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-07-01"
+              },
+              "reason": null,
+              "rows": 3,
+              "sql": "SELECT EXTRACT(YEAR FROM `s`.`ordered_date`) AS `order_year`, EXTRACT(MONTH FROM `s`.`ordered_date`) AS `order_month`, MIN(`s`.`ordered_date`) AS `first_order_date`, MAX(`s`.`ordered_date`) AS `last_order_date`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1 GROUP BY 1, 2 ORDER BY `order_year`, `order_month`",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": null,
+          "report_saved": null,
+          "restarts": [],
+          "run_id": "run_6b98fc04bb0d6c9b117e70e327ef6541",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 11079,
+          "turn": 1,
+          "wall_seconds": 16.3
+        },
+        {
+          "active_seconds": 14.5,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4679,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1674,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 6353,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 2523.34,
+              "in_answer": true,
+              "in_evidence": false,
+              "kind": "number",
+              "name": "august_minus_july"
+            }
+          ],
+          "input_tokens": 4679,
+          "kind": "reuse",
+          "max_evidence_rows": 3,
+          "model_requests": 1,
+          "model_requests_failed": 0,
+          "output_tokens": 1674,
+          "queries": [],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 0,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_29a149acbb9b4e4a38953164d9838da0",
+          "run_status": "completed",
+          "sql_terms_met": [],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [],
+          "total_tokens": 6353,
+          "turn": 2,
+          "wall_seconds": 14.5
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-4e0f10b4e6d21765",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "clarify-missing-month",
+      "session_id": "ses-0f59aa8c61264e40954b209f538661a9",
+      "started_at": "2026-10-09T13:12:49+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 27.5,
+          "admission": "proceed",
+          "asked_clarification": true,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4088,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 367,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4484,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 898,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4156,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 569,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4911,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 644,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 20117,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 17639,
+          "kind": "clarification",
+          "max_evidence_rows": 1,
+          "model_requests": 4,
+          "model_requests_failed": 0,
+          "output_tokens": 2478,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_3c22c47a764f4cab89fe429ba243d181",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-09-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": 0,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_8f65e383b8bbef7c5892e26fc2b6270c",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "asked_clarification": true,
+            "completed": true,
+            "queries": true,
+            "queries_before_question": true
+          },
+          "text_terms_met": [
+            true
+          ],
+          "tools": [
+            "fetch_evidence",
+            "execute_analysis"
+          ],
+          "total_tokens": 20117,
+          "turn": 1,
+          "wall_seconds": 27.7
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-fa40e6f073a30037",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "why-category-change",
+      "session_id": "ses-83376ea89c344c9c887984d897cd0340",
+      "started_at": "2026-10-09T13:13:17+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 54.7,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4105,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 142,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 4661,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 906,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5969,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1334,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 8970,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 4948,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 31035,
+          "citations": 2,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 89156.88,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "q3_revenue"
+            },
+            {
+              "expected": 88611.08,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "q4_revenue"
+            },
+            {
+              "expected": -545.8,
+              "in_answer": true,
+              "in_evidence": false,
+              "kind": "number",
+              "name": "revenue_change"
+            },
+            {
+              "expected": null,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "label",
+              "name": "top_gain_category"
+            },
+            {
+              "expected": 2674.82,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "top_gain_delta"
+            },
+            {
+              "expected": null,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "label",
+              "name": "weakest_category"
+            },
+            {
+              "expected": -2169.1,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "weakest_delta"
+            }
+          ],
+          "input_tokens": 23705,
+          "kind": "investigation",
+          "max_evidence_rows": 14,
+          "model_requests": 4,
+          "model_requests_failed": 0,
+          "output_tokens": 7330,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_b6dc2a1614014001b86c392964672297",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Other",
+                "_value_1": "2025-Q3",
+                "_value_2": "2025-Q4",
+                "_value_3": "Complete",
+                "_value_4": "2026-01-01",
+                "_value_5": "2025-07-01",
+                "_value_6": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 2,
+              "sql": "SELECT CASE WHEN `s`.`ordered_date` >= @_value_5 AND `s`.`ordered_date` < @_value_6 THEN @_value_1 WHEN `s`.`ordered_date` >= @_value_6 AND `s`.`ordered_date` < @_value_4 THEN @_value_2 ELSE @_value_0 END AS `quarter`, MIN(`s`.`ordered_date`) AS `min_date`, MAX(`s`.`ordered_date`) AS `max_date`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items`, COUNT(DISTINCT `s`.`order_ref`) AS `completed_orders`, COUNT(DISTINCT `s`.`customer_ref`) AS `purchasing_customers`, SAFE_DIVIDE(SUM(`s`.`sale_amount`), COUNT(DISTINCT `s`.`order_ref`)) AS `average_order_sales`, SAFE_DIVIDE(SUM(`s`.`sale_amount`), COUNT(*)) AS `average_item_price` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_3 AND `s`.`ordered_date` >= @_value_5 AND `s`.`ordered_date` < @_value_4 GROUP BY 1 ORDER BY `quarter`",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_7cac7d2909f34db5855e235456578616",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "0",
+                "_value_1": "1",
+                "_value_2": "Complete",
+                "_value_3": "2026-01-01",
+                "_value_4": "2025-07-01",
+                "_value_5": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 14,
+              "sql": "SELECT `p`.`category` AS `category`, SUM(CASE WHEN `s`.`ordered_date` >= @_value_4 AND `s`.`ordered_date` < @_value_5 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `q3_revenue`, SUM(CASE WHEN `s`.`ordered_date` >= @_value_5 AND `s`.`ordered_date` < @_value_3 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `q4_revenue`, SUM(CASE WHEN `s`.`ordered_date` >= @_value_5 AND `s`.`ordered_date` < @_value_3 THEN `s`.`sale_amount` ELSE @_value_0 END) - SUM(CASE WHEN `s`.`ordered_date` >= @_value_4 AND `s`.`ordered_date` < @_value_5 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `revenue_change`, COUNT(CASE WHEN `s`.`ordered_date` >= @_value_4 AND `s`.`ordered_date` < @_value_5 THEN @_value_1 END) AS `q3_items`, COUNT(CASE WHEN `s`.`ordered_date` >= @_value_5 AND `s`.`ordered_date` < @_value_3 THEN @_value_1 END) AS `q4_items`, SAFE_DIVIDE(SUM(CASE WHEN `s`.`ordered_date` >= @_value_4 AND `s`.`ordered_date` < @_value_5 THEN `s`.`sale_amount` ELSE @_value_0 END), COUNT(CASE WHEN `s`.`ordered_date` >= @_value_4 AND `s`.`ordered_date` < @_value_5 THEN @_value_1 END)) AS `q3_avg_item_price`, SAFE_DIVIDE(SUM(CASE WHEN `s`.`ordered_date` >= @_value_5 AND `s`.`ordered_date` < @_value_3 THEN `s`.`sale_amount` ELSE @_value_0 END), COUNT(CASE WHEN `s`.`ordered_date` >= @_value_5 AND `s`.`ordered_date` < @_value_3 THEN @_value_1 END)) AS `q4_avg_item_price` FROM `sales_items` AS `s` JOIN `products` AS `p` ON `s`.`product_id` = `p`.`product_id` WHERE `s`.`item_status` = @_value_2 AND `s`.`ordered_date` >= @_value_4 AND `s`.`ordered_date` < @_value_3 GROUP BY 1 ORDER BY `revenue_change` ASC",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 2,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_3332eed3d319400818dad56a54026825",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "no_unexpected_question": true
+          },
+          "text_terms_met": [],
+          "tools": [
+            "load_skill",
+            "execute_analysis",
+            "execute_analysis"
+          ],
+          "total_tokens": 31035,
+          "turn": 1,
+          "wall_seconds": 54.7
+        }
+      ]
+    },
+    {
+      "code_revision": "e32be51",
+      "error": null,
+      "executive_id": "eval-c0117af373e8c59a",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "report-concentration",
+      "session_id": "ses-39d4f54fcc67477f828ed6fd04b1faba",
+      "started_at": "2026-10-09T13:14:12+00:00",
+      "transcript": "transcripts/t26f7-skills.md",
+      "turns": [
+        {
+          "active_seconds": 71.1,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4118,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 903,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 6829,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 2008,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 9608,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 4435,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 14051,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 2476,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 44428,
+          "citations": 3,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 88611.08,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "q4_revenue"
+            },
+            {
+              "expected": 0.065,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "top10_share"
+            },
+            {
+              "expected": 1004.0,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "customers"
+            }
+          ],
+          "input_tokens": 34606,
+          "kind": "investigation",
+          "max_evidence_rows": 10,
+          "model_requests": 4,
+          "model_requests_failed": 0,
+          "output_tokens": 9822,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_ca00e84354c347a6b4ba8474ac213772",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-12-31",
+                "_value_2": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `min_date`, MAX(`s`.`ordered_date`) AS `max_date`, COUNT(DISTINCT `s`.`customer_ref`) AS `customer_count`, COUNT(DISTINCT `s`.`order_ref`) AS `order_count`, SUM(`s`.`sale_amount`) AS `total_revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_42e53f321272492a8649f6b22c3f1f8b",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-12-31",
+                "_value_2": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "WITH `top_customers` AS (SELECT `s`.`customer_ref` AS `customer_ref`, SUM(`s`.`sale_amount`) AS `customer_revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1 GROUP BY 1 ORDER BY `customer_revenue` DESC LIMIT 10) SELECT SUM(`t`.`customer_revenue`) AS `top_10_revenue`, SAFE_DIVIDE(SUM(`t`.`customer_revenue`), (SELECT SUM(`s2`.`sale_amount`) AS `_col_0` FROM `sales_items` AS `s2` WHERE `s2`.`item_status` = @_value_0 AND `s2`.`ordered_date` >= @_value_2 AND `s2`.`ordered_date` <= @_value_1)) AS `top_10_share`, MIN(`t`.`customer_revenue`) AS `min_top_10_revenue`, MAX(`t`.`customer_revenue`) AS `max_top_10_revenue` FROM `top_customers` AS `t`",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_ad34ab359b0541869e169a2fa622ac8d",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-12-31",
+                "_value_2": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 10,
+              "sql": "SELECT `s`.`customer_ref` AS `customer_ref`, SUM(`s`.`sale_amount`) AS `customer_revenue`, COUNT(DISTINCT `s`.`order_ref`) AS `order_count`, COUNT(*) AS `item_count` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1 GROUP BY 1 ORDER BY `customer_revenue` DESC LIMIT 10",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 3,
+          "report_actions": 3,
+          "report_saved": true,
+          "restarts": [],
+          "run_id": "run_b9c8e0d9a7a2761015e7de047af72b3b",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "no_unexpected_question": true,
+            "report_with_actions": true
+          },
+          "text_terms_met": [],
+          "tools": [
+            "execute_analysis",
+            "load_skill",
+            "execute_analysis",
+            "execute_analysis",
+            "save_report"
+          ],
+          "total_tokens": 44428,
+          "turn": 1,
+          "wall_seconds": 71.1
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "scoring_version": 2,
+  "settings": {
+    "max_repeats_cap": 0.0,
+    "run_limit_active_seconds": 600.0,
+    "run_limit_bytes_per_query": 1073741824.0,
+    "run_limit_bytes_per_run": 5368709120.0,
+    "run_limit_corrections_per_query": 2.0,
+    "run_limit_provider_requests": 20.0,
+    "run_limit_queries": 10.0,
+    "run_limit_query_deadline_seconds": 120.0,
+    "run_limit_result_bytes": 262144.0,
+    "run_limit_result_rows": 500.0,
+    "run_limit_tokens": 100000.0,
+    "run_limit_transient_attempts": 3.0,
+    "turn_timeout_seconds": 300.0
+  },
+  "spend": {
+    "max_model_attempts": 500,
+    "max_total_tokens": 3000000,
+    "run_requests_limit": 20,
+    "run_tokens_limit": 100000
+  },
+  "spend_used": {
+    "model_attempts": 51,
+    "runs": 24,
+    "total_tokens": 304504
+  },
+  "stopped_by_ceiling": false,
+  "suite_id": "conversation-efficiency",
+  "suite_version": "1",
+  "target_id": "agent_runtime:local",
+  "warehouse": "offline DuckDB (frozen extract)"
+}

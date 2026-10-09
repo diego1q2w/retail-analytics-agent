@@ -439,7 +439,8 @@ def test_rejected_query_is_corrected_and_shown_as_ongoing_progress(
         "SELECT t.status, t.error_code, t.error_detail, "
         "(SELECT count(*) FROM query_executions AS j WHERE j.operation_id = "
         "t.operation_id) FROM tool_executions AS t WHERE t.run_id = :r "
-        "ORDER BY t.created_at",
+        # Query operations only (not the run's bookkeeping records).
+        "AND t.capability = 'execute_analysis' ORDER BY t.created_at",
         r=run_id,
     )
     # The rejected attempt issued no warehouse job; only the correction ran.

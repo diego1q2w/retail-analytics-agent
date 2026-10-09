@@ -87,23 +87,67 @@ investigation stage):
 - `convert_currency`, with its declared-currency disclosure.
 
 Each model step sees a focused part of that catalog
-(`application/tool_focus.py`). Schema, query, evidence and example tools are
-always exposed; four groups are exposed on demand: saved reports, report
-deletion, preferences and currency conversion. A group is exposed when the
-request or later steering mentions what it is for, when an effective
-preference needs it (a display currency), or after the model calls the
-group's argument-free loader (`load_report_tools`, `load_deletion_tools`,
-`load_preference_tools`, `load_currency_tools`). Until then only the loader
-is exposed, so a mixed or follow-up request broadens within the same run, in
-any order, with one extra model step at most. Loader calls are recorded
-operations, so the local and Temporal runtimes recompute the same selection
-on every step. Selection only narrows the authorized catalog: a loader
-appears only when its group has a tool the executive may use, and every call
-is still authorized when it runs. The instructions are rendered from the
-exposed tools and say how to load a group rather than naming hidden tools.
+(`application/tool_focus.py`). Every run starts with the core tools
+(`list_relations`, `describe_relation`, `execute_analysis`,
+`fetch_evidence`), the `load_skill` control tool and a short catalog of the
+analytical skills this executive may use, with no skill active. A figure
+question or an answer from valid evidence needs no skill. The four skills are
+trusted, versioned assets bundled with the code
+(`application/skill_assets/`), never user, persona, Golden or tool-result
+text:
+
+| skill | adds | instructions cover |
+| --- | --- | --- |
+| `investigation` v1 | `find_analysis_examples` | comparisons, why questions, reviewed methods, when to stop |
+| `saved_reports` v1 | `save_report`, `read_report`, `list_reports`, `search_reports`, `export_report`, `propose_report_deletion` | creating, revisiting, exporting and proposing deletion of reports |
+| `preferences` v1 | `inspect_preferences`, `remember_preference`, `forget_preference`, `confirm_preference`, `decline_preference` | one-off corrections versus explicitly remembered defaults |
+| `currency_conversion` v1 | `convert_currency` | conversion only on request, from an explicit source currency and rate basis |
+
+`load_skill(name)` accepts only an id from the catalog (an enum; no path,
+prompt, tool list or code). It records an activation for the run as an
+operation record pinned to the skill's current version and returns the
+version, the tools it enables for this executive and its instructions. The
+activation takes effect when the next model step is prepared: from the next
+turn the skill's tools are exposed and its instructions appear once in the
+policy (`<skill name=... version=...>`), after the base rules, which take
+precedence (the SQL join rule, the currency rule, the budget wording). A
+repeated load is idempotent. Skills compose, stay for the run (retries,
+restarts, context restarts, eviction) and keep their pinned version, so a
+newer asset never changes an in-flight run or a Temporal replay. A new run,
+including the one an explicit topic reset starts, begins with core tools
+again. Runs that loaded a T26-F5 tool group keep the matching skill.
+
+A skill grants nothing. Current authority gates both exposure and execution:
+the catalog offers only skills with something the executive may use, the
+instructions are rendered for the tools actually exposed (a user who cannot
+delete reports gets "You cannot delete reports" instead of deletion
+guidance), and the tool runner checks every call against the current catalog
+and the skills in effect. A specialized tool called before its skill takes
+effect (in the same response as `load_skill`, or because it appears in
+history) is refused with an actionable result naming the skill to load.
+Deletion is still only proposed and confirmed by the user in the application;
+a preference is still saved only on the user's explicit request or
+confirmation. Without `load_skill` in the catalog (hand-built test registries)
+the whole authorized catalog is exposed.
+
 The trace records an `investigation.tool_focus` span when a conversation
-starts and whenever the exposed set changes (counts, `group:reason` codes and,
-with content capture, the exposed, added and removed tool names).
+starts and whenever the exposed set changes (counts, `skill@version` codes
+and, with content capture, the exposed, added and removed tool names), and an
+`investigation.skill` span for every load (`loaded`, `already_active`,
+`rejected`) and every refused call (`tool_blocked`), with skill id, version
+and tool names, never the instruction text. The instructions themselves are
+visible where the model received them: the sanitized `model.attempt` input
+capture (system message) contains each loaded skill's `<skill>` block exactly
+as sent (tested in `tests/unit/agent/test_tool_focus_runtime.py`).
+
+The tool runner also refuses to run again an unchanged request (same tool,
+same arguments, same run) that already failed for a reason only the request
+determines (invalid input or query, unsupported SQL, unavailable field or
+exchange rate). It returns the earlier message and says that repeating the
+request unchanged gives the same result. Temporary, budget, access and
+internal failures are not remembered, and a call refused only because its
+skill was not in effect runs once the skill is loaded. The record is an
+operation of the run, so both runtimes and a replay see it.
 
 The model instructions treat the five analytical steps as guidelines, group
 products by ID, date order figures by `orders.created_at`, report

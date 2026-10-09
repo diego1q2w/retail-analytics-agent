@@ -32,7 +32,7 @@ from retail_analytics.application.investigation_policy import (
     catalog_fingerprint,
     render_investigation_policy,
 )
-from retail_analytics.application.tool_focus import LOADERS, select_tools
+from retail_analytics.application.tool_focus import SKILL_IDS, select_tools
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     OperationContext,
@@ -163,11 +163,12 @@ def _descriptor_text(
     )
 
 
-# Focus states a run can be in: nothing loaded, one group loaded, all loaded.
-_FOCUS_STATES: tuple[frozenset[str], ...] = (
-    frozenset(),
-    *(frozenset({loader}) for loader in sorted(LOADERS)),
-    LOADERS,
+# Skill states a run can be in: nothing loaded, one skill, all of them.
+_ALL_SKILLS: dict[str, int] = dict.fromkeys(SKILL_IDS, 1)
+_FOCUS_STATES: tuple[dict[str, int], ...] = (
+    {},
+    *({skill: 1} for skill in SKILL_IDS),
+    _ALL_SKILLS,
 )
 
 
@@ -187,15 +188,17 @@ def _role_combinations() -> list[tuple[str, frozenset[str]]]:
 def _principal_text(
     registry: CapabilityRegistry,
     permissions: frozenset[str],
-    loaded: frozenset[str] = LOADERS,
+    loaded: dict[str, int] | None = None,
 ) -> tuple[set[str], str, str]:
     """The tools exposed to one model request (the focused subset of the
     permission-filtered catalog), its policy and all model-facing text."""
     ctx = _execution(permissions)
-    exposed, _ = select_tools(
-        [d.name for d in registry.catalog(ctx)], request="q", loaded=loaded
+    selection = select_tools(
+        [d.name for d in registry.catalog(ctx)],
+        _ALL_SKILLS if loaded is None else loaded,
     )
-    policy = render_investigation_policy(exposed)
+    exposed = selection.tools
+    policy = render_investigation_policy(exposed, selection.prompt)
     notes = _worst_case_context(
         can_fetch_evidence="fetch_evidence" in exposed,
         can_describe_schema="describe_relation" in exposed,
@@ -241,6 +244,8 @@ _NO_POLICY_GUIDANCE = frozenset(
         "decline_preference",
         "read_report",
         "export_report",
+        # Named by the skill catalog while a skill can still be loaded.
+        "load_skill",
     }
 )
 

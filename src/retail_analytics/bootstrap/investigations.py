@@ -36,6 +36,7 @@ from retail_analytics.application.ports.investigations import InvestigationSched
 from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.application.query_execution import QueryExecutionService
 from retail_analytics.application.retrieval import GoldenRetriever
+from retail_analytics.application.tool_focus import SkillActivations
 from retail_analytics.application.tool_runner import ToolRunner
 from retail_analytics.application.tools import CapabilityRegistry, CapabilitySpec
 from retail_analytics.bootstrap.access import AccessServices
@@ -58,7 +59,7 @@ from retail_analytics.capabilities.preferences import preference_capabilities
 from retail_analytics.capabilities.report_deletion import report_deletion_capability
 from retail_analytics.capabilities.reports import report_capabilities
 from retail_analytics.capabilities.retrieval import retrieval_capability
-from retail_analytics.capabilities.tool_focus import tool_loader_capabilities
+from retail_analytics.capabilities.tool_focus import load_skill_capability
 from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.metrics import default_catalog
 
@@ -166,10 +167,17 @@ def build_capability_registry(
                 )
             )
         )
-    # Loaders of the on-demand groups; a loader whose group has no tool the
-    # executive may use is never exposed (application.tool_focus).
-    specs.extend(tool_loader_capabilities())
-    return CapabilityRegistry(specs)
+    # load_skill offers only the skills whose tools (or guidance) the
+    # executive may use now, read from this registry (application.tool_focus).
+    built: list[CapabilityRegistry] = []
+    specs.append(
+        load_skill_capability(
+            SkillActivations(persistence.tool_executions),
+            lambda ctx: [d.name for d in built[0].catalog(ctx)],
+        )
+    )
+    built.append(CapabilityRegistry(specs))
+    return built[0]
 
 
 def build_investigations(

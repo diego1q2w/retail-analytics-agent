@@ -339,8 +339,8 @@ def _record_restart(run_id: str, cause: ContextRestartCause) -> None:
 
 def _record_focus(run_id: str, messages: list[ModelMessage], step: ModelStep) -> None:
     """Record the exposed tool set when a conversation starts and whenever it
-    changes (a group loaded, steering, changed authority): names, counts and
-    reason codes only, through the existing trace."""
+    changes (a skill took effect, changed authority): names, counts, skill
+    ids and pinned versions only, through the existing trace."""
     previous: set[str] | None = None
     for message in reversed(messages):
         if isinstance(message, ModelResponse):
@@ -360,7 +360,7 @@ def _record_focus(run_id: str, messages: list[ModelMessage], step: ModelStep) ->
             "focus.change": "initial" if previous is None else "changed",
             "focus.exposed": len(step.tools),
             "focus.authorized": focus.authorized if focus else len(step.tools),
-            "focus.groups": ",".join(f"{g}:{r}" for g, r in focus.active)
+            "focus.skills": ",".join(f"{k}@{v}" for k, v in focus.active)
             if focus
             else "",
             "focus.loadable": ",".join(focus.loadable) if focus else "",
@@ -372,7 +372,7 @@ def _record_focus(run_id: str, messages: list[ModelMessage], step: ModelStep) ->
                     "exposed": sorted(step.tools),
                     "added": added,
                     "removed": removed,
-                    "groups": {g: str(r) for g, r in focus.active} if focus else {},
+                    "skills": {k: v for k, v in focus.active} if focus else {},
                     "loadable": list(focus.loadable) if focus else [],
                 }
             )

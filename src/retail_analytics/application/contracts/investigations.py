@@ -72,28 +72,18 @@ class ContextStanding:
     key_parts: tuple[tuple[str, str], ...] = ()
 
 
-class FocusReason(StrEnum):
-    """Why an on-demand tool group is exposed to a model request."""
-
-    # The request (including steering) mentions what the group is for.
-    REQUEST = "request"
-    # An effective preference needs it (a display currency, for example).
-    PREFERENCES = "preferences"
-    # The model loaded the group earlier in this run.
-    LOADED = "loaded"
-
-
 @dataclass(frozen=True, slots=True)
 class ToolFocus:
-    """Which on-demand tool groups one model request sees, and why.
+    """Which analytical skills one model request has in effect.
 
     A relevance choice inside the authorized catalog, never an authority
-    decision: it only ever removes authorized tools from view.
+    decision: it only ever removes authorized tools from view
+    (``application.tool_focus``).
     """
 
-    # (group, reason) for every group whose tools are exposed.
-    active: tuple[tuple[str, FocusReason], ...] = ()
-    # Authorized groups whose tools wait for their loader.
+    # (skill id, pinned version) of every skill in effect.
+    active: tuple[tuple[str, int], ...] = ()
+    # Authorized skills that can still be loaded.
     loadable: tuple[str, ...] = ()
     # Tools the principal may use now (the authorized catalog) and exposed.
     authorized: int = 0
@@ -117,7 +107,7 @@ class ModelStep:
     history_messages: tuple[tuple[str, str], ...] = ()
     # None: nothing beyond this request's selection is known to be valid.
     standing: ContextStanding | None = None
-    # On-demand tool groups exposed to this request and why.
+    # Analytical skills in effect for this request.
     focus: ToolFocus | None = None
 
 

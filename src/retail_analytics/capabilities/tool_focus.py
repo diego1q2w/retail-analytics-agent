@@ -1,103 +1,118 @@
-"""Loaders of the on-demand tool groups (``application.tool_focus``).
+"""``load_skill``: the model-facing control tool of ``application.tool_focus``.
 
-Each loader is an argument-free tool the model calls when the investigation
-turns out to need a group that is not exposed yet. It changes nothing but the
-run's recorded operations: the next model step reads the successful loader
-operation and exposes the group's tools that the executive is authorized for
-at that moment. A loader is visible only to executives who may use at least
-one tool of its group, and loading never grants anything: every tool call is
-authorized again when it runs.
+It takes one argument, a skill id from the advertised catalog (the schema the
+model sees is an enum of the skills this executive may load,
+``tool_focus.focus_catalog``). Loading records an activation for the run and
+returns the skill's version, the tools it enables for this executive and its
+rendered instructions; the tools become callable on the next model turn. It
+grants nothing: availability is decided from the catalog under current
+authority, every tool call is authorized again when it runs, and unknown or
+unavailable ids are rejected alike.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
-from retail_analytics.application.investigation_policy import (
-    LOAD_CURRENCY_TOOLS,
-    LOAD_DELETION_TOOLS,
-    LOAD_PREFERENCE_TOOLS,
-    LOAD_REPORT_TOOLS,
-)
+from pydantic import Field
+
+from retail_analytics.application.contracts.skills import SkillLoadOutcome
+from retail_analytics.application.investigation_policy import LOAD_SKILL
+from retail_analytics.application.tool_focus import SkillActivations
 from retail_analytics.application.tools import (
     AuthorizationSpec,
     CapabilitySpec,
+    ExecutionContext,
     OperationContext,
     RetrySpec,
+    ToolFailed,
     ToolInput,
     ToolOutcome,
     ToolOutput,
     ToolSucceeded,
 )
 from retail_analytics.domain.access import Permission
-from retail_analytics.domain.operations import RecoveryMode, SideEffect
+from retail_analytics.domain.operations import (
+    RecoveryMode,
+    SideEffect,
+    ToolErrorCode,
+)
+
+DESCRIPTION = (
+    "Load a listed analytical skill's guidance and authorized tools for this "
+    "run. Use only when needed; ordinary metric lookup uses the core tools. "
+    "Newly enabled tools are callable on the next model turn."
+)
 
 
-class LoadToolsInput(ToolInput):
-    """No arguments: the loader's name says which group."""
-
-
-class LoadToolsOutput(ToolOutput):
-    message: str
-
-
-_READY = "Loaded. The tools you may use appear at your next step."
-
-
-async def _load(args: LoadToolsInput, ctx: OperationContext) -> ToolOutcome[Any]:
-    return ToolSucceeded(output=LoadToolsOutput(message=_READY))
-
-
-def _loader(
-    name: str, what: str, authorization: AuthorizationSpec
-) -> CapabilitySpec[Any, Any]:
-    return CapabilitySpec(
-        name=name,
-        version=1,
-        description=(
-            f"Make the tools to {what} available from your next step. Call it "
-            "only when the request needs them."
-        ),
-        progress_label="Preparing the tools this request needs.",
-        input_model=LoadToolsInput,
-        output_model=LoadToolsOutput,
-        handler=_load,
-        authorization=authorization,
-        side_effect=SideEffect.READ_ONLY,
-        retry=RetrySpec(RecoveryMode.RETRY, 2, timedelta(seconds=10)),
+class LoadSkillInput(ToolInput):
+    name: str = Field(
+        pattern=r"^[a-z][a-z_]{0,39}$",
+        description="A skill id from the skill catalog.",
     )
 
 
-def tool_loader_capabilities() -> tuple[CapabilitySpec[Any, Any], ...]:
-    """One loader per on-demand group, visible only to who may use its tools."""
-    analysis = frozenset({Permission.ANALYSIS_READ.value})
-    return (
-        _loader(
-            LOAD_REPORT_TOOLS,
-            "save, read, list, search or export saved reports",
-            # Saving needs both; a run needs analysis anyway.
-            AuthorizationSpec(
-                required_permissions=analysis | {Permission.REPORTS_READ_OWN.value}
-            ),
+class LoadSkillOutput(ToolOutput):
+    skill: str
+    version: int = Field(ge=1)
+    status: Literal["loaded", "already_loaded"]
+    # The skill's tools this user may call, from the next model turn.
+    tools: list[str]
+    # The skill's instructions for this user (None when already loaded: they
+    # are in your instructions once, not repeated).
+    instructions: str | None = None
+    message: str
+
+
+_NEXT_TURN = (
+    "Its tools are callable from your next turn; its guidance is in your instructions."
+)
+
+
+def load_skill_capability(
+    skills: SkillActivations,
+    catalog: Callable[[ExecutionContext], Iterable[str]],
+) -> CapabilitySpec[Any, Any]:
+    """``catalog``: the tool names the executive may use now (the
+    permission-filtered registry catalog)."""
+
+    async def load(args: LoadSkillInput, ctx: OperationContext) -> ToolOutcome[Any]:
+        run_id = ctx.execution.correlation.run_id
+        result = await skills.load(run_id, args.name, list(catalog(ctx.execution)))
+        if result.skill is None or result.outcome is SkillLoadOutcome.REJECTED:
+            listed = ", ".join(result.available) or "none"
+            return ToolFailed(
+                code=ToolErrorCode.INVALID_INPUT,
+                message=f"No such skill is available. Skills you can load: {listed}.",
+            )
+        first = result.outcome is SkillLoadOutcome.LOADED
+        return ToolSucceeded(
+            output=LoadSkillOutput(
+                skill=result.skill.skill_id,
+                version=result.skill.version,
+                status="loaded" if first else "already_loaded",
+                tools=list(result.tools),
+                instructions=result.instructions if first else None,
+                message=_NEXT_TURN
+                if result.pending
+                else "Already in effect; use its tools now.",
+            )
+        )
+
+    return CapabilitySpec(
+        name=LOAD_SKILL,
+        version=1,
+        description=DESCRIPTION,
+        progress_label="Preparing the guidance and tools this request needs.",
+        input_model=LoadSkillInput,
+        output_model=LoadSkillOutput,
+        handler=load,
+        # Every run needs analysis; the skills offered depend on the catalog.
+        authorization=AuthorizationSpec(
+            required_permissions=frozenset({Permission.ANALYSIS_READ.value})
         ),
-        _loader(
-            LOAD_DELETION_TOOLS,
-            "find saved reports and propose deleting them",
-            AuthorizationSpec(
-                required_permissions=frozenset({Permission.REPORTS_DELETE_OWN.value})
-            ),
-        ),
-        _loader(
-            LOAD_PREFERENCE_TOOLS,
-            "inspect, remember, forget, confirm or decline saved preferences",
-            AuthorizationSpec(required_permissions=analysis),
-        ),
-        _loader(
-            LOAD_CURRENCY_TOOLS,
-            "convert amounts of recorded evidence to another currency",
-            AuthorizationSpec(
-                required_permissions=analysis, requires_product_scope=True
-            ),
-        ),
+        side_effect=SideEffect.IDEMPOTENT_WRITE,
+        retry=RetrySpec(RecoveryMode.RETRY, 2, timedelta(seconds=10)),
     )

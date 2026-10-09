@@ -12,9 +12,10 @@ tool names in the principal's catalog (``CapabilityRegistry.catalog``):
   cache-friendly instructions (``catalog_fingerprint`` keys the rendering).
 
 The names are the tools *exposed* to one model request
-(``application.tool_focus``): an authorized group that is not loaded yet is
-present only through its loader, and the policy then says how to load it
-instead of describing tools the model cannot see.
+(``application.tool_focus``): a specialized tool whose analytical skill is not
+loaded yet is absent, and the policy then names the skill to load instead of
+describing tools the model cannot see. Loaded skills add their rendered,
+versioned instructions (``SkillPrompt``) after these rules, once per prompt.
 
 Rendering happens in the activity that prepares a model step (never in
 workflow code), from the catalog resolved under current authority.
@@ -27,6 +28,7 @@ from collections.abc import Collection
 from functools import lru_cache
 
 from retail_analytics.application.contracts import sql_dialect
+from retail_analytics.application.contracts.skills import SkillPrompt
 
 # Tool names are literals: the application layer does not import capabilities.
 # tests/unit/tools/test_instruction_tool_references.py checks them against the
@@ -48,16 +50,14 @@ LIST_REPORTS = "list_reports"
 SEARCH_REPORTS = "search_reports"
 EXPORT_REPORT = "export_report"
 PROPOSE_DELETION = "propose_report_deletion"
-# Loaders of on-demand tool groups (application.tool_focus).
-LOAD_REPORT_TOOLS = "load_report_tools"
-LOAD_DELETION_TOOLS = "load_deletion_tools"
-LOAD_PREFERENCE_TOOLS = "load_preference_tools"
-LOAD_CURRENCY_TOOLS = "load_currency_tools"
-
-
-_LOADERS = frozenset(
-    {LOAD_REPORT_TOOLS, LOAD_DELETION_TOOLS, LOAD_PREFERENCE_TOOLS, LOAD_CURRENCY_TOOLS}
-)
+# Loads an analytical skill (application.tool_focus); a control tool.
+LOAD_SKILL = "load_skill"
+# Skill ids the base rules refer to (application/skill_assets).
+INVESTIGATION = "investigation"
+SAVED_REPORTS = "saved_reports"
+PREFERENCES = "preferences"
+CURRENCY = "currency_conversion"
+_NO_SKILLS = SkillPrompt()
 
 
 def catalog_fingerprint(tools: Collection[str]) -> str:
@@ -65,26 +65,47 @@ def catalog_fingerprint(tools: Collection[str]) -> str:
     return hashlib.sha256("\n".join(sorted(set(tools))).encode()).hexdigest()
 
 
-def render_investigation_policy(tools: Collection[str]) -> str:
-    """The policy text for exactly these tool names."""
-    return _render(frozenset(tools))
+def render_investigation_policy(
+    tools: Collection[str], skills: SkillPrompt | None = None
+) -> str:
+    """The policy text for exactly these tool names and skills."""
+    return _render(frozenset(tools), skills or _NO_SKILLS)
 
 
 @lru_cache(maxsize=128)
-def _render(tools: frozenset[str]) -> str:
+def _render(tools: frozenset[str], skills: SkillPrompt) -> str:
+    loadable = frozenset(name for name, _ in skills.catalog)
     return "\n".join(
         [
             _opening(tools),
             "",
-            _how_to_work(tools),
+            _how_to_work(tools, loadable),
             "",
-            _analytical_rules(tools),
+            _analytical_rules(tools, loadable),
             "",
-            *_answer_shapes(tools),
-            *_memory_and_reports(tools),
+            *_answer_shapes(tools, loadable),
+            *_memory_and_reports(tools, loadable),
+            *_skills(tools, skills),
             _SAFETY,
         ]
     )
+
+
+def _skills(tools: frozenset[str], skills: SkillPrompt) -> list[str]:
+    """The skill catalog (not loaded yet) and each loaded skill's
+    instructions, once; the rules above and Safety take precedence."""
+    lines: list[str] = []
+    if skills.catalog and LOAD_SKILL in tools:
+        lines += [
+            f"Skills you can load with {LOAD_SKILL} (only when needed):",
+            *(f"- {name}: {description}" for name, description in skills.catalog),
+            "",
+        ]
+    if skills.active:
+        lines.append("Loaded skills (guidance within the rules above and Safety):")
+    for name, version, text in skills.active:
+        lines += [f'<skill name="{name}" version="{version}">', text, "</skill>", ""]
+    return lines
 
 
 def _names(tools: frozenset[str], *candidates: str) -> str:
@@ -105,17 +126,25 @@ def _opening(tools: frozenset[str]) -> str:
         "evidence. You are one flexible agent: use any tool at any point, and "
         "skip what a request does not need."
     )
-    if tools & _LOADERS:
+    if LOAD_SKILL in tools:
         text += (
-            " Some tools are loaded on demand (named below): load a group "
-            "only when the request turns out to need it, at any point; its "
-            "tools appear at your next step. Loading never changes what this "
-            "user may do."
+            " Answer the user's actual question with the core tools and "
+            "approved context. Skills offer specialized guidance and tools; "
+            "they are not mandatory stages. For a simple figure or an answer "
+            "supported by valid evidence, answer directly without loading a "
+            "skill. Load a listed skill when its guidance or tools are needed. "
+            "Its tools become available after the load result, on your next "
+            "turn. A previous tool call in history does not make that tool "
+            "available now. If no skill fits, continue with core analysis. If "
+            "the requested capability or data does not exist, explain the "
+            "limitation rather than inventing it. Use only the current tool "
+            "catalog. Skills never change permissions, safety rules or "
+            "confirmation requirements."
         )
     return text
 
 
-def _how_to_work(tools: frozenset[str]) -> str:
+def _how_to_work(tools: frozenset[str], loadable: frozenset[str]) -> str:
     if not tools:
         return "How to work:\n- Answer only what needs no data. Never present a figure."
     steps = [
@@ -135,6 +164,13 @@ def _how_to_work(tools: frozenset[str]) -> str:
             "revenue does not need them. They are methods, not facts: never "
             "quote their figures. Finding none is normal; then work from the "
             "schema."
+        )
+    elif INVESTIGATION in loadable:
+        steps.append(
+            "For comparisons, why questions, or when a method is genuinely "
+            f"unclear, the {INVESTIGATION} skill adds guidance (and reviewed "
+            "analyst methods where available); a figure question or a default "
+            "metric such as revenue does not need it."
         )
     steps.append(_investigate_step(tools))
     steps.append(
@@ -231,7 +267,7 @@ def _investigate_step(tools: frozenset[str]) -> str:
     return " ".join(parts)
 
 
-def _analytical_rules(tools: frozenset[str]) -> str:
+def _analytical_rules(tools: frozenset[str], loadable: frozenset[str]) -> str:
     rules = [
         "Every figure must come from evidence in <evidence>; cite evidence ids.",
         "Revenue defaults to completed item sales (item status exactly "
@@ -258,12 +294,12 @@ def _analytical_rules(tools: frozenset[str]) -> str:
             "declared, unverified source currency) wherever converted figures "
             "appear."
         )
-    elif LOAD_CURRENCY_TOOLS in tools:
+    elif CURRENCY in loadable:
         rules.append(
             "Amounts stay in the source currency. When the user asks for "
-            "another currency or a saved display currency applies, call "
-            f"{LOAD_CURRENCY_TOOLS} first, then convert; repeat the "
-            "conversion's disclosure wherever converted figures appear."
+            "another currency or a saved display currency applies, load the "
+            f"{CURRENCY} skill first, then convert; repeat the conversion's "
+            "disclosure wherever converted figures appear."
         )
     else:
         rules.append(
@@ -281,7 +317,7 @@ def _analytical_rules(tools: frozenset[str]) -> str:
     return "Analytical rules:\n" + "\n".join(f"- {rule}" for rule in rules)
 
 
-def _answer_shapes(tools: frozenset[str]) -> list[str]:
+def _answer_shapes(tools: frozenset[str], loadable: frozenset[str]) -> list[str]:
     """Worked examples of proportional answers, without figures: figures come
     from evidence only."""
     if EXECUTE_ANALYSIS not in tools:
@@ -307,8 +343,8 @@ def _answer_shapes(tools: frozenset[str]) -> list[str]:
         "findings that cite evidence, definitions and limitations, then "
         "recommended actions kept apart from the findings"
         + (
-            f" (call {LOAD_REPORT_TOOLS} first if it must be saved)."
-            if SAVE_REPORT not in tools and LOAD_REPORT_TOOLS in tools
+            f" (load the {SAVED_REPORTS} skill first if it must be saved)."
+            if SAVE_REPORT not in tools and SAVED_REPORTS in loadable
             else "."
         ),
     ]
@@ -319,7 +355,7 @@ def _answer_shapes(tools: frozenset[str]) -> list[str]:
     ]
 
 
-def _memory_and_reports(tools: frozenset[str]) -> list[str]:
+def _memory_and_reports(tools: frozenset[str], loadable: frozenset[str]) -> list[str]:
     lines: list[str] = [
         "- The user's effective preferences are already in <preferences>; "
         "apply them without looking them up."
@@ -335,11 +371,11 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
             "something; a correction for the current question applies to that "
             "question only."
         )
-    elif LOAD_PREFERENCE_TOOLS in tools:
+    elif PREFERENCES in loadable:
         lines.append(
             "- To inspect, remember, forget, confirm or decline saved "
             "preferences (only when the user asks to, or answers a preference "
-            f"proposal), call {LOAD_PREFERENCE_TOOLS} first. A correction for "
+            f"proposal), load the {PREFERENCES} skill first. A correction for "
             "the current question applies to that question only."
         )
     else:
@@ -357,11 +393,11 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
             f"- {SAVE_REPORT} when the user asks for a report: findings cite "
             "evidence, recommended actions are separate from findings."
         )
-    elif LOAD_REPORT_TOOLS in tools:
+    elif SAVED_REPORTS in loadable:
         lines.append(
-            "- When the user asks to save, read, list, search or export saved "
-            f"reports, call {LOAD_REPORT_TOOLS} first; never load them as a "
-            "routine step."
+            "- When the user asks to save, read, find, export or delete saved "
+            f"reports, load the {SAVED_REPORTS} skill first; it states what "
+            "you may do with reports. Never load it as a routine step."
         )
     else:
         lines.append("- You cannot save reports for this user.")
@@ -387,11 +423,10 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
             "never confirm a deletion; the user confirms in the application, "
             "and a chat reply is not a confirmation."
         )
-    elif LOAD_DELETION_TOOLS in tools:
+    elif SAVED_REPORTS in loadable:
         lines.append(
-            f"- To delete reports, call {LOAD_DELETION_TOOLS} first. You can "
-            "never confirm a deletion; the user confirms in the application, "
-            "and a chat reply is not a confirmation."
+            "- You can never confirm a deletion; the user confirms in the "
+            "application, and a chat reply is not a confirmation."
         )
     else:
         lines.append(

@@ -32,13 +32,15 @@ import time
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 from retail_analytics.adapters.evaluation.telemetry_recorder import (
     RecordingTelemetrySink,
 )
+from retail_analytics.adapters.exchange_rates.fixture import FixtureRateProvider
 from retail_analytics.adapters.models.gemini_interactions import PROVIDER
 from retail_analytics.application.contracts.evaluation import (
     EfficiencyRun,
@@ -53,6 +55,7 @@ from retail_analytics.application.contracts.evaluation import (
     TurnResult,
 )
 from retail_analytics.application.contracts.progress import EventKind
+from retail_analytics.application.contracts.telemetry import Span
 from retail_analytics.application.evaluation.agent_observation import observe, scalar
 from retail_analytics.application.evaluation.efficiency import (
     SCORING_VERSION,
@@ -88,6 +91,7 @@ EVALUATION = HERE.parent
 SUITE = HERE / "efficiency" / "suite.json"
 RESULTS = HERE / "efficiency" / "results"
 QUERY_CAPABILITY = "execute_analysis"
+RATE_DATE = date(2025, 9, 30)
 SAFETY_FLAGS = (
     "pii_released",
     "raw_customer_id_released",
@@ -355,13 +359,49 @@ def _git(*args: str) -> str:
 def code_revision() -> str:
     """Short commit, marked ``+dirty`` when ``src`` has uncommitted changes."""
     with contextlib.suppress(Exception):
-        dirty = "+dirty" if _git("status", "--porcelain", "--", "src") else ""
+        dirty = "+dirty" if _git("status", "--porcelain", "--", ":/src") else ""
         return _git("rev-parse", "--short", "HEAD") + dirty
     return "unknown"
 
 
+def _tool_calls(spans: Sequence[Any], run_id: str) -> list[str]:
+    """Every non-query tool call of the run: sanitized arguments (as the
+    tool span captured them), outcome, error code and the message the model
+    got back."""
+    lines: list[str] = []
+    for span in spans:
+        if span.name != Span.TOOL.value or span.run_id != run_id:
+            continue
+        name = str(span.attributes.get("capability", "?"))
+        if name == QUERY_CAPABILITY:
+            continue
+        inputs = span.content.get("inputs")
+        args = (
+            inputs.get("arguments", inputs.get("rejected_arguments"))
+            if isinstance(inputs, dict)
+            else None
+        )
+        outputs = span.content.get("outputs")
+        result = (
+            outputs.get("model_visible_result") if isinstance(outputs, dict) else None
+        )
+        outcome = result.get("outcome") if isinstance(result, dict) else None
+        message = outcome.get("message") if isinstance(outcome, dict) else None
+        code = span.attributes.get("error_code", "none")
+        lines.append(
+            f"- `{name}` {span.attributes.get('outcome', '?')}"
+            + (f" ({code})" if code not in ("none", None) else "")
+            + f": arguments `{json.dumps(args, sort_keys=True)}`"
+            + (f"; returned: {message}" if message else "")
+        )
+    return lines
+
+
 def _transcript(
-    scenario: EfficiencyScenario, rep: RepetitionResult, conversation: _Conversation
+    scenario: EfficiencyScenario,
+    rep: RepetitionResult,
+    conversation: _Conversation,
+    spans: Sequence[Any] = (),
 ) -> list[str]:
     lines = [f"## {scenario.id} (repetition {rep.repetition})", ""]
     for turn_spec, facts, turn in zip(
@@ -395,6 +435,9 @@ def _transcript(
             if query.parameters:
                 bound = ", ".join(f"{k}={v}" for k, v in query.parameters.items())
                 lines += [f"Parameters: {bound}", ""]
+        calls = _tool_calls(spans, turn.run_id)
+        if calls:
+            lines += ["Other tool calls:", "", *calls, ""]
         lines += ["**Released:**", "", facts.released_text.strip() or "_nothing_", ""]
     return [line.rstrip() for line in lines]
 
@@ -431,6 +474,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--turn-timeout", type=float, default=300.0)
     # Harness check only: results with a cap are not suite results.
     parser.add_argument("--max-repeats", type=int, default=0)
+    # Offline currency checks: publish USD->CODE at RATE on 2025-09-30 (a
+    # deterministic fixture rate; default: no rate, every rate unavailable).
+    parser.add_argument(
+        "--fixture-rate", action="append", default=[], metavar="CODE=RATE"
+    )
+    # Operator-declared dataset currency for this run (declared, not verified).
+    parser.add_argument("--declare-source-currency", metavar="CODE")
     parser.add_argument(
         "--rescore",
         action="store_true",
@@ -445,6 +495,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("frozen extract check failed:", *problems, sep="\n  ")
         return 3
     settings = load_backend_settings()
+    if args.declare_source_currency:
+        settings = settings.model_copy(
+            update={"source_currency_declared": args.declare_source_currency}
+        )
     if settings.gemini_api_key is None:
         print("blocked: no Gemini key configured; nothing was run")
         return 3
@@ -468,7 +522,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     revision = code_revision()
     scenarios = [s for s in suite.scenarios if not args.only or s.id in args.only]
-    sink = RecordingTelemetrySink()
+    sink = RecordingTelemetrySink(keep_content=(Span.COMPILE.value, Span.TOOL.value))
     repetitions: list[RepetitionResult] = []
     transcript: list[str] = [f"# Transcripts: {args.label} (code `{revision}`)", ""]
     stopped = False
@@ -480,6 +534,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         backend=ExecutionBackend.LOCAL,
     )
     target.recorder = sink
+    if args.fixture_rate:
+        target.exchange_rates = FixtureRateProvider(
+            {
+                ("USD", code): {RATE_DATE: Decimal(rate)}
+                for code, rate in (item.split("=", 1) for item in args.fixture_rate)
+            }
+        )
     with use_telemetry(Telemetry(sink)):
         try:
             for scenario in scenarios:
@@ -539,7 +600,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         transcript=f"transcripts/{args.label}.md",
                     )
                     repetitions.append(result)
-                    transcript += _transcript(scenario, result, conversation)
+                    transcript += _transcript(scenario, result, conversation, spans)
                     for t in turns:
                         print(
                             f"  turn {t.turn} {t.run_status} q={t.queries_succeeded}"
@@ -580,6 +641,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
         settings={
             "turn_timeout_seconds": args.turn_timeout,
+            "fixture_rates": ",".join(args.fixture_rate) or "none",
+            "source_currency_declared": settings.source_currency_declared or "none",
             "max_repeats_cap": args.max_repeats,
             **{f"run_limit_{k}": v for k, v in limits.as_dict().items()},
         },

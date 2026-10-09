@@ -108,7 +108,11 @@ from retail_analytics.application.query_execution import (
     QueryExecutionService,
 )
 from retail_analytics.application.telemetry import telemetry
-from retail_analytics.application.tool_focus import LOADERS, select_tools
+from retail_analytics.application.tool_focus import (
+    SkillActivations,
+    focus_catalog,
+    select_tools,
+)
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     ExecutionContext,
@@ -285,6 +289,7 @@ class InvestigationRuntime:
         self._events = events
         self._evidence = evidence
         self._operations = operations
+        self._skills = SkillActivations(operations)
         self._queries = queries
         self._launcher = launcher
         self._personas = personas
@@ -324,8 +329,9 @@ class InvestigationRuntime:
 
         Applies pending steering/answers (the safe boundary), assembles the
         context under current authority, links the evidence it shows to the
-        run and exposes the authorized tools relevant now
+        run and exposes the core tools plus those of the skills in effect
         (``application.tool_focus``; never more than the catalog allows).
+        Skills loaded since the previous step take effect here.
         """
         principal, run = await self._running(run_id)
         snapshot = await self._budgets.snapshot(run_id)
@@ -339,12 +345,11 @@ class InvestigationRuntime:
         await self._evidence.link_to_run(
             context, [digest.evidence_id for digest in built.evidence]
         )
-        tools, focus = select_tools(
+        selection = select_tools(
             [d.name for d in self._registry.catalog(context)],
-            request=built.request,
-            preferences=built.preferences,
-            loaded=await self._loaded_groups(run_id),
+            await self._skills.take_effect(run_id),
         )
+        tools = selection.tools
         persona = await self._pinned_persona(run_id)
         # Which history is shown is a prompt-capacity choice, so it is not
         # part of the key: shown messages and evidence are validated one by
@@ -359,7 +364,7 @@ class InvestigationRuntime:
         return ModelStep(
             instructions="\n".join(
                 [
-                    render_investigation_policy(tools),
+                    render_investigation_policy(tools, selection.prompt),
                     *([persona] if persona else []),
                     _budget_line(snapshot),
                     built.render(
@@ -381,24 +386,12 @@ class InvestigationRuntime:
                 messages=built.current_history,
                 key_parts=tuple((str(k), _digest_of(v)[:16]) for k, v in key_parts),
             ),
-            focus=focus,
-        )
-
-    async def _loaded_groups(self, run_id: str) -> frozenset[str]:
-        """Loaders of on-demand tool groups that succeeded in this run.
-
-        Read from the recorded operations, so every runtime (and a replayed
-        or resumed one) sees the same expansion; authority is not implied:
-        the selection still intersects the catalog under current authority.
-        """
-        return frozenset(
-            op.capability
-            for op in await self._operations.for_run(run_id)
-            if op.capability in LOADERS and op.status is ToolExecutionStatus.SUCCEEDED
+            focus=selection.focus,
         )
 
     async def catalog(self, run_id: str) -> tuple[ToolDescriptor, ...]:
-        """The tools the run may use now (current authority)."""
+        """The tools the run may use now (current authority); ``load_skill``
+        accepts only the skills this executive may load."""
         principal = await self._principals.get(run_id)
         if principal is None:
             return ()
@@ -408,7 +401,7 @@ class InvestigationRuntime:
             )
         except AccessDenied:
             return ()
-        return self._registry.catalog(context)
+        return focus_catalog(self._registry.catalog(context))
 
     async def release_answer(self, draft: AnswerDraft) -> StepOutcome:
         """Release the final answer, or say why not.

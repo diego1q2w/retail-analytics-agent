@@ -93,6 +93,9 @@ from retail_analytics.application.golden_seeding import (
     seed_golden_library,
     seed_principals,
 )
+from retail_analytics.application.ports.currency_conversion import (
+    ExchangeRateProvider,
+)
 from retail_analytics.application.reports import ReportService
 from retail_analytics.bootstrap.access import AccessServices, build_access
 from retail_analytics.bootstrap.artifacts import build_artifacts
@@ -299,6 +302,8 @@ class AgentRuntimeTarget:
     seed_knowledge: bool = True
     target_id: str = ""
     backend: ExecutionBackend | None = None
+    # Offline exchange rates (default: none published, every rate unavailable).
+    exchange_rates: ExchangeRateProvider | None = None
     _loop: _Loop | None = field(default=None, init=False, repr=False)
     _harness: _Harness | None = field(default=None, init=False, repr=False)
 
@@ -389,7 +394,7 @@ class AgentRuntimeTarget:
             "queries": queries,
             "artifacts": artifacts,
             "retriever": retriever,
-            "exchange_rates": FixtureRateProvider({}),
+            "exchange_rates": self.exchange_rates or FixtureRateProvider({}),
         }
         task: asyncio.Task[None] | None = None
         manager: LocalInvestigationManager | None = None

@@ -21,6 +21,11 @@ Plan format (``plans`` maps the exact user message text to steps)::
     {"answer": {"text": "...", "cite": ["<column>", ...], "complete": true}}
     {"ask": "<question>"}
 
+A planned call to a specialized tool whose analytical skill is not loaded is
+preceded by the ``load_skill`` call a model would make (one extra model turn,
+not counted as a plan step), as long as the catalog offers that skill; the
+``otherwise`` fallback applies when it does not.
+
 Any step may carry ``"delay_seconds"`` (the model waits before replying). When
 later user messages (steering) have their own plan, the latest such plan is
 played from its start.
@@ -50,10 +55,14 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from retail_analytics.application.investigation_policy import LOAD_SKILL
+from retail_analytics.application.tool_focus import owner_of
+
 SCRIPTED_MODEL_NAME = "scripted-plan"
 UNAVAILABLE = "unavailable"
 _PLACEHOLDER = re.compile(r"\{\{(value|evidence):([A-Za-z0-9_]+)(?:#(\d+))?\}\}")
 _HEADER = re.compile(r"^evidence (evd_[0-9a-z]+) v\d+;")
+_AUTO_LOAD = "scripted-load-"
 _UNPLANNED = (
     "I could not complete this request with the scripted plan available for evaluation."
 )
@@ -147,6 +156,38 @@ def _plan_for(
     return []
 
 
+def _auto_loaded(message: ModelMessage) -> set[str]:
+    """Skills this scripted model loaded on its own in ``message``."""
+    if not isinstance(message, ModelResponse):
+        return set()
+    return {
+        str(part.args_as_dict().get("name"))
+        for part in message.parts
+        if isinstance(part, ToolCallPart)
+        and (part.tool_call_id or "").startswith(_AUTO_LOAD)
+    }
+
+
+def _skill_to_load(
+    tool: str, info: AgentInfo, messages: Sequence[ModelMessage]
+) -> str | None:
+    """The skill to load before calling ``tool``, if the catalog offers it
+    and this conversation has not loaded it already."""
+    available = {t.name: t for t in info.function_tools}
+    skill = owner_of(tool)
+    loader = available.get(LOAD_SKILL)
+    if tool in available or skill is None or loader is None:
+        return None
+    offered = (
+        loader.parameters_json_schema.get("properties", {})
+        .get("name", {})
+        .get("enum", [])
+    )
+    if skill not in offered or any(skill in _auto_loaded(m) for m in messages):
+        return None
+    return skill
+
+
 def _output_tool(info: AgentInfo, marker: str) -> str:
     for tool in info.output_tools:
         if marker in tool.name:
@@ -168,11 +209,29 @@ def scripted_model(plans: Mapping[str, Sequence[Mapping[str, Any]]]) -> Function
         request = _section(instructions, "request")
         # The run's own message comes first; later steering follows it.
         steps = _plan_for(request, normalized)
-        taken = sum(isinstance(m, ModelResponse) for m in messages)
+        taken = sum(
+            isinstance(m, ModelResponse) and not _auto_loaded(m) for m in messages
+        )
         evidence = parse_evidence(instructions)
         step = steps[taken] if taken < len(steps) else None
         if step is None:
             step = {"answer": {"text": _UNPLANNED, "complete": False}}
+        skill = (
+            _skill_to_load(str(step["call"]), info, messages)
+            if "call" in step
+            else None
+        )
+        if skill is not None:
+            digest = hashlib.sha256(f"{request}|{taken}|{skill}".encode()).hexdigest()
+            return ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        LOAD_SKILL,
+                        {"name": skill},
+                        tool_call_id=f"{_AUTO_LOAD}{digest[:16]}",
+                    )
+                ]
+            )
         if "call" in step and "otherwise" in step:
             available = {tool.name for tool in info.function_tools}
             if step["call"] not in available:

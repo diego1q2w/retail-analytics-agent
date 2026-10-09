@@ -25,6 +25,8 @@ runs it again with the same tool-call ID) because:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -51,6 +53,7 @@ from retail_analytics.application.ports.persistence import (
 )
 from retail_analytics.application.ports.progress import ProgressSink
 from retail_analytics.application.telemetry import telemetry
+from retail_analytics.application.tool_focus import SkillActivations
 from retail_analytics.application.tools import (
     CapabilityRegistry,
     CapabilitySpec,
@@ -65,12 +68,17 @@ from retail_analytics.application.tools import (
 )
 from retail_analytics.domain.budgets import BudgetResource
 from retail_analytics.domain.executions import (
+    MAX_DETAIL_LENGTH,
     ToolExecution,
     ToolExecutionStatus,
     transient_failures,
 )
 from retail_analytics.domain.investigations import operation_id_for
-from retail_analytics.domain.operations import RecoveryMode, ToolErrorCode
+from retail_analytics.domain.operations import (
+    RecoveryMode,
+    SideEffect,
+    ToolErrorCode,
+)
 from retail_analytics.domain.runs import RunStatus
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -83,6 +91,17 @@ _NOT_REPEATED = (
     "automatically; its outcome is unknown."
 )
 _STOPPING_TIME = frozenset({BudgetResource.ACTIVE_TIME})
+# Failures that depend only on the request: the same arguments fail the same
+# way again (unlike temporary, budget, access or internal failures).
+_UNCHANGED_FAILS = frozenset(
+    {
+        ToolErrorCode.INVALID_INPUT,
+        ToolErrorCode.INVALID_QUERY,
+        ToolErrorCode.UNSUPPORTED_SQL,
+        ToolErrorCode.FIELD_UNAVAILABLE,
+    }
+)
+_REPEAT = "repeat."
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +136,7 @@ class ToolRunner:
         self._principals = principals
         self._runs = runs
         self._operations = operations
+        self._skills = SkillActivations(operations)
         self._budgets = budgets
         self._progress = progress
         self._settings = settings or ToolRunnerSettings()
@@ -158,6 +178,31 @@ class ToolRunner:
             if spec is None:
                 # The gateway refuses it the same way and records the event.
                 return await invoke(self._registry, call, op_context, self._progress)
+            skill = await self._skills.blocked(
+                run_id, spec.name, [d.name for d in self._registry.catalog(context)]
+            )
+            if skill is not None:
+                # Authorized, but its skill is not in effect for this model
+                # turn (never loaded, or loaded in this same response).
+                return _failed(
+                    name,
+                    call_id,
+                    operation_id,
+                    _not_loaded(name, skill),
+                    ToolErrorCode.ACCESS_DENIED,
+                )
+
+            repeated = await self._operations.get(_repeat_id(run_id, call))
+            if repeated is not None and repeated.error_code is not None:
+                # The same request already failed in a way a repeat cannot
+                # change; say so instead of running it again.
+                return _failed(
+                    name,
+                    call_id,
+                    operation_id,
+                    _repeat_message(repeated.error_detail),
+                    repeated.error_code,
+                )
 
             owns_record = not spec.side_effect.may_leave_external_effect
             if owns_record:
@@ -167,6 +212,8 @@ class ToolRunner:
 
             result = await invoke(self._registry, call, op_context, self._progress)
             outcome = result.outcome
+            if isinstance(outcome, ToolFailed) and outcome.code in _UNCHANGED_FAILS:
+                await self._remember_failure(run_id, call, spec, outcome)
             if owns_record:
                 await self._record(spec, op_context, outcome)
 
@@ -212,6 +259,34 @@ class ToolRunner:
         if result is None:
             return _failed(name, call_id, operation_id, _STOPPED, _INTERNAL)
         return result
+
+    async def _remember_failure(
+        self,
+        run_id: str,
+        call: ToolCall,
+        spec: CapabilitySpec[Any, Any],
+        outcome: ToolFailed,
+    ) -> None:
+        """Record that this exact request failed for a reason a repeat cannot
+        change (the run's operation records; replay-safe, idempotent)."""
+        repeat_id = _repeat_id(run_id, call)
+        started = await self._operations.begin(
+            OperationRequest(
+                operation_id=repeat_id,
+                run_id=run_id,
+                capability=f"{_REPEAT}{spec.name}",
+                capability_version=spec.version,
+                side_effect=SideEffect.READ_ONLY,
+            )
+        )
+        if not started.execution.status.is_terminal:
+            await self._operations.transition(
+                repeat_id,
+                ToolExecutionStatus.FAILED,
+                attempt=1,
+                error_code=outcome.code,
+                detail=outcome.message[:MAX_DETAIL_LENGTH],
+            )
 
     async def _stop_reason(self, run_id: str) -> _Refusal | None:
         run = await self._runs.get_run(run_id)
@@ -317,6 +392,33 @@ class _Unknown:
             operation_id=operation_id,
             outcome=ToolOutcomeUnknown(reference=operation_id, summary=_NOT_REPEATED),
         )
+
+
+def _repeat_id(run_id: str, call: ToolCall) -> str:
+    """One record per run, tool and exact arguments."""
+    arguments = json.dumps(call.arguments, sort_keys=True, default=str)
+    digest = hashlib.sha256(f"{call.name}\n{arguments}".encode()).hexdigest()
+    return operation_id_for(run_id, f"{_REPEAT}{digest}")
+
+
+def _repeat_message(detail: str | None) -> str:
+    said = f" It returned: {detail}" if detail else ""
+    return (
+        "Not run again: this exact request already failed in this "
+        f"investigation and repeating it unchanged gives the same result.{said}"
+    )[:480] + (
+        " Change the request, ask the user, or answer with what you have."
+        if len(said) < 300
+        else ""
+    )
+
+
+def _not_loaded(tool: str, skill: str) -> str:
+    return (
+        f"{tool} is not available in this turn. Load the {skill} skill with "
+        "load_skill first (if you just did, it takes effect on your next "
+        "turn), then call it again."
+    )
 
 
 def _failed(

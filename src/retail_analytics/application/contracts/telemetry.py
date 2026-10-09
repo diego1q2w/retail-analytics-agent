@@ -117,6 +117,8 @@ class Span(StrEnum):
     CONTEXT_RESTART = "investigation.context_restart"
     # The tools exposed to the model: at the start and whenever they change.
     TOOL_FOCUS = "investigation.tool_focus"
+    # An analytical skill loaded, rejected, or a tool refused until loaded.
+    SKILL = "investigation.skill"
     USER_INPUT = "user.input"
     CLARIFICATION = "clarification.ask"
 

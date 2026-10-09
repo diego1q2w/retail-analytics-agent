@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "suite_id": "analytical-skills",
+  "suite_version": "1",
+  "declared_on": "2026-10-09",
+  "spend": {
+    "max_total_tokens": 700000,
+    "max_model_attempts": 140,
+    "run_tokens_limit": 100000,
+    "run_requests_limit": 20
+  },
+  "scenarios": [
+    {
+      "id": "report-lifecycle",
+      "title": "Save a report, read it back, export it",
+      "category": "report",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "Write and save a short report on our revenue in September 2025, with one recommended action.",
+          "kind": "investigation",
+          "expect_report": true,
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "sql_terms": [["complete"]]
+        },
+        {
+          "text": "Show me the report you just saved.",
+          "kind": "follow_up",
+          "targets": {"max_queries": 0},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}]
+        },
+        {
+          "text": "Export that report.",
+          "kind": "follow_up",
+          "targets": {"max_queries": 0}
+        }
+      ]
+    },
+    {
+      "id": "preference-correction",
+      "title": "A one-off correction, then an explicit request to remember",
+      "category": "preferences",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "What was our revenue in September 2025?",
+          "kind": "cold",
+          "targets": {"max_queries": 1, "max_model_requests": 4},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"], ["2025"]],
+          "sql_terms": [["complete"], ["2025-09", "= 9", "=9"]]
+        },
+        {
+          "text": "Just give me that as a one-line answer this time.",
+          "kind": "follow_up",
+          "targets": {"max_queries": 0},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}]
+        },
+        {
+          "text": "From now on keep my answers brief. Please remember that as my default.",
+          "kind": "follow_up",
+          "targets": {"max_queries": 0}
+        }
+      ]
+    },
+    {
+      "id": "currency-request",
+      "title": "Explicit currency request with an unverified source currency",
+      "category": "currency",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "What was our revenue in September 2025 in euros?",
+          "kind": "cold",
+          "clarification_reply": "I don't know which currency the data is in.",
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"], ["2025"]],
+          "sql_terms": [["complete"]]
+        }
+      ]
+    }
+  ]
+}
