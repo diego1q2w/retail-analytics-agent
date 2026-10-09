@@ -462,6 +462,7 @@ class ProviderRouting(WrapperModel):
             raise ValueError("at least one provider is required")
         super().__init__(FallbackModel(*members))
         self._run_id = run_id
+        self._model_turn = 0
 
     async def request(
         self,
@@ -469,10 +470,13 @@ class ProviderRouting(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
+        self._model_turn += 1
         trace = RequestTrace()
         token = _request_trace.set(trace)
         with telemetry().span(
-            Span.MODEL_REQUEST, run_id=_safe_run_id(self._run_id)
+            Span.MODEL_REQUEST,
+            run_id=_safe_run_id(self._run_id),
+            attributes={"model_turn": self._model_turn},
         ) as span:
             try:
                 response = await self.wrapped.request(

@@ -290,7 +290,7 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
 
         def complete_trace() -> list[dict[str, Any]] | None:
             spans = mlflow_spans(stack, run_id)
-            names = {s["name"] for s in spans}
+            names = {span_attributes(s).get("operation", s["name"]) for s in spans}
             needed = {
                 "run.accept",
                 "run.admission",
@@ -303,7 +303,9 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
         spans = eventually("the run's trace in MLflow", complete_trace, 90)
         by_name: dict[str, list[dict[str, Any]]] = {}
         for span in spans:
-            by_name.setdefault(span["name"], []).append(span)
+            by_name.setdefault(
+                span_attributes(span).get("operation", span["name"]), []
+            ).append(span)
 
         # One trace for API acceptance, tool attempt, model attempts and the run.
         assert {s["trace_id"] for s in spans} == {spans[0]["trace_id"]}
@@ -469,7 +471,7 @@ async def test_conversation_with_clarification_is_readable_and_sanitized(
 
         def complete_trace() -> list[dict[str, Any]] | None:
             spans = mlflow_spans(stack, run_id)
-            names = {s["name"] for s in spans}
+            names = {span_attributes(s).get("operation", s["name"]) for s in spans}
             needed = {
                 "investigation.run",
                 "clarification.ask",
@@ -482,9 +484,9 @@ async def test_conversation_with_clarification_is_readable_and_sanitized(
         spans = eventually("the conversation trace in MLflow", complete_trace, 90)
         spans.sort(key=lambda s: int(s["start_time_unix_nano"]))
         order = [
-            s["name"]
+            span_attributes(s).get("operation", s["name"])
             for s in spans
-            if s["name"]
+            if span_attributes(s).get("operation", s["name"])
             in ("run.accept", "clarification.ask", "user.input", "answer.release")
         ]
         assert order == [
@@ -495,7 +497,9 @@ async def test_conversation_with_clarification_is_readable_and_sanitized(
         ]
         by_name: dict[str, list[dict[str, Any]]] = {}
         for span in spans:
-            by_name.setdefault(span["name"], []).append(span)
+            by_name.setdefault(
+                span_attributes(span).get("operation", span["name"]), []
+            ).append(span)
 
         (question,) = by_name["clarification.ask"]
         assert payload(question, "inputs")["model_draft"].startswith("Which period?")
@@ -572,7 +576,7 @@ async def test_active_deadline_stop_is_traced_searchable_and_counted(
             spans = [
                 s
                 for s in mlflow_spans(stack, run_id)
-                if s["name"] == "investigation.run"
+                if span_attributes(s).get("operation", s["name"]) == "investigation.run"
             ]
             return spans[0] if spans else None
 

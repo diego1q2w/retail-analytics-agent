@@ -87,7 +87,7 @@ _PAYLOAD_ATTRIBUTES = {
 _SPAN_TYPES = {
     Span.RUN: "AGENT",
     Span.TOOL: "TOOL",
-    Span.MODEL_REQUEST: "LLM",
+    Span.MODEL_REQUEST: "CHAIN",
     Span.MODEL_ATTEMPT: "LLM",
     Span.RETRIEVAL: "RETRIEVER",
 }
@@ -100,6 +100,7 @@ class OtelSettings:
     traces_endpoint: str
     metrics_endpoint: str
     experiment_id: str = "0"
+    http_experiment_id: str | None = None
     export_timeout_seconds: float = 2.0
     metric_interval_seconds: float = 10.0
     queue_size: int = 2048
@@ -163,6 +164,38 @@ class _GuardedSpanExporter(OTLPSpanExporter):
             self._breaker.tripped()
             self._drops.add("traces", len(spans))
         return result
+
+
+class _TraceExporter(SpanExporter):
+    """Keep transport spans out of the agent experiment."""
+
+    def __init__(self, agent: SpanExporter, http: SpanExporter | None) -> None:
+        self._agent = agent
+        self._http = http
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        agent = [s for s in spans if s.name != Span.HTTP.value]
+        http = [s for s in spans if s.name == Span.HTTP.value]
+        results = []
+        if agent:
+            results.append(self._agent.export(agent))
+        if http and self._http is not None:
+            results.append(self._http.export(http))
+        return (
+            SpanExportResult.FAILURE
+            if SpanExportResult.FAILURE in results
+            else SpanExportResult.SUCCESS
+        )
+
+    def shutdown(self) -> None:
+        self._agent.shutdown()
+        if self._http is not None:
+            self._http.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        agent = self._agent.force_flush(timeout_millis)
+        http = self._http.force_flush(timeout_millis) if self._http else True
+        return agent and http
 
 
 class _GuardedMetricExporter(OTLPMetricExporter):
@@ -302,16 +335,24 @@ class OtelSink:
     ) -> None:
         self._settings = settings
         self._drops = DropCounter()
-        breaker = _Breaker(settings.cooloff_seconds, clock)
         resource = Resource.create(
             {"service.name": settings.service, "service.instance.id": settings.instance}
         )
-        exporter = span_exporter or _GuardedSpanExporter(
-            breaker,
-            self._drops,
-            endpoint=settings.traces_endpoint,
-            headers={"x-mlflow-experiment-id": settings.experiment_id},
-            timeout=int(max(settings.export_timeout_seconds, 1)),
+
+        def exporter_for(experiment_id: str) -> SpanExporter:
+            return _GuardedSpanExporter(
+                _Breaker(settings.cooloff_seconds, clock),
+                self._drops,
+                endpoint=settings.traces_endpoint,
+                headers={"x-mlflow-experiment-id": experiment_id},
+                timeout=int(max(settings.export_timeout_seconds, 1)),
+            )
+
+        exporter = span_exporter or _TraceExporter(
+            exporter_for(settings.experiment_id),
+            exporter_for(settings.http_experiment_id)
+            if settings.http_experiment_id is not None
+            else None,
         )
         self._traces = TracerProvider(resource=resource, id_generator=_Ids())
         self._traces.add_span_processor(
@@ -370,6 +411,22 @@ class OtelSink:
         attrs: dict[str, str | int | float | bool] = dict(attributes)
         kind = _SPAN_TYPES.get(Span(name)) if name in Span else None
         attrs["mlflow.spanType"] = json.dumps(kind or "CHAIN")
+        attrs["operation"] = name
+        display_name = {
+            Span.QUERY.value: "🗄️ Execute query",
+            Span.COMPILE.value: "🔎 Validate and compile SQL",
+            Span.EVIDENCE.value: "💾 Store evidence",
+        }.get(name, name)
+        if name == Span.TOOL.value and "capability" in attrs:
+            display_name = f"tool: {attrs['capability']}"
+        elif name == Span.MODEL_ATTEMPT.value:
+            display_name = (
+                f"{attrs.get('provider', 'provider')}: {attrs.get('model', 'model')} "
+                f"(attempt {attrs.get('attempt', 1)})"
+            )
+        elif name == Span.MODEL_REQUEST.value and "model_turn" in attrs:
+            display_name = f"Model request {attrs['model_turn']}"
+
         if run_id is not None:
             attrs["run_trace_id"] = trace_id_for(run_id)
         start_ns = None if start is None else _ns(start)
@@ -403,7 +460,7 @@ class OtelSink:
         ids_token = _forced_ids.set(forced) if forced else None
         try:
             span = self._tracer.start_span(
-                name,
+                display_name,
                 context=parent_context,
                 attributes=attrs,
                 start_time=start_ns,

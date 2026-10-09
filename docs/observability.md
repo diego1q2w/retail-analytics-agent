@@ -108,3 +108,22 @@ Grafana folder "Retail Analytics" holds "Agent overview" (`docker/grafana/dashbo
 ## Not covered
 
 No alert rules (thresholds and targets are undecided), no retention settings, no span-level sampling beyond the retrieval review mark, and no OpenTelemetry context propagation across HTTP calls to the providers or BigQuery (those attempts are spans created by this code).
+
+
+### Agent traces and HTTP traffic
+
+The agent MLflow experiment contains investigations, not HTTP transport traffic.
+HTTP request counts and durations remain available as metrics. To retain HTTP
+spans too, create a separate MLflow experiment and set
+`TELEMETRY_HTTP_EXPERIMENT_ID` to its ID (different from `TELEMETRY_EXPERIMENT_ID`).
+Without that setting, HTTP spans are not exported. Their optional traces retain
+run correlation IDs; request bodies and credentials are never captured.
+Existing historical HTTP traces are not removed by this change.
+
+Model-request wrappers are orchestration spans, numbered within the model-chain
+instance (numbering can restart when execution rebuilds that instance). Their
+provider-attempt children carry the actual model name, sanitized inputs/outputs,
+tokens and cost. Tool spans display the registered capability name. The original
+operation code remains in the `operation` attribute. Parentage records nesting;
+start timestamps show sequence, including parallel calls. Restart the API and
+any workers to use the new presentation.

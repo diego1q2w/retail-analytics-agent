@@ -28,6 +28,7 @@ def build_telemetry(settings: BackendSettings, service: str) -> Telemetry:
             traces_endpoint=settings.telemetry_traces_endpoint,
             metrics_endpoint=settings.telemetry_metrics_endpoint,
             experiment_id=settings.telemetry_experiment_id,
+            http_experiment_id=settings.telemetry_http_experiment_id,
             export_timeout_seconds=settings.telemetry_export_timeout_seconds,
             metric_interval_seconds=settings.telemetry_metric_interval_seconds,
         )

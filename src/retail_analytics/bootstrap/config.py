@@ -245,6 +245,9 @@ class BackendSettings(BaseModel):
     telemetry_traces_endpoint: str = "http://127.0.0.1:55500/v1/traces"
     telemetry_metrics_endpoint: str = "http://127.0.0.1:59090/api/v1/otlp/v1/metrics"
     telemetry_experiment_id: str = Field(default="0", pattern=r"^[0-9]{1,18}$")
+    telemetry_http_experiment_id: str | None = Field(
+        default=None, pattern=r"^[0-9]{1,18}$"
+    )
     telemetry_export_timeout_seconds: float = Field(default=2.0, ge=0.5, le=10.0)
     telemetry_metric_interval_seconds: float = Field(default=10.0, ge=1.0, le=300.0)
     # Sanitized model/tool/user interaction content in traces (docs/
@@ -278,6 +281,12 @@ class BackendSettings(BaseModel):
         if value is not None and not re.fullmatch(r"[A-Z]{3}", value):
             raise ValueError("must be a three-letter uppercase ISO 4217 code")
         return value
+
+    @model_validator(mode="after")
+    def _check_trace_experiments(self) -> Self:
+        if self.telemetry_http_experiment_id == self.telemetry_experiment_id:
+            raise ValueError("HTTP and agent traces must use separate experiments")
+        return self
 
     @model_validator(mode="after")
     def _check_key_lengths(self) -> Self:

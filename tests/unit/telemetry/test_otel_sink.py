@@ -74,7 +74,7 @@ def test_spans_of_a_run_share_its_trace_and_root() -> None:
     ):
         pass
     sink.flush(1)
-    spans = {s.name: s for s in exporter.get_finished_spans()}
+    spans = {attrs(s)["operation"]: s for s in exporter.get_finished_spans()}
     trace = int(trace_id_for(run_id), 16)
     root_id = int(root_span_id_for(run_id), 16)
     assert {s.context.trace_id for s in spans.values()} == {trace}
@@ -84,6 +84,7 @@ def test_spans_of_a_run_share_its_trace_and_root() -> None:
     assert parent_id(spans[Span.TOOL]) == root_id
     # Nested spans of the same run nest natively.
     assert parent_id(spans[Span.QUERY]) == spans[Span.TOOL].context.span_id
+    assert spans[Span.QUERY].name == "🗄️ Execute query"
     assert attrs(spans[Span.TOOL])["operation_id"] == "op_1"
     assert attrs(spans[Span.TOOL])["mlflow.spanType"] == '"TOOL"'
     assert attrs(spans[Span.RUN])["mlflow.spanType"] == '"AGENT"'
@@ -286,3 +287,50 @@ def test_a_run_started_from_an_ended_span_context_parents_on_the_root() -> None:
     sink.flush(1)
     tools = {s for s in exporter.get_finished_spans() if s.name == Span.TOOL}
     assert {parent_id(s) for s in tools} == {root_id}
+
+
+def test_display_names_preserve_operation_and_real_parentage() -> None:
+    telemetry, exporter, _, sink = captured()
+    with (
+        telemetry.span(
+            Span.MODEL_REQUEST, run_id="run_display", attributes={"model_turn": 2}
+        ),
+        telemetry.span(
+            Span.MODEL_ATTEMPT,
+            run_id="run_display",
+            attributes={"provider": "google", "model": "gemini", "attempt": 1},
+        ),
+    ):
+        pass
+    with telemetry.span(
+        Span.TOOL, run_id="run_display", attributes={"capability": "execute_analysis"}
+    ):
+        pass
+    spans = {s.name: s for s in exporter.get_finished_spans()}
+    wrapper = spans["Model request 2"]
+    attempt = spans["google: gemini (attempt 1)"]
+    assert attrs(wrapper)["mlflow.spanType"] == '"CHAIN"'
+    assert attrs(attempt)["mlflow.spanType"] == '"LLM"'
+    assert parent_id(attempt) == wrapper.context.span_id
+    assert attrs(spans["tool: execute_analysis"])["operation"] == Span.TOOL.value
+    sink.shutdown(1)
+
+
+def test_transport_export_is_separate_and_optional() -> None:
+    from retail_analytics.adapters.telemetry.otel import _TraceExporter
+
+    telemetry, captured_spans, _, sink = captured()
+    with telemetry.span(Span.HTTP, attributes={"route": "/healthz"}):
+        pass
+    with telemetry.span(Span.RUN, run_id="run_export", root=True):
+        pass
+    spans = captured_spans.get_finished_spans()
+    agent, http = InMemorySpanExporter(), InMemorySpanExporter()
+    router = _TraceExporter(agent, http)
+    router.export(spans)
+    assert {s.name for s in agent.get_finished_spans()} == {Span.RUN.value}
+    assert {s.name for s in http.get_finished_spans()} == {Span.HTTP.value}
+    agent.clear()
+    _TraceExporter(agent, None).export(spans)
+    assert {s.name for s in agent.get_finished_spans()} == {Span.RUN.value}
+    sink.shutdown(1)

@@ -390,3 +390,16 @@ def test_database_url_is_app_scoped_and_bare_form_is_ignored(tmp_path: Path) -> 
     message = str(caught.value)
     assert "unknown variable DATABASE_URL (did you mean APP_DATABASE_URL?)" in message
     assert SECRET not in message
+
+
+def test_http_traces_require_a_separate_experiment() -> None:
+    with pytest.raises(ConfigError, match="separate experiments"):
+        load_backend_settings(
+            environ={"APP_MODE": "fixture", "TELEMETRY_HTTP_EXPERIMENT_ID": "0"},
+            env_file=None,
+        )
+    settings = load_backend_settings(
+        environ={"APP_MODE": "fixture", "TELEMETRY_HTTP_EXPERIMENT_ID": "1"},
+        env_file=None,
+    )
+    assert settings.telemetry_http_experiment_id == "1"
