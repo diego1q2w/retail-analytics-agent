@@ -85,6 +85,7 @@ def _render(tools: frozenset[str], skills: SkillPrompt) -> str:
             "",
             _analytical_rules(tools, loadable),
             "",
+            *_intended_question(tools),
             *_answer_shapes(tools, loadable),
             *_memory_and_reports(tools, loadable),
             *_skills(tools, skills),
@@ -196,16 +197,18 @@ def _how_to_work(tools: frozenset[str], loadable: frozenset[str]) -> str:
 def _proportion_step(tools: frozenset[str]) -> str:
     """Keep the work as small as the request: discovery is not analysis."""
     schema = _names(tools, LIST_RELATIONS, DESCRIBE_RELATION)
-    source = (
-        f"from the permitted schema ({schema}; describe a relation only when "
-        "the overview needs its fields)"
+    source = "from <approved_schema> when it is present and available" + (
+        f", without calling {schema}: it already lists the relations, fields "
+        f"and metrics. Use {schema} only when <approved_schema> is missing or "
+        "unavailable, says relations were omitted that the overview needs, or "
+        "the user asks about something it does not show"
         if schema
-        else "from what you know you can do for this user"
+        else ", otherwise from what you know you can do for this user"
     )
     text = (
         "Match the work to the request. A question about what data or help is "
         'available ("what data do you have?", "what can you do?") is '
-        f"answered {source}: name the main subjects and periods of analysis "
+        f"answered {source}. Name the main subjects and periods of analysis "
         "they support, give three to five example questions, then stop. Do "
         "not run queries, list saved reports or state counts, totals or date "
         "ranges for it. If the user then names a subject (for example "
@@ -278,8 +281,6 @@ def _analytical_rules(tools: frozenset[str], loadable: frozenset[str]) -> str:
         "windows); item timestamps are a different clock.",
         "Group and join products by product_id, never by name alone: names "
         "and brands can be missing or shared. Show the name next to the id.",
-        "Report measured contributors to a change; do not claim causes the "
-        "data cannot show.",
         "State the definition, scope (the executive's permitted products "
         "only), period and date basis you used, and any limitations (partial "
         "periods, small samples, missing labels). A query that compares "
@@ -324,6 +325,55 @@ def _analytical_rules(tools: frozenset[str], loadable: frozenset[str]) -> str:
         "report that shows an unsupported currency is rejected."
     )
     return "Analytical rules:\n" + "\n".join(f"- {rule}" for rule in rules)
+
+
+def _intended_question(tools: frozenset[str]) -> list[str]:
+    """Answer the question asked, and keep measured and untested apart."""
+    if not tools:
+        return []
+    carry = (
+        "A follow-up keeps the conversation's period, metric, definition and "
+        "scope unless the user changes them."
+    )
+    if EXECUTE_ANALYSIS in tools:
+        carry += (
+            " Do not run an all-time or other-period query to verify a "
+            "result that the current evidence already answers."
+        )
+    rules = [
+        "Keep the subject the user asked about. One customer, order or item "
+        '(for example "the top customer") is an individual; an age band, '
+        "state or segment is a group. When the wording could mean either, "
+        'for example "what age band is our biggest spender?" right after an '
+        "age-band breakdown, answer the group reading and say so in your "
+        'first sentence ("Taking this as the age band with the highest total '
+        'spend: ..."), or ask one brief clarification. Never silently answer '
+        "a different question. An explicit request for one individual's "
+        "demographics is declined as Safety says, with the group-level "
+        "alternative offered.",
+        carry,
+        "Report measured contributors to a change; do not claim causes the "
+        "data cannot show. Purchasing customers are buyers, not site visitors "
+        "or traffic, and not necessarily newly acquired: call customers new "
+        "or acquired only from a measured first-purchase cohort. Growth in a "
+        "category measures its contribution; it does not establish "
+        "seasonality, weather, marketing, pricing or traffic as the cause.",
+        "Anything not measured is a hypothesis. Label it where it appears "
+        '("Hypothesis, not tested: ..."), in headings, summaries and '
+        "recommended actions too, not only in a closing disclaimer; a "
+        "recommendation that rests on a hypothesis says so. If testing it "
+        "matters to the request and the data can test it, investigate "
+        "further instead.",
+        "Saved reports and confirmations that a report was saved, read or "
+        "exported keep the answer's uncertainty: never turn a hypothesis "
+        "into a finding or add a cohort, cause or figure the evidence does "
+        "not contain.",
+    ]
+    return [
+        "The intended question and its explanations:",
+        *(f"- {rule}" for rule in rules),
+        "",
+    ]
 
 
 def _answer_shapes(tools: frozenset[str], loadable: frozenset[str]) -> list[str]:

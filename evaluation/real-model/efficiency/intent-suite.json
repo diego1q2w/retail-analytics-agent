@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "suite_id": "intended-question",
+  "suite_version": "1",
+  "declared_on": "2026-10-09",
+  "spend": {
+    "max_total_tokens": 1500000,
+    "max_model_attempts": 300,
+    "run_tokens_limit": 100000,
+    "run_requests_limit": 20
+  },
+  "scenarios": [
+    {
+      "id": "overview-approved-schema",
+      "title": "Capability overview answered from the approved schema in context",
+      "category": "discovery",
+      "scope": "women",
+      "repeats": 2,
+      "turns": [
+        {
+          "text": "What can you do?",
+          "kind": "cold",
+          "targets": {"max_queries": 0, "max_model_requests": 2},
+          "forbidden_tools": ["list_relations", "describe_relation", "execute_analysis", "find_analysis_examples", "fetch_evidence", "list_reports", "search_reports", "load_skill"],
+          "text_terms": [["revenue", "sales"], ["product", "categor"]]
+        }
+      ]
+    },
+    {
+      "id": "overview-missing-schema",
+      "title": "Capability overview without schema context: discovery is still used (run with --no-schema-context)",
+      "category": "discovery",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "What data do you have?",
+          "kind": "cold",
+          "targets": {"max_queries": 0},
+          "required_tools": [["list_relations", "describe_relation"]],
+          "forbidden_tools": ["execute_analysis"],
+          "text_terms": [["order", "product", "customer"]]
+        }
+      ]
+    },
+    {
+      "id": "spender-after-age-breakdown",
+      "title": "Age-band breakdown, then ambiguous biggest-spender wording",
+      "category": "intent",
+      "scope": "women",
+      "repeats": 2,
+      "turns": [
+        {
+          "text": "Break down our fourth-quarter 2025 revenue by customer age band.",
+          "kind": "cold",
+          "targets": {"max_queries": 1},
+          "figures": [
+            {"name": "top_total_band", "ref": "age_band_spend.top_total_band", "kind": "label"},
+            {"name": "top_total_band_spend", "ref": "age_band_spend.top_total_band_spend"}
+          ],
+          "sql_terms": [["complete"], ["age_band"]],
+          "every_sql_terms": [["2025-10", "quarter"]]
+        },
+        {
+          "text": "What age band is our biggest spender?",
+          "kind": "follow_up",
+          "targets": {"max_queries": 1},
+          "figures": [{"name": "top_total_band", "ref": "age_band_spend.top_total_band", "kind": "label"}],
+          "text_terms": [["age band"], ["total", "per customer", "average", "group", "taking", "interpret"]],
+          "every_sql_terms": [["2025-10", "quarter"]]
+        }
+      ]
+    },
+    {
+      "id": "individual-demographics-explicit",
+      "title": "Explicit individual demographic request: restricted, group alternative offered",
+      "category": "intent",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "Which age band is our single biggest-spending customer in the fourth quarter of 2025?",
+          "kind": "cold",
+          "targets": {"max_queries": 1},
+          "text_terms": [["age band"], ["group", "aggregate", "breakdown", "by age band", "each age band"]],
+          "every_sql_terms": [["2025-10", "quarter"]]
+        }
+      ]
+    },
+    {
+      "id": "aggregate-demographics-explicit",
+      "title": "Explicit group question about age bands",
+      "category": "intent",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "Which customer age band spent the most in total in the fourth quarter of 2025?",
+          "kind": "cold",
+          "targets": {"max_queries": 1},
+          "figures": [
+            {"name": "top_total_band", "ref": "age_band_spend.top_total_band", "kind": "label"},
+            {"name": "top_total_band_spend", "ref": "age_band_spend.top_total_band_spend"}
+          ],
+          "sql_terms": [["complete"], ["age_band"]],
+          "every_sql_terms": [["2025-10", "quarter"]]
+        }
+      ]
+    },
+    {
+      "id": "monthly-comparison",
+      "title": "Month-over-month comparison with contributions, no unsupported causes",
+      "category": "investigation",
+      "scope": "women",
+      "repeats": 2,
+      "turns": [
+        {
+          "text": "How did October 2025 compare with September 2025 for revenue, orders and customers? Which categories contributed most to the change, and what explains it?",
+          "kind": "investigation",
+          "figures": [
+            {"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"},
+            {"name": "october_revenue", "ref": "monthly_trend.month_4_revenue"},
+            {"name": "october_minus_september", "ref": "monthly_trend.month_4_revenue", "minus": "monthly_trend.month_3_revenue"}
+          ],
+          "sql_terms": [["complete"], ["category"]],
+          "every_sql_terms": [["2025-09", "2025-10", "= 9", "=9", "= 10", "=10"]],
+          "qualified_terms": ["traffic", "visitor", "acquisition", "acquired", "new customer", "new buyer", "newly", "seasonal", "seasonality", "weather", "marketing", "campaign", "promotion"]
+        }
+      ]
+    },
+    {
+      "id": "comparison-report-lifecycle",
+      "title": "Save, read and export the comparison: uncertainty kept",
+      "category": "report",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "Compare October 2025 with September 2025: revenue, orders, customers and which categories contributed to the change. Save it as a short report with recommended actions.",
+          "kind": "investigation",
+          "expect_report": true,
+          "figures": [
+            {"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"},
+            {"name": "october_revenue", "ref": "monthly_trend.month_4_revenue"}
+          ],
+          "sql_terms": [["complete"], ["category"]],
+          "qualified_terms": ["traffic", "visitor", "acquisition", "acquired", "new customer", "new buyer", "newly", "seasonal", "seasonality", "weather", "marketing", "campaign", "promotion"]
+        },
+        {
+          "text": "Show me the report you just saved.",
+          "kind": "follow_up",
+          "targets": {"max_queries": 0},
+          "qualified_terms": ["traffic", "visitor", "acquisition", "acquired", "new customer", "new buyer", "newly", "seasonal", "seasonality", "weather", "marketing", "campaign", "promotion"]
+        },
+        {
+          "text": "Export that report.",
+          "kind": "follow_up",
+          "targets": {"max_queries": 0},
+          "qualified_terms": ["traffic", "visitor", "acquisition", "acquired", "new customer", "new buyer", "newly", "seasonal", "seasonality", "weather", "marketing", "campaign", "promotion"]
+        }
+      ]
+    }
+  ]
+}

@@ -71,4 +71,34 @@ V1 = AnalyticalSkill(
     ),
 )
 
-VERSIONS: tuple[AnalyticalSkill, ...] = (V1,)
+# V2 (T26-F9): hypotheses are labelled where they appear, explanations keep
+# to what was measured, and comparisons keep the asked metric and period.
+V2 = AnalyticalSkill(
+    skill_id=V1.skill_id,
+    version=2,
+    description=V1.description,
+    tools=V1.tools,
+    guidance_for=V1.guidance_for,
+    segments=(
+        *V1.segments[:-1],
+        SkillSegment(
+            "Separate measured differences, supported associations and "
+            "untested hypotheses; observational transaction data does not "
+            "prove causation. Cite the differences you measured. Buyer counts "
+            "are not traffic or acquisition, and category contributions are "
+            "not seasonality, weather or marketing effects: present such "
+            "explanations only as labelled hypotheses, including in headings "
+            "and recommended actions, as the intended-question rules say. "
+            "Stop when the requested comparison is supported or additional "
+            "investigation cannot resolve the remaining uncertainty within "
+            "the available data and the <budget> (follow its guidance when it "
+            "is nearly spent). Give the answer and its relevant limitations; "
+            "do not automatically add status breakdowns, daily detail, a "
+            "report or action items. If the user asks only for a figure, "
+            "answer it as a figure question (How to work) even while this "
+            "skill is active."
+        ),
+    ),
+)
+
+VERSIONS: tuple[AnalyticalSkill, ...] = (V1, V2)

@@ -195,6 +195,7 @@ def build_investigations(
     artifacts: ArtifactServices | None = None,
     retriever: GoldenRetriever | None = None,
     exchange_rates: ExchangeRateProvider | None = None,
+    schema_context: bool = True,
 ) -> InvestigationServices:
     """Wire the runtime, its permission-filtered tool catalog and the agent's
     services. Binds nothing: the caller hands ``agent`` to its runtime
@@ -205,7 +206,9 @@ def build_investigations(
     reports with deletion proposals (``artifacts``). Preferences and currency
     conversion are always registered; ``exchange_rates`` replaces the
     configured rate provider (offline runs). ``registry`` replaces the whole
-    catalog (tests).
+    catalog (tests). ``schema_context=False`` leaves the approved schema
+    out of model context while keeping discovery tools (evaluation of the
+    missing-schema path).
     """
     db = Database(persistence.engine)
     principals = PostgresRunPrincipals(db)
@@ -214,7 +217,11 @@ def build_investigations(
     evidence = build_evidence(persistence, settings=settings)
     preferences = build_preferences(persistence, access)
     context = build_context(
-        persistence, access, evidence, preferences, discovery=discovery
+        persistence,
+        access,
+        evidence,
+        preferences,
+        discovery=discovery if schema_context else None,
     )
     if registry is None:
         registry = build_capability_registry(

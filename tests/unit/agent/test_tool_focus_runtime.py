@@ -52,6 +52,7 @@ CATALOG = tuple(
     for name in sorted(STARTING | SKILL_TOOLS)
 )
 REPORTS = CURRENT["saved_reports"].tools
+REPORTS_V = CURRENT["saved_reports"].version
 
 
 async def _runtime(
@@ -96,8 +97,11 @@ async def test_ordinary_request_starts_with_core_and_loading_broadens_it() -> No
     assert second.tools >= REPORTS
     assert LOAD_SKILL in second.tools
     assert second.focus is not None
-    assert second.focus.active == (("saved_reports", 1),)
-    assert second.instructions.count('<skill name="saved_reports" version="1">') == 1
+    assert second.focus.active == (("saved_reports", REPORTS_V),)
+    assert (
+        second.instructions.count(f'<skill name="saved_reports" version="{REPORTS_V}">')
+        == 1
+    )
     assert "- saved_reports: " not in second.instructions
     # Other skills still wait, in any order; skills compose.
     assert "- preferences: " in second.instructions
@@ -126,7 +130,7 @@ async def test_a_new_run_starts_with_core_tools_again() -> None:
     runtime, _, skills, run_id = await _runtime("Why did revenue fall?", world)
     await skills.load(run_id, "investigation", [d.name for d in CATALOG])
     assert (await runtime.prepare_model_step(run_id)).focus.active == (  # type: ignore[union-attr]
-        ("investigation", 1),
+        ("investigation", CURRENT["investigation"].version),
     )
     other, _, _, next_run = await _runtime("And August?", world)
     assert (await other.prepare_model_step(next_run)).tools == STARTING
@@ -172,7 +176,7 @@ async def test_trace_records_initial_selection_and_changes(
     focus = [s for s in sink.spans if s.name == Span.TOOL_FOCUS]
     assert [s.attributes["focus.change"] for s in focus] == ["initial", "changed"]
     assert focus[0].attributes["focus.exposed"] == len(STARTING)
-    assert focus[1].attributes["focus.skills"] == "saved_reports@1"
+    assert focus[1].attributes["focus.skills"] == f"saved_reports@{REPORTS_V}"
     outputs = focus[1].content("outputs")
     assert isinstance(outputs, dict)
     assert "save_report" in outputs["added"]
@@ -233,7 +237,7 @@ async def test_model_input_capture_contains_the_skill_instructions_sent() -> Non
     system = "\n".join(
         str(m["content"]) for m in sent["messages"] if m["role"] == "system"
     )
-    assert '<skill name="saved_reports" version="1">' in system
+    assert f'<skill name="saved_reports" version="{REPORTS_V}">' in system
     for line in expected.splitlines():
         assert line in system, line
     assert "save_report" in sent["tools"]

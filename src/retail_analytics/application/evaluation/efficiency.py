@@ -9,7 +9,9 @@ durable run records, released text and the logical SQL of its evidence):
   (provider, outcome, tokens, fallback) and context restarts per run;
 - :func:`score_turn` checks figures in evidence and in the released text,
   required period/definition words, required SQL fragments, citations and the
-  declared query/model-request targets;
+  declared query/model-request targets; tools the turn must (not) call, the
+  period every query keeps and claims that must be labelled as hypotheses
+  (:func:`unqualified_terms`);
 - :func:`spend_allows` enforces the spend ceiling declared before the run;
 - :func:`render_summary` writes every repetition and per-turn aggregates,
   optionally next to an explicitly identified baseline.
@@ -39,6 +41,7 @@ from retail_analytics.application.contracts.evaluation import (
 )
 from retail_analytics.application.contracts.telemetry import Span
 from retail_analytics.application.evaluation.real_model import (
+    fold_label,
     number_in_evidence,
     number_in_text,
 )
@@ -48,7 +51,7 @@ _SPACE = re.compile(r"\s+")
 
 
 # Bumped when target scoring changes; ``rescore`` brings saved runs up to date.
-SCORING_VERSION = 2
+SCORING_VERSION = 3
 
 
 class SuiteError(ValueError):
@@ -144,7 +147,8 @@ def span_value(
 
 
 def _fold(text: str) -> str:
-    return _SPACE.sub(" ", text).casefold()
+    """Whitespace-, case- and dash-insensitive ("65\u201369" is "65-69")."""
+    return fold_label(_SPACE.sub(" ", text))
 
 
 def _label_in_tables(label: str, tables: Iterable[ObservedTable]) -> bool:
@@ -197,6 +201,91 @@ def terms_met(
         any(_fold(fragment) in text for fragment in group for text in folded)
         for group in groups
     )
+
+
+# Wording that marks a statement as untested, conditional or a limitation.
+_QUALIFIERS = (
+    "hypothes",
+    "not tested",
+    "untested",
+    "not measured",
+    "unmeasured",
+    "not verified",
+    "unverified",
+    "not established",
+    "not confirmed",
+    "cannot",
+    "can't",
+    "could not",
+    "not show",
+    "doesn't show",
+    "does not prove",
+    "not proof",
+    "no evidence",
+    "no data",
+    "not in the data",
+    "not available",
+    "not necessarily",
+    "not the same as",
+    "rather than",
+    "may ",
+    "might",
+    "could",
+    "possibl",
+    "speculat",
+    "assum",
+    "would need",
+    "to test",
+    "whether",
+    "not establish",
+    # Negations: "buyers, not website visitors", "never", "neither ... nor".
+    " not ",
+    "n't ",
+    "never",
+    "neither",
+    " nor ",
+)
+_HEADING = re.compile(r"^\s*(#+\s|\*\*[^*]+\*\*:?\s*$|[^.!?]{1,80}:\s*$)")
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _qualified(text: str) -> bool:
+    return any(q in text for q in _QUALIFIERS)
+
+
+def unqualified_terms(terms: Sequence[str], text: str) -> tuple[str, ...]:
+    """Terms the text states without labelling them as untested.
+
+    Each sentence that names a term must itself carry qualifying wording
+    (hypothesis, not tested, may, cannot show ...) or sit under a heading
+    that does, so a labelled "Hypotheses" section passes and an unlabelled
+    heading such as "Seasonal demand drove growth" fails.
+    """
+    missed: dict[str, None] = {}
+    heading_qualified = False
+    for raw in text.splitlines():
+        line = _fold(raw)
+        if not line.strip():
+            continue
+        if _HEADING.match(line):
+            heading_qualified = _qualified(line)
+            sentences = [line]
+        else:
+            sentences = _SENTENCE.split(line)
+        for sentence in sentences:
+            if heading_qualified or _qualified(sentence):
+                continue
+            for term in terms:
+                if _fold(term) in sentence:
+                    missed[term] = None
+    return tuple(missed)
+
+
+def unscoped_queries(groups: Sequence[Sequence[str]], sqls: Sequence[str]) -> int:
+    """Executed queries that miss any of ``groups`` (e.g. the period)."""
+    if not groups:
+        return 0
+    return sum(not all(terms_met(groups, [sql])) for sql in sqls)
 
 
 def citations(text: str) -> tuple[str, ...]:
@@ -281,6 +370,9 @@ def turn_targets(
     asked_clarification: bool,
     report_saved: bool | None,
     report_actions: int | None,
+    tools: Sequence[str] = (),
+    unscoped: int = 0,
+    unqualified: Sequence[str] = (),
 ) -> dict[str, bool]:
     """Declared targets of the turn, plus two that every turn has: the run
     completed (a partial, cancelled or failed run has not answered) and it
@@ -301,6 +393,16 @@ def turn_targets(
         )
     if turn.expect_report:
         targets["report_with_actions"] = bool(report_saved) and bool(report_actions)
+    if turn.forbidden_tools:
+        targets["no_forbidden_tools"] = not set(turn.forbidden_tools) & set(tools)
+    if turn.required_tools:
+        targets["required_tools"] = all(
+            set(group) & set(tools) for group in turn.required_tools
+        )
+    if turn.every_sql_terms:
+        targets["every_query_scoped"] = unscoped == 0
+    if turn.qualified_terms:
+        targets["claims_qualified"] = not unqualified
     return targets
 
 
@@ -322,6 +424,9 @@ def rescore(run: EfficiencyRun, suite: EfficiencySuite) -> EfficiencyRun:
                         asked_clarification=t.asked_clarification,
                         report_saved=t.report_saved,
                         report_actions=t.report_actions,
+                        tools=t.tools,
+                        unscoped=t.unscoped_queries,
+                        unqualified=t.unqualified_terms,
                     )
                 }
             )
@@ -352,6 +457,13 @@ def score_turn(
         for q in facts.queries
         if q.sql
     ]
+    executed = [
+        q.sql + " " + " ".join(f"{k}={v}" for k, v in q.parameters.items())
+        for q in facts.queries
+        if q.sql and q.outcome == "succeeded"
+    ]
+    unscoped = unscoped_queries(turn.every_sql_terms, executed)
+    unqualified = unqualified_terms(turn.qualified_terms, facts.released_text)
     targets = turn_targets(
         turn,
         run_status=facts.run_status,
@@ -361,6 +473,9 @@ def score_turn(
         asked_clarification=facts.asked_clarification,
         report_saved=facts.report_saved,
         report_actions=facts.report_actions,
+        tools=facts.tools,
+        unscoped=unscoped,
+        unqualified=unqualified,
     )
     extra = (
         max(queries_ok - turn.targets.max_queries, 0)
@@ -404,6 +519,8 @@ def score_turn(
         max_evidence_rows=max((len(t.rows) for t in facts.tables), default=0),
         targets_met=targets,
         extra_queries=extra,
+        unscoped_queries=unscoped,
+        unqualified_terms=unqualified,
     )
 
 
@@ -462,6 +579,13 @@ def _targets(turn: TurnResult) -> str:
     if not turn.targets_met:
         return "-"
     missed = [k for k, ok in turn.targets_met.items() if not ok]
+    if turn.unqualified_terms:
+        missed = [
+            f"{k} ({'/'.join(turn.unqualified_terms)})"
+            if k == "claims_qualified"
+            else k
+            for k in missed
+        ]
     return "met" if not missed else "MISSED " + ",".join(missed)
 
 
@@ -651,5 +775,7 @@ __all__ = [
     "spend_used",
     "terms_met",
     "turn_targets",
+    "unqualified_terms",
+    "unscoped_queries",
     "worst_case",
 ]

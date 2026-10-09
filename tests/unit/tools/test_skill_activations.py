@@ -55,6 +55,8 @@ from tests.unit.query_execution.fakes import MemoryOperations
 from tests.unit.telemetry.recording import RecordingSink
 from tests.unit.tools.fakes import RecordingSink as ProgressSink
 
+REPORTS_V = tool_focus.CURRENT["saved_reports"].version
+
 pytestmark = pytest.mark.asyncio
 
 ANALYSIS = Permission.ANALYSIS_READ.value
@@ -221,14 +223,15 @@ async def test_skill_tools_become_callable_on_the_next_turn_only() -> None:
     loaded = await world.call("load_skill", "c1", name="saved_reports")
     assert isinstance(loaded.outcome, ToolSucceeded)
     output = loaded.outcome.output
-    assert output.status == "loaded" and output.version == 1
+    assert output.status == "loaded"
+    assert output.version == tool_focus.CURRENT["saved_reports"].version
     assert output.tools == ["propose_report_deletion", "save_report"]
     assert output.instructions and "save_report" in output.instructions
     same_turn = _refused(await world.call("save_report", "c2"))
     assert same_turn.code is ToolErrorCode.ACCESS_DENIED
     assert "load_skill" in same_turn.message and "next turn" in same_turn.message
     # The next model step makes it effective.
-    assert await world.skills.take_effect("r") == {"saved_reports": 1}
+    assert await world.skills.take_effect("r") == {"saved_reports": REPORTS_V}
     done = await world.call("save_report", "c3")
     assert isinstance(done.outcome, ToolSucceeded)
     # Core tools never needed a skill.
@@ -252,7 +255,7 @@ async def test_duplicate_loads_are_idempotent_and_keep_one_record() -> None:
     ]
     assert len(activations) == 1
     # Retried/resumed steps change nothing further.
-    assert await world.skills.take_effect("r") == {"saved_reports": 1}
+    assert await world.skills.take_effect("r") == {"saved_reports": REPORTS_V}
 
 
 async def test_history_only_references_never_grant_a_tool() -> None:
@@ -365,7 +368,10 @@ async def test_loads_and_blocks_are_traced_without_instructions() -> None:
         SkillLoadOutcome.TOOL_BLOCKED.value,
         SkillLoadOutcome.REJECTED.value,
     ]
-    assert spans[0].attributes["skill.version"] == 1
+    assert (
+        spans[0].attributes["skill.version"]
+        == tool_focus.CURRENT["saved_reports"].version
+    )
     assert spans[1].attributes["skill.blocked_tool"] == "save_report"
     assert spans[2].attributes["skill.id"] == "unknown"
 

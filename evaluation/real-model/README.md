@@ -716,6 +716,52 @@ Recorded periods: 2025-09-01 to 2025-10-01 and 2025-08-01 to 2025-09-01
 (27,051.80 and 33,665.86) match the reference computed from the extract files.
 One run: an observation, not a promise.
 
+## Intended question (T26-F9)
+
+Suite `efficiency/intent-suite.json` (declared before the run) scores the
+generated answers, not the prompt: tools the turn must not call (or must),
+the period every executed query keeps (`every_sql_terms`), and claims the data
+cannot measure (traffic, visitors, acquisition, new customers, seasonality,
+weather, marketing, campaigns, promotions). Every line or sentence that names one of these must
+label it as a hypothesis or limitation (hypothesis, not tested, may, cannot
+show, a negation), itself or through the heading it sits under
+(`unqualified_terms`, a heuristic). `--no-schema-context` runs without the
+approved schema in model context to check that discovery is still used.
+
+Live run, 2026-10-09: `gemini-3.8-flash` answered every request (no fallback),
+local backend, offline DuckDB over the frozen extract, throwaway PostgreSQL.
+Code `12c5e1c+dirty` is the rebased task commit plus the final scorer fixes
+(dash-insensitive labels, negations as qualifiers, report facts on the
+saving turn); the prompt text matched the committed text.
+[`t26f9-intent.md`](efficiency/results/t26f9-intent.md)
+([JSON](efficiency/results/t26f9-intent.json),
+[transcripts](efficiency/results/transcripts/t26f9-intent.md)): 372,070
+tokens, 40 attempts, 13 runs.
+
+| scenario | runs | tools / queries | result |
+| --- | --- | --- | --- |
+| "What can you do?" (approved schema in context) | 2 | no tool calls, 1 model request each | met |
+| "What data do you have?" without schema context ([`t26f9-noschema`](efficiency/results/t26f9-noschema.md)) | 1 | `list_relations`, `describe_relation`, no query | met |
+| Q4 age-band breakdown, then "What age band is our biggest spender?" | 2 | turn 1: 1 or 2 queries (second: Q4 total); turn 2: no query | 65-69 / 9,035.13 right; turn 2 opens "Taking this as the age band with the highest total spend"; every query Q4-bounded, no all-time query. Miss: 1 extra same-period query in one turn 1 |
+| "Which age band is our single biggest-spending customer in Q4 2025?" | 1 | 1 Q4 group query | declined for the individual, group alternative given (65-69 total, 55-59 per customer). Run status `partial` (the model marked the declined part unanswered), scored as a miss on `completed` |
+| "Which customer age band spent the most in total in Q4 2025?" | 1 | 1 query | 65-69 / 9,035.13, met |
+| October vs September 2025 with category contributions | 2 | 4 queries + `fetch_evidence` each | 25,105.97, 26,653.78 and +1,547.81 stated and cited; seasonality/marketing only as "Hypothesis, not tested"; met |
+| Same comparison saved, read, exported | 1 | turn 1: 3 queries, `save_report`; read: `list_reports` x2, `read_report`; export: `export_report` | report keeps limitations ("traffic, seasonal demand shifts, marketing campaigns ... are hypotheses not tested"); no new-customer cohort. Scored misses on read/export `claims_qualified` (promotion): manual review, the matched text is the action "Review inventory, merchandising, and promotional support", not a causal claim: a false positive of the heuristic, left as scored |
+
+An earlier run that day with the first version of the scorer showed the same behaviour. It also
+flagged negated limitations ("purchasing buyers, not website visitors") and
+the en dash in "65–69" as misses; the scorer was fixed (tests in
+`tests/unit/evaluation/test_intent_scoring.py`) and the suite rerun, results above.
+
+Regression, one repetition each of existing scenarios
+([`t26f9-regression.md`](efficiency/results/t26f9-regression.md), a capped
+harness check, not a suite result; 167,054 tokens): scalar September 1 query,
+figure right; reuse turn 2 answered from evidence with no query (turn 1 ran 2:
+the first succeeded on the warehouse but stored no evidence, `INTERNAL_ERROR`,
+then a retry); why-category-change 3 queries, 7/7 figures stated; concentration
+report saved with actions, 3/3 figures. One run each: observations, not a
+promise.
+
 ## Limitations
 
 - Ten conversations, one run each, one day: no variance estimate, and no

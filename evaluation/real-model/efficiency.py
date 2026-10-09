@@ -257,6 +257,10 @@ class EfficiencyTarget(AgentRuntimeTarget):
                 if m.role is MessageRole.ASSISTANT and m.run_id == run_id
             )
             last = index == len(run_ids) - 1
+            # Report facts belong to the turn that saved a report (else the last).
+            saving = "save_report" in tools or (
+                last and not any("save_report" in f.tools for f in facts)
+            )
             facts.append(
                 RunFacts(
                     run_id=run_id,
@@ -274,8 +278,8 @@ class EfficiencyTarget(AgentRuntimeTarget):
                     + ("\n" + "\n".join(record.report_texts) if last else ""),
                     tables=tables,
                     session_evidence_ids=frozenset(evidence),
-                    report_saved=bool(record.report_texts) if last else None,
-                    report_actions=record.report_actions if last else None,
+                    report_saved=bool(record.report_texts) if saving else None,
+                    report_actions=record.report_actions if saving else None,
                 )
             )
         return facts
@@ -481,6 +485,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     # Operator-declared dataset currency for this run (declared, not verified).
     parser.add_argument("--declare-source-currency", metavar="CODE")
+    # Missing-schema path: no approved schema in model context (discovery
+    # tools stay available).
+    parser.add_argument("--no-schema-context", action="store_true")
     parser.add_argument(
         "--rescore",
         action="store_true",
@@ -534,6 +541,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         backend=ExecutionBackend.LOCAL,
     )
     target.recorder = sink
+    target.approved_schema = not args.no_schema_context
     if args.fixture_rate:
         target.exchange_rates = FixtureRateProvider(
             {
@@ -643,6 +651,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "turn_timeout_seconds": args.turn_timeout,
             "fixture_rates": ",".join(args.fixture_rate) or "none",
             "source_currency_declared": settings.source_currency_declared or "none",
+            "approved_schema_context": "off" if args.no_schema_context else "on",
             "max_repeats_cap": args.max_repeats,
             **{f"run_limit_{k}": v for k, v in limits.as_dict().items()},
         },

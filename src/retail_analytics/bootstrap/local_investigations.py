@@ -75,6 +75,7 @@ def build_local_investigations(
     artifacts: ArtifactServices | None = None,
     retriever: GoldenRetriever | None = None,
     exchange_rates: ExchangeRateProvider | None = None,
+    schema_context: bool = True,
 ) -> LocalInvestigations:
     """The general investigation services with the local manager as their
     scheduler, bound to the shared agent. Not opened: use ``async with
@@ -97,6 +98,7 @@ def build_local_investigations(
         artifacts=artifacts,
         retriever=retriever,
         exchange_rates=exchange_rates,
+        schema_context=schema_context,
     )
     manager.bind(
         runtime=services.runtime,

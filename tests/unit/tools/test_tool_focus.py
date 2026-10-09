@@ -113,7 +113,8 @@ def test_each_skill_exposes_its_authorized_tools_and_instructions_once() -> None
         assert selection.focus.active == ((skill.skill_id, skill.version),)
         assert skill.skill_id not in selection.focus.loadable
         policy = render_investigation_policy(selection.tools, selection.prompt)
-        assert policy.count(f'<skill name="{skill.skill_id}" version="1">') == 1
+        tag = f'<skill name="{skill.skill_id}" version="{skill.version}">'
+        assert policy.count(tag) == 1
         assert f"- {skill.skill_id}: " not in policy
     # Mixed requests compose skills.
     both = select_tools(authorized, {"saved_reports": 1, "currency_conversion": 1})

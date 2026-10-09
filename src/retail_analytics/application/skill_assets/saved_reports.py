@@ -88,4 +88,24 @@ V1 = AnalyticalSkill(
     ),
 )
 
-VERSIONS: tuple[AnalyticalSkill, ...] = (V1,)
+# V2 (T26-F9): a report and its confirmations keep the answer's uncertainty.
+V2 = AnalyticalSkill(
+    skill_id=V1.skill_id,
+    version=2,
+    description=V1.description,
+    tools=V1.tools,
+    guidance_for=V1.guidance_for,
+    segments=(
+        *V1.segments,
+        SkillSegment(
+            "A report keeps the uncertainty of the analysis it records: "
+            "hypotheses stay labelled in its title, headings, findings and "
+            "recommended actions, and it adds no cohort (such as new "
+            "customers), cause or figure the evidence does not contain. When "
+            "confirming a save, read or export, describe the report as "
+            "written, without strengthening its claims."
+        ),
+    ),
+)
+
+VERSIONS: tuple[AnalyticalSkill, ...] = (V1, V2)

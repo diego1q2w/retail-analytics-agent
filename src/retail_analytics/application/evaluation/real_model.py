@@ -170,15 +170,15 @@ _DASHES = str.maketrans(
 )
 
 
-def _fold(text: str) -> str:
+def fold_label(text: str) -> str:
     """Case- and dash-insensitive form (an en dash in "65\u201369" is a hyphen)."""
     return text.translate(_DASHES).casefold()
 
 
 def _label_in_evidence(label: str, tables: Iterable[ObservedTable]) -> bool:
-    folded = _fold(label)
+    folded = fold_label(label)
     return any(
-        isinstance(cell, str) and _fold(cell) == folded
+        isinstance(cell, str) and fold_label(cell) == folded
         for table in tables
         for row in table.rows
         for cell in row
@@ -193,7 +193,7 @@ def figure_checks(
     Booleans (report-element and safety flags) and ``not_contains`` canaries
     are not figures and are skipped here.
     """
-    folded = _fold(answer_text)
+    folded = fold_label(answer_text)
     checks: list[FigureCheck] = []
     for exp in scenario.expectations:
         if isinstance(exp, NumericExpectation) or (
@@ -219,7 +219,7 @@ def figure_checks(
                     name=exp.name,
                     kind="label",
                     in_evidence=_label_in_evidence(exp.expected, tables),
-                    in_answer=_fold(exp.expected) in folded,
+                    in_answer=fold_label(exp.expected) in folded,
                 )
             )
         elif isinstance(exp, TextExpectation) and exp.kind == "contains":
@@ -227,7 +227,7 @@ def figure_checks(
                 FigureCheck(
                     name=exp.name,
                     kind="label",
-                    in_answer=_fold(exp.needle) in folded,
+                    in_answer=fold_label(exp.needle) in folded,
                 )
             )
     return tuple(checks)

@@ -263,6 +263,17 @@ class EfficiencyTurn(ContractModel):
     # Sent as the answer when the run asks a clarification question.
     clarification_reply: str | None = None
     expect_report: bool = False
+    # Tools the turn must not call (e.g. discovery for a schema overview).
+    forbidden_tools: tuple[str, ...] = ()
+    # Each group: the turn must call at least one of its tools.
+    required_tools: tuple[tuple[str, ...], ...] = ()
+    # Each group: at least one fragment must appear in EVERY query the turn
+    # executed (the conversation's period kept; no all-time verification).
+    every_sql_terms: tuple[tuple[str, ...], ...] = ()
+    # Claims the data cannot measure (traffic, seasonality ...): each line or
+    # sentence of the released text naming one must label it as a hypothesis
+    # or limitation, itself or through the heading it sits under.
+    qualified_terms: tuple[str, ...] = ()
 
 
 class EfficiencyScenario(ContractModel):
@@ -372,6 +383,10 @@ class TurnResult(ContractModel):
     targets_met: Mapping[str, bool] = {}
     # True when the turn used more queries than its target.
     extra_queries: int = 0
+    # Executed queries missing an ``every_sql_terms`` group.
+    unscoped_queries: int = 0
+    # ``qualified_terms`` stated without a hypothesis/limitation label.
+    unqualified_terms: tuple[str, ...] = ()
 
 
 class RepetitionResult(ContractModel):

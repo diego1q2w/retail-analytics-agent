@@ -304,6 +304,8 @@ class AgentRuntimeTarget:
     backend: ExecutionBackend | None = None
     # Offline exchange rates (default: none published, every rate unavailable).
     exchange_rates: ExchangeRateProvider | None = None
+    # False: model context carries no approved schema (discovery tools stay).
+    approved_schema: bool = True
     _loop: _Loop | None = field(default=None, init=False, repr=False)
     _harness: _Harness | None = field(default=None, init=False, repr=False)
 
@@ -400,7 +402,12 @@ class AgentRuntimeTarget:
         manager: LocalInvestigationManager | None = None
         if client is None:
             built = build_local_investigations(
-                local, persistence, access, self.model, **wiring
+                local,
+                persistence,
+                access,
+                self.model,
+                schema_context=self.approved_schema,
+                **wiring,
             )
             services, manager = built.services, built.manager
             try:
@@ -424,6 +431,7 @@ class AgentRuntimeTarget:
                 access,
                 temporal_scheduler(client, queue),
                 self.model,
+                schema_context=self.approved_schema,
                 **wiring,
             )
             worker = investigation_worker(client, queue, services)

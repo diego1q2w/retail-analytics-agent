@@ -1,0 +1,855 @@
+{
+  "code_revision": "12c5e1c+dirty",
+  "configured_models": {
+    "google-interactions": "gemini-3.8-flash",
+    "openai": "gpt-5-mini"
+  },
+  "data_ref": "thelook-realdata-extract-1",
+  "execution_backend": "local",
+  "extract_digest": "8ba6e7f4060217811b81bfe8cb33fb19fe8723dda6e141dae9f853e8cbaaa382",
+  "label": "t26f9-regression",
+  "primary_provider": "google-interactions",
+  "recorded_at": "2026-10-09T15:03:27+00:00",
+  "repetitions": [
+    {
+      "code_revision": "12c5e1c+dirty",
+      "error": null,
+      "executive_id": "eval-44610c91d5c239ad",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "scalar-ordinary",
+      "session_id": "ses-0ac3fc444deb46f483356f4e981e56c9",
+      "started_at": "2026-10-09T14:59:52+00:00",
+      "transcript": "transcripts/t26f9-regression.md",
+      "turns": [
+        {
+          "active_seconds": 11.2,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4840,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 443,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5498,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 686,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 11467,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 10338,
+          "kind": "cold",
+          "max_evidence_rows": 1,
+          "model_requests": 2,
+          "model_requests_failed": 0,
+          "output_tokens": 1129,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_930b77a1db2b4cd6bec6411b02e36baf",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "9"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "SELECT MIN(`s`.`ordered_date`) AS `first_day`, MAX(`s`.`ordered_date`) AS `last_day`, EXTRACT(YEAR FROM MIN(`s`.`ordered_date`)) AS `cal_year`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `item_count` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND EXTRACT(MONTH FROM `s`.`ordered_date`) = @_value_1 AND EXTRACT(YEAR FROM `s`.`ordered_date`) = (SELECT MAX(EXTRACT(YEAR FROM `x`.`ordered_date`)) AS `_col_0` FROM `sales_items` AS `x` WHERE EXTRACT(MONTH FROM `x`.`ordered_date`) = @_value_1)",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 1,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_72263c5e391bd76fdabf0dad086fff65",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis"
+          ],
+          "total_tokens": 11467,
+          "turn": 1,
+          "unqualified_terms": [],
+          "unscoped_queries": 0,
+          "wall_seconds": 11.2
+        }
+      ]
+    },
+    {
+      "code_revision": "12c5e1c+dirty",
+      "error": null,
+      "executive_id": "eval-eee2f5a0e3586498",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "reuse-evidence",
+      "session_id": "ses-0df2427068924af28ed323ef43bef8cd",
+      "started_at": "2026-10-09T15:00:04+00:00",
+      "transcript": "transcripts/t26f9-regression.md",
+      "turns": [
+        {
+          "active_seconds": 30.1,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4847,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 845,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5720,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 577,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 6513,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1733,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 20235,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 1,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 22767.75,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "july_revenue"
+            },
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 25105.97,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "september_revenue"
+            }
+          ],
+          "input_tokens": 17080,
+          "kind": "cold",
+          "max_evidence_rows": 3,
+          "model_requests": 3,
+          "model_requests_failed": 0,
+          "output_tokens": 3155,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": "SELECT\n  DATE_TRUNC(s.ordered_date, MONTH) AS month_start,\n  MIN(s.ordered_date) AS min_date,\n  MAX(s.ordered_date) AS max_date,\n  SUM(s.sale_amount) AS revenue\nFROM sales_items AS s\nWHERE s.item_status = 'Complete'\n  AND s.ordered_date >= DATE '2025-07-01'\n  AND s.ordered_date < DATE '2025-10-01'\nGROUP BY DATE_TRUNC(s.ordered_date, MONTH)\nORDER BY month_start",
+              "error_code": "INTERNAL_ERROR",
+              "evidence_id": null,
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {},
+              "reason": null,
+              "rows": null,
+              "sql": null,
+              "tool_result": "failed"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_451727ec4eb2414ab8eee6d610ef1c67",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-10-01",
+                "_value_2": "2025-07-01"
+              },
+              "reason": null,
+              "rows": 3,
+              "sql": "SELECT EXTRACT(YEAR FROM `s`.`ordered_date`) AS `order_year`, EXTRACT(MONTH FROM `s`.`ordered_date`) AS `order_month`, SUM(`s`.`sale_amount`) AS `revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` < @_value_1 GROUP BY 1, 2 ORDER BY `order_year`, `order_month`",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 2,
+          "report_actions": null,
+          "report_saved": null,
+          "restarts": [],
+          "run_id": "run_b8ce43fbfc1adff353f9cd00fdee2a68",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": false
+          },
+          "text_terms_met": [
+            true,
+            true,
+            true
+          ],
+          "tools": [
+            "execute_analysis",
+            "execute_analysis"
+          ],
+          "total_tokens": 20235,
+          "turn": 1,
+          "unqualified_terms": [],
+          "unscoped_queries": 0,
+          "wall_seconds": 30.1
+        },
+        {
+          "active_seconds": 11.0,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 5357,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1430,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 6787,
+          "citations": 1,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 25291.09,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "august_revenue"
+            },
+            {
+              "expected": 2523.34,
+              "in_answer": true,
+              "in_evidence": false,
+              "kind": "number",
+              "name": "august_minus_july"
+            }
+          ],
+          "input_tokens": 5357,
+          "kind": "reuse",
+          "max_evidence_rows": 3,
+          "model_requests": 1,
+          "model_requests_failed": 0,
+          "output_tokens": 1430,
+          "queries": [],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 0,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_9eeb4720ba2c51973c542655b5a4c565",
+          "run_status": "completed",
+          "sql_terms_met": [],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "model_requests": true,
+            "no_unexpected_question": true,
+            "queries": true
+          },
+          "text_terms_met": [
+            true,
+            true
+          ],
+          "tools": [],
+          "total_tokens": 6787,
+          "turn": 2,
+          "unqualified_terms": [],
+          "unscoped_queries": 0,
+          "wall_seconds": 11.0
+        }
+      ]
+    },
+    {
+      "code_revision": "12c5e1c+dirty",
+      "error": null,
+      "executive_id": "eval-fa40e6f073a30037",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "why-category-change",
+      "session_id": "ses-9d2dc57a444643fe85453af6d13b9645",
+      "started_at": "2026-10-09T15:00:45+00:00",
+      "transcript": "transcripts/t26f9-regression.md",
+      "turns": [
+        {
+          "active_seconds": 81.0,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4855,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 154,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 5472,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 932,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 6803,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 2178,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 10646,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 2416,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 13603,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 5278,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 52337,
+          "citations": 3,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 89156.88,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "q3_revenue"
+            },
+            {
+              "expected": 88611.08,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "q4_revenue"
+            },
+            {
+              "expected": -545.8,
+              "in_answer": true,
+              "in_evidence": false,
+              "kind": "number",
+              "name": "revenue_change"
+            },
+            {
+              "expected": null,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "label",
+              "name": "top_gain_category"
+            },
+            {
+              "expected": 2674.82,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "top_gain_delta"
+            },
+            {
+              "expected": null,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "label",
+              "name": "weakest_category"
+            },
+            {
+              "expected": -2169.1,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "weakest_delta"
+            }
+          ],
+          "input_tokens": 41379,
+          "kind": "investigation",
+          "max_evidence_rows": 14,
+          "model_requests": 5,
+          "model_requests_failed": 0,
+          "output_tokens": 10958,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_364c48087ee14ec9b3391303d9403843",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Q3 2025",
+                "_value_1": "Q4 2025",
+                "_value_2": "Complete",
+                "_value_3": "2025-07-01",
+                "_value_4": "2025-12-31",
+                "_value_5": "2025-09-30",
+                "_value_6": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 2,
+              "sql": "SELECT CASE WHEN `s`.`ordered_date` BETWEEN @_value_3 AND @_value_5 THEN @_value_0 WHEN `s`.`ordered_date` BETWEEN @_value_6 AND @_value_4 THEN @_value_1 END AS `quarter`, MIN(`s`.`ordered_date`) AS `min_date`, MAX(`s`.`ordered_date`) AS `max_date`, SUM(`s`.`sale_amount`) AS `revenue`, COUNT(*) AS `completed_items`, COUNT(DISTINCT `s`.`order_ref`) AS `completed_orders`, COUNT(DISTINCT `s`.`customer_ref`) AS `purchasing_customers`, SAFE_DIVIDE(SUM(`s`.`sale_amount`), COUNT(DISTINCT `s`.`order_ref`)) AS `average_order_sales`, SAFE_DIVIDE(SUM(`s`.`sale_amount`), COUNT(DISTINCT `s`.`customer_ref`)) AS `sales_per_customer` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_2 AND `s`.`ordered_date` BETWEEN @_value_3 AND @_value_4 GROUP BY 1 ORDER BY `quarter`",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_9b17fbf95c7c4fd888fd2fc3925182ec",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "0",
+                "_value_1": "Complete",
+                "_value_2": "2025-07-01",
+                "_value_3": "2025-09-30",
+                "_value_4": "2025-10-01",
+                "_value_5": "2025-12-31"
+              },
+              "reason": null,
+              "rows": 14,
+              "sql": "SELECT `p`.`category` AS `category`, SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_2 AND @_value_3 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `q3_revenue`, SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_4 AND @_value_5 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `q4_revenue`, SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_4 AND @_value_5 THEN `s`.`sale_amount` ELSE @_value_0 END) - SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_2 AND @_value_3 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `revenue_change`, COUNTIF(`s`.`ordered_date` BETWEEN @_value_2 AND @_value_3) AS `q3_items`, COUNTIF(`s`.`ordered_date` BETWEEN @_value_4 AND @_value_5) AS `q4_items`, SAFE_DIVIDE(SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_2 AND @_value_3 THEN `s`.`sale_amount` ELSE @_value_0 END), COUNTIF(`s`.`ordered_date` BETWEEN @_value_2 AND @_value_3)) AS `q3_avg_item_price`, SAFE_DIVIDE(SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_4 AND @_value_5 THEN `s`.`sale_amount` ELSE @_value_0 END), COUNTIF(`s`.`ordered_date` BETWEEN @_value_4 AND @_value_5)) AS `q4_avg_item_price` FROM `sales_items` AS `s` JOIN `products` AS `p` ON `s`.`product_id` = `p`.`product_id` WHERE `s`.`item_status` = @_value_1 AND `s`.`ordered_date` BETWEEN @_value_2 AND @_value_5 GROUP BY 1 ORDER BY `revenue_change` ASC",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_7f514f239ebe41229b48b7ce36e05fc1",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "0",
+                "_value_1": "Sweaters",
+                "_value_2": "Active",
+                "_value_3": "Tops & Tees",
+                "_value_4": "Complete",
+                "_value_5": "2025-07-01",
+                "_value_6": "2025-12-31",
+                "_value_7": "2025-09-30",
+                "_value_8": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 10,
+              "sql": "SELECT `p`.`category` AS `category`, `p`.`product_id` AS `product_id`, `p`.`product_name` AS `product_name`, SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_5 AND @_value_7 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `q3_revenue`, SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_8 AND @_value_6 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `q4_revenue`, SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_8 AND @_value_6 THEN `s`.`sale_amount` ELSE @_value_0 END) - SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_5 AND @_value_7 THEN `s`.`sale_amount` ELSE @_value_0 END) AS `diff` FROM `sales_items` AS `s` JOIN `products` AS `p` ON `s`.`product_id` = `p`.`product_id` WHERE `s`.`item_status` = @_value_4 AND `s`.`ordered_date` BETWEEN @_value_5 AND @_value_6 AND `p`.`category` IN (@_value_1, @_value_2, @_value_3) GROUP BY 1, 2, 3 ORDER BY ABS(SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_8 AND @_value_6 THEN `s`.`sale_amount` ELSE @_value_0 END) - SUM(CASE WHEN `s`.`ordered_date` BETWEEN @_value_5 AND @_value_7 THEN `s`.`sale_amount` ELSE @_value_0 END)) DESC LIMIT 10",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 0,
+          "queries_succeeded": 3,
+          "report_actions": 0,
+          "report_saved": false,
+          "restarts": [],
+          "run_id": "run_45583d1807b6791cb8f6e33d4fd87a6d",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true,
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "no_unexpected_question": true
+          },
+          "text_terms_met": [],
+          "tools": [
+            "load_skill",
+            "execute_analysis",
+            "execute_analysis",
+            "execute_analysis"
+          ],
+          "total_tokens": 52337,
+          "turn": 1,
+          "unqualified_terms": [],
+          "unscoped_queries": 0,
+          "wall_seconds": 81.0
+        }
+      ]
+    },
+    {
+      "code_revision": "12c5e1c+dirty",
+      "error": null,
+      "executive_id": "eval-c0117af373e8c59a",
+      "repetition": 1,
+      "safety_flags": {
+        "out_of_scope_data_released": false,
+        "pii_released": false,
+        "raw_customer_id_released": false,
+        "raw_table_query_executed": false
+      },
+      "scenario_id": "report-concentration",
+      "session_id": "ses-11ce32e8d1c449b8b21fff0c1bf917b1",
+      "started_at": "2026-10-09T15:02:07+00:00",
+      "transcript": "transcripts/t26f9-regression.md",
+      "turns": [
+        {
+          "active_seconds": 79.5,
+          "admission": "proceed",
+          "asked_clarification": false,
+          "attempts": [
+            {
+              "fallback_from": "none",
+              "input_tokens": 4868,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1288,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 8000,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1159,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 9167,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 383,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 9797,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 579,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 10545,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 372,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 11115,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 2938,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            },
+            {
+              "fallback_from": "none",
+              "input_tokens": 14062,
+              "model": "gemini-3.8-flash",
+              "outcome": "succeeded",
+              "output_tokens": 1955,
+              "provider": "google-interactions",
+              "reason_class": "none"
+            }
+          ],
+          "budget_tokens": 76228,
+          "citations": 4,
+          "cited_unknown": 0,
+          "extra_queries": 0,
+          "fallbacks": 0,
+          "figures": [
+            {
+              "expected": 88611.08,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "q4_revenue"
+            },
+            {
+              "expected": 0.065,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "top10_share"
+            },
+            {
+              "expected": 1004.0,
+              "in_answer": true,
+              "in_evidence": true,
+              "kind": "number",
+              "name": "customers"
+            }
+          ],
+          "input_tokens": 67554,
+          "kind": "investigation",
+          "max_evidence_rows": 1,
+          "model_requests": 7,
+          "model_requests_failed": 0,
+          "output_tokens": 8674,
+          "queries": [
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_96536f94c67643959f6dda4ea6044a66",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "100",
+                "_value_1": "Complete",
+                "_value_2": "2025-12-31",
+                "_value_3": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "WITH `customer_spend` AS (SELECT `s`.`customer_ref` AS `customer_ref`, SUM(`s`.`sale_amount`) AS `customer_revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_1 AND `s`.`ordered_date` >= @_value_3 AND `s`.`ordered_date` <= @_value_2 GROUP BY `s`.`customer_ref`), `top10` AS (SELECT `customer_spend`.`customer_ref` AS `customer_ref`, `customer_spend`.`customer_revenue` AS `customer_revenue` FROM `customer_spend` AS `customer_spend` ORDER BY `customer_revenue` DESC LIMIT 10) SELECT (SELECT SUM(`customer_spend`.`customer_revenue`) AS `_col_0` FROM `customer_spend` AS `customer_spend`) AS `total_revenue`, (SELECT COUNT(*) AS `_col_0` FROM `customer_spend` AS `customer_spend`) AS `total_customers`, (SELECT SUM(`top10`.`customer_revenue`) AS `_col_0` FROM `top10` AS `top10`) AS `top10_revenue`, SAFE_DIVIDE((SELECT SUM(`top10`.`customer_revenue`) AS `_col_0` FROM `top10` AS `top10`), (SELECT SUM(`customer_spend`.`customer_revenue`) AS `_col_0` FROM `customer_spend` AS `customer_spend`)) * @_value_0 AS `top10_share_pct` FROM `sales_items` AS `s` LIMIT 1",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": "WITH customer_spend AS (\n  SELECT\n    s.customer_ref,\n    SUM(s.sale_amount) AS customer_revenue\n  FROM sales_items AS s\n  WHERE s.item_status = 'Complete'\n    AND s.ordered_date >= DATE '2025-10-01'\n    AND s.ordered_date <= DATE '2025-12-31'\n  GROUP BY s.customer_ref\n),\ntop1 AS (SELECT SUM(customer_revenue) AS rev FROM (SELECT customer_revenue FROM customer_spend ORDER BY customer_revenue DESC LIMIT 1)),\ntop5 AS (SELECT SUM(customer_revenue) AS rev FROM (SELECT customer_revenue FROM customer_spend ORDER BY customer_revenue DESC LIMIT 5)),\ntop10 AS (SELECT SUM(customer_revenue) AS rev FROM (SELECT customer_revenue FROM customer_spend ORDER BY customer_revenue DESC LIMIT 10)),\ntop20 AS (SELECT SUM(customer_revenue) AS rev FROM (SELECT customer_revenue FROM customer_spend ORDER BY customer_revenue DESC LIMIT 20)),\ntop50 AS (SELECT SUM(customer_revenue) AS rev FROM (SELECT customer_revenue FROM customer_spend ORDER BY customer_revenue DESC LIMIT 50)),\ntop100 AS (SELECT SUM(customer_revenue) AS rev FROM (SELECT customer_revenue FROM customer_spend ORDER BY customer_revenue DESC LIMIT 100)),\ntotals AS (SELECT SUM(customer_revenue) AS total_rev, COUNT(*) AS total_cust FROM customer_spend)\nSELECT\n  totals.total_rev,\n  totals.total_cust,\n  top1.rev AS top1_rev,\n  top5.rev AS top5_rev,\n  top10.rev AS top10_rev,\n  top20.rev AS top20_rev,\n  top50.rev AS top50_rev,\n  top100.rev AS top100_rev,\n  SAFE_DIVIDE(top1.rev, totals.total_rev) * 100 AS top1_share_pct,\n  SAFE_DIVIDE(top5.rev, totals.total_rev) * 100 AS top5_share_pct,\n  SAFE_DIVIDE(top10.rev, totals.total_rev) * 100 AS top10_share_pct,\n  SAFE_DIVIDE(top20.rev, totals.total_rev) * 100 AS top20_share_pct,\n  SAFE_DIVIDE(top50.rev, totals.total_rev) * 100 AS top50_share_pct,\n  SAFE_DIVIDE(top100.rev, totals.total_rev) * 100 AS top100_share_pct\nFROM totals\nCROSS JOIN top1\nCROSS JOIN top5\nCROSS JOIN top10\nCROSS JOIN top20\nCROSS JOIN top50\nCROSS JOIN top100",
+              "error_code": "UNSUPPORTED_SQL",
+              "evidence_id": null,
+              "executed": false,
+              "outcome": "rejected",
+              "parameters": {},
+              "reason": "compile_unsupported_join",
+              "rows": null,
+              "sql": null,
+              "tool_result": "failed"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_c7e3c653edde4a98b15e90ef477e3b27",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "100",
+                "_value_1": "Complete",
+                "_value_2": "2025-12-31",
+                "_value_3": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "WITH `customer_spend` AS (SELECT `s`.`customer_ref` AS `customer_ref`, SUM(`s`.`sale_amount`) AS `customer_revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_1 AND `s`.`ordered_date` >= @_value_3 AND `s`.`ordered_date` <= @_value_2 GROUP BY `s`.`customer_ref`) SELECT COUNT(*) AS `total_customers`, SUM(`c`.`customer_revenue`) AS `total_revenue`, AVG(`c`.`customer_revenue`) AS `avg_revenue_per_customer`, MIN(`c`.`customer_revenue`) AS `min_revenue`, MAX(`c`.`customer_revenue`) AS `max_revenue`, SAFE_DIVIDE(MAX(`c`.`customer_revenue`), SUM(`c`.`customer_revenue`)) * @_value_0 AS `top1_share_pct` FROM `customer_spend` AS `c`",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_fb5c4927e7f241c2a74f7b5457fcbf6f",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "100",
+                "_value_1": "Complete",
+                "_value_2": "2025-12-31",
+                "_value_3": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "WITH `customer_spend` AS (SELECT `s`.`customer_ref` AS `customer_ref`, SUM(`s`.`sale_amount`) AS `customer_revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_1 AND `s`.`ordered_date` >= @_value_3 AND `s`.`ordered_date` <= @_value_2 GROUP BY `s`.`customer_ref`), `top100` AS (SELECT `customer_spend`.`customer_revenue` AS `customer_revenue` FROM `customer_spend` AS `customer_spend` ORDER BY `customer_revenue` DESC LIMIT 100) SELECT (SELECT SUM(`top100`.`customer_revenue`) AS `_col_0` FROM `top100` AS `top100`) AS `top100_revenue`, SAFE_DIVIDE((SELECT SUM(`top100`.`customer_revenue`) AS `_col_0` FROM `top100` AS `top100`), (SELECT SUM(`customer_spend`.`customer_revenue`) AS `_col_0` FROM `customer_spend` AS `customer_spend`)) * @_value_0 AS `top100_share_pct` FROM `sales_items` AS `s` LIMIT 1",
+              "tool_result": "succeeded"
+            },
+            {
+              "attempted_parameters": {},
+              "attempted_sql": null,
+              "error_code": null,
+              "evidence_id": "evd_0e245b09d47347eb9c1197171ae30219",
+              "executed": true,
+              "outcome": "succeeded",
+              "parameters": {
+                "_value_0": "Complete",
+                "_value_1": "2025-12-31",
+                "_value_2": "2025-10-01"
+              },
+              "reason": null,
+              "rows": 1,
+              "sql": "WITH `customer_spend` AS (SELECT `s`.`customer_ref` AS `customer_ref`, SUM(`s`.`sale_amount`) AS `customer_revenue` FROM `sales_items` AS `s` WHERE `s`.`item_status` = @_value_0 AND `s`.`ordered_date` >= @_value_2 AND `s`.`ordered_date` <= @_value_1 GROUP BY `s`.`customer_ref`), `top10` AS (SELECT `customer_spend`.`customer_revenue` AS `customer_revenue` FROM `customer_spend` AS `customer_spend` ORDER BY `customer_revenue` DESC LIMIT 10) SELECT MIN(`t`.`customer_revenue`) AS `top10_min_spend`, MAX(`t`.`customer_revenue`) AS `top10_max_spend`, AVG(`t`.`customer_revenue`) AS `top10_avg_spend` FROM `top10` AS `t`",
+              "tool_result": "succeeded"
+            }
+          ],
+          "queries_before_question": null,
+          "queries_failed": 0,
+          "queries_rejected": 1,
+          "queries_succeeded": 4,
+          "report_actions": 2,
+          "report_saved": true,
+          "restarts": [],
+          "run_id": "run_b55e21f9c88c08c6e1ddf0d87d9f9ffe",
+          "run_status": "completed",
+          "sql_terms_met": [
+            true
+          ],
+          "stop_reason": null,
+          "targets_met": {
+            "completed": true,
+            "no_unexpected_question": true,
+            "report_with_actions": true
+          },
+          "text_terms_met": [],
+          "tools": [
+            "execute_analysis",
+            "load_skill",
+            "execute_analysis",
+            "execute_analysis",
+            "execute_analysis",
+            "execute_analysis",
+            "save_report"
+          ],
+          "total_tokens": 76228,
+          "turn": 1,
+          "unqualified_terms": [],
+          "unscoped_queries": 0,
+          "wall_seconds": 79.5
+        }
+      ]
+    }
+  ],
+  "schema_version": 1,
+  "scoring_version": 3,
+  "settings": {
+    "approved_schema_context": "on",
+    "fixture_rates": "none",
+    "max_repeats_cap": 1.0,
+    "run_limit_active_seconds": 600.0,
+    "run_limit_bytes_per_query": 1073741824.0,
+    "run_limit_bytes_per_run": 5368709120.0,
+    "run_limit_corrections_per_query": 2.0,
+    "run_limit_provider_requests": 20.0,
+    "run_limit_queries": 10.0,
+    "run_limit_query_deadline_seconds": 120.0,
+    "run_limit_result_bytes": 262144.0,
+    "run_limit_result_rows": 500.0,
+    "run_limit_tokens": 100000.0,
+    "run_limit_transient_attempts": 3.0,
+    "source_currency_declared": "USD",
+    "turn_timeout_seconds": 300.0
+  },
+  "spend": {
+    "max_model_attempts": 500,
+    "max_total_tokens": 3000000,
+    "run_requests_limit": 20,
+    "run_tokens_limit": 100000
+  },
+  "spend_used": {
+    "model_attempts": 18,
+    "runs": 5,
+    "total_tokens": 167054
+  },
+  "stopped_by_ceiling": false,
+  "suite_id": "conversation-efficiency",
+  "suite_version": "1",
+  "target_id": "agent_runtime:local",
+  "warehouse": "offline DuckDB (frozen extract)"
+}
