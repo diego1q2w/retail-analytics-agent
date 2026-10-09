@@ -9,6 +9,7 @@ guesswork, so this fails on any such reference.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 from dataclasses import replace
@@ -22,7 +23,10 @@ from retail_analytics.application.context import (
 )
 from retail_analytics.application.contracts import Correlation
 from retail_analytics.application.contracts.tools import ExecutionContext
-from retail_analytics.application.investigation_runtime import INVESTIGATION_POLICY
+from retail_analytics.application.investigation_policy import (
+    catalog_fingerprint,
+    render_investigation_policy,
+)
 from retail_analytics.application.tools import CapabilityRegistry
 from retail_analytics.bootstrap.access import AccessServices
 from retail_analytics.bootstrap.budgets import build_run_budgets
@@ -32,7 +36,12 @@ from retail_analytics.bootstrap.evidence import build_evidence
 from retail_analytics.bootstrap.investigations import build_capability_registry
 from retail_analytics.bootstrap.persistence import build_persistence
 from retail_analytics.bootstrap.preferences import build_preferences
-from retail_analytics.domain.access import Permission, ProductScope
+from retail_analytics.domain.access import (
+    Permission,
+    ProductScope,
+    Role,
+    permissions_for,
+)
 from retail_analytics.domain.disclosure import DisclosureKind
 from retail_analytics.domain.request_scope import (
     Admission,
@@ -81,7 +90,7 @@ def _execution(permissions: frozenset[str]) -> ExecutionContext:
     )
 
 
-def _worst_case_context() -> str:
+def _worst_case_context(can_fetch_evidence: bool = True) -> str:
     """Context text with every note and the compacted-evidence line present."""
     now = datetime(2026, 1, 1, tzinfo=UTC)
     digest = EvidenceDigest(
@@ -118,7 +127,7 @@ def _worst_case_context() -> str:
             masked=tuple(DisclosureKind),
         ),
         estimated_tokens=1,
-    ).render()
+    ).render(can_fetch_evidence=can_fetch_evidence)
 
 
 def _mentions(text: str) -> set[str]:
@@ -131,25 +140,99 @@ def _descriptor_text(registry: CapabilityRegistry, ctx: ExecutionContext) -> str
     )
 
 
+def _role_combinations() -> list[tuple[str, frozenset[str]]]:
+    """Every combination of server roles, plus a token-narrowed analysis-only set."""
+    roles = list(Role)
+    combos: list[tuple[str, frozenset[str]]] = []
+    for size in range(1, len(roles) + 1):
+        for chosen in itertools.combinations(roles, size):
+            granted = permissions_for(frozenset(chosen))
+            name = "+".join(r.value for r in chosen)
+            combos.append((name, frozenset(p.value for p in granted)))
+    combos.append(("analysis-only", frozenset({Permission.ANALYSIS_READ.value})))
+    return combos
+
+
+def _principal_text(
+    registry: CapabilityRegistry, permissions: frozenset[str]
+) -> tuple[set[str], str, str]:
+    ctx = _execution(permissions)
+    catalog = {d.name for d in registry.catalog(ctx)}
+    policy = render_investigation_policy(catalog)
+    notes = _worst_case_context(can_fetch_evidence="fetch_evidence" in catalog)
+    return catalog, policy, "\n".join([policy, notes, _descriptor_text(registry, ctx)])
+
+
 def test_every_tool_named_in_instructions_and_context_is_callable() -> None:
     registry = _registry()
-    full = _execution(frozenset(p.value for p in Permission))
-    catalog = {d.name for d in registry.catalog(full)}
+    full = frozenset(p.value for p in Permission)
+    catalog, _, text = _principal_text(registry, full)
     assert "fetch_evidence" in catalog
-
-    text = "\n".join(
-        [INVESTIGATION_POLICY, _worst_case_context(), _descriptor_text(registry, full)]
-    )
-    mentioned = _mentions(text)
     # The scan must be live: the compacted-evidence note names the tool.
     assert "fetch_evidence" in _mentions(_worst_case_context())
-    assert {"execute_analysis", "save_report"} <= mentioned
-    assert mentioned <= catalog, sorted(mentioned - catalog)
+    assert {"execute_analysis", "save_report"} <= _mentions(text)
+    assert _mentions(text) <= catalog, sorted(_mentions(text) - catalog)
 
 
-def test_context_notes_only_name_tools_an_analysis_only_user_can_call() -> None:
+def test_instructions_only_name_tools_in_each_principals_catalog() -> None:
     registry = _registry()
-    analysis_only = _execution(frozenset({Permission.ANALYSIS_READ.value}))
-    catalog = {d.name for d in registry.catalog(analysis_only)}
-    mentioned = _mentions(_worst_case_context())
-    assert mentioned and mentioned <= catalog, sorted(mentioned - catalog)
+    combos = _role_combinations()
+    assert {"executive", "editor", "reviewer", "admin", "analysis-only"} <= {
+        name for name, _ in combos
+    }
+    for name, permissions in combos:
+        catalog, policy, text = _principal_text(registry, permissions)
+        mentioned = _mentions(text)
+        assert mentioned <= catalog, (name, sorted(mentioned - catalog))
+        # Guidance exists for tools that are present.
+        assert catalog <= _mentions(policy) | _NO_POLICY_GUIDANCE, name
+
+
+# Present tools whose use the policy does not need to spell out.
+_NO_POLICY_GUIDANCE = frozenset(
+    {
+        "inspect_preferences",
+        "forget_preference",
+        "decline_preference",
+        "read_report",
+        "export_report",
+    }
+)
+
+
+def test_missing_capabilities_are_described_as_unavailable() -> None:
+    registry = _registry()
+    _, policy, _ = _principal_text(
+        registry, frozenset({Permission.ANALYSIS_READ.value})
+    )
+    assert "You cannot delete reports for this user" in policy
+    assert "propose_report_deletion" not in policy
+    assert "save_report" in policy
+
+    _, none_policy, _ = _principal_text(registry, frozenset())
+    assert "No analysis tools are available" in none_policy
+    assert "execute_analysis" not in none_policy
+    assert "You cannot save reports for this user." in none_policy
+    assert "You cannot save preferences for this user" in none_policy
+
+    _, full_policy, _ = _principal_text(
+        registry, frozenset(p.value for p in Permission)
+    )
+    assert "You cannot save reports" not in full_policy
+    assert "save_report" in full_policy
+
+
+def test_policy_is_deterministic_per_catalog_fingerprint() -> None:
+    registry = _registry()
+    seen: dict[str, str] = {}
+    for name, permissions in _role_combinations():
+        catalog = {d.name for d in registry.catalog(_execution(permissions))}
+        first = render_investigation_policy(sorted(catalog))
+        second = render_investigation_policy(sorted(catalog, reverse=True))
+        assert first == second, name
+        fingerprint = catalog_fingerprint(catalog)
+        assert fingerprint == catalog_fingerprint(sorted(catalog) * 2)
+        assert seen.setdefault(fingerprint, first) == first, name
+    # Different catalogs yield different instructions.
+    assert len(set(seen.values())) == len(seen)
+    assert len(seen) >= 3

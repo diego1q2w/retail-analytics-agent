@@ -145,8 +145,12 @@ class ModelContext:
     # Opaque references the model may legitimately use (from usable evidence).
     permitted_references: frozenset[str] = field(default_factory=frozenset)
 
-    def render(self) -> str:
-        """Plain-text context blocks; untrusted content is quoted as data."""
+    def render(self, *, can_fetch_evidence: bool = True) -> str:
+        """Plain-text context blocks; untrusted content is quoted as data.
+
+        Notes name ``fetch_evidence`` only when the principal's catalog has it
+        (``can_fetch_evidence``); otherwise they just state what was omitted.
+        """
         parts = [
             "<preferences>",
             *(_quote(p) for p in self.preferences),
@@ -154,13 +158,13 @@ class ModelContext:
             "<evidence>",
         ]
         for item in self.evidence:
-            parts.append(_render_evidence(item))
+            parts.append(_render_evidence(item, can_fetch_evidence))
         parts.append("</evidence>")
         parts.append("<conversation>")
         for message in self.history:
             parts.append(f"[{message.role.value}] {_quote(message.text)}")
         parts.append("</conversation>")
-        notes = _omission_notes(self.omissions)
+        notes = _omission_notes(self.omissions, can_fetch_evidence)
         if notes:
             parts.append("<context_notes>")
             parts.extend(notes)
@@ -599,7 +603,7 @@ def _evidence_size(digest: EvidenceDigest) -> int:
     return len(_render_evidence(digest))
 
 
-def _render_evidence(item: EvidenceDigest) -> str:
+def _render_evidence(item: EvidenceDigest, can_fetch: bool = True) -> str:
     header = (
         f"evidence {item.evidence_id} v{item.version}; computed "
         f"{item.computed_at.isoformat()}"
@@ -610,13 +614,16 @@ def _render_evidence(item: EvidenceDigest) -> str:
     )
     lines = [header, "columns: " + " | ".join(_quote(c) for c in item.columns)]
     if item.compacted:
-        lines.append("rows omitted for space; read them with fetch_evidence")
+        lines.append(
+            "rows omitted for space; read them with fetch_evidence"
+            if can_fetch
+            else "rows omitted for space"
+        )
     else:
         lines.extend(" | ".join(_quote(c) for c in row) for row in item.rows)
         if len(item.rows) < item.total_rows:
-            lines.append(
-                f"... {item.total_rows - len(item.rows)} more rows (fetch_evidence)"
-            )
+            more = f"... {item.total_rows - len(item.rows)} more rows"
+            lines.append(f"{more} (fetch_evidence)" if can_fetch else more)
     lines.extend(f"note: {note}" for note in item.notes)
     return "\n".join(lines)
 
@@ -626,7 +633,7 @@ def _quote(text: str) -> str:
     return text.replace("<", "\u2039").replace(">", "\u203a")
 
 
-def _omission_notes(omissions: ContextOmissions) -> list[str]:
+def _omission_notes(omissions: ContextOmissions, can_fetch: bool = True) -> list[str]:
     notes: list[str] = []
     # Withheld answers leave a marker so the model knows to recompute.
     if omissions.history_access_changed:
@@ -644,6 +651,8 @@ def _omission_notes(omissions: ContextOmissions) -> list[str]:
         notes.append(
             "Older context omitted for space; fetch_evidence lists and reads "
             "the evidence still available."
+            if can_fetch
+            else "Older context omitted for space."
         )
     if omissions.masked:
         notes.append(f"Personal data was removed and shown as {MASK}.")
