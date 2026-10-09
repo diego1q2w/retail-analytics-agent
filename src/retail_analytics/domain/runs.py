@@ -1,7 +1,10 @@
 """Investigation runs: one user request and everything done to answer it.
 
-A run's application ID is distinct from the Temporal workflow identifiers that
-execute it; those are attached once the workflow is started.
+A run's application ID is distinct from the identifiers of the execution that
+runs it. Every run belongs to exactly one execution backend from its creation:
+a durable Temporal workflow or the in-process local manager. A backend never
+starts, stops or takes over another backend's runs; the execution identifiers
+are attached once the execution is started.
 """
 
 from __future__ import annotations
@@ -63,13 +66,24 @@ _RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
 }
 
 
+class ExecutionBackend(StrEnum):
+    # A durable Temporal workflow per run (recovers across process restarts).
+    TEMPORAL = "temporal"
+    # A task of the API process; process death interrupts the run.
+    LOCAL = "local"
+
+
 @dataclass(frozen=True, slots=True)
 class WorkflowRef:
-    """Execution-runtime identifiers of a run (a Temporal workflow ID and
-    first run ID today). Plain strings: no runtime handle is stored."""
+    """Execution identifiers of a run. Plain strings: no runtime handle.
+
+    Temporal: workflow ID and first run ID. Local: the ID of the manager
+    process instance that owns the run (no run ID); never a Temporal ID.
+    """
 
     workflow_id: str
     workflow_run_id: str | None = None
+    backend: ExecutionBackend = ExecutionBackend.TEMPORAL
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +99,7 @@ class Run:
     updated_at: datetime
     completed_at: datetime | None = None
     workflow: WorkflowRef | None = None
+    execution_backend: ExecutionBackend = ExecutionBackend.TEMPORAL
 
     def transition(self, to: RunStatus, *, at: datetime) -> Run | None:
         """The run after moving to ``to``; ``None`` when it is already there."""

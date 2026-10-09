@@ -50,9 +50,11 @@ using real PostgreSQL, Temporal and all application guards.
 
 ## Runtime boundary
 
-Investigation behaviour is split from the engine that executes it. Temporal is
-the only runtime shipped; a local runtime is not implemented and there is no
-setting to select one.
+Investigation behaviour is split from the engine that executes it. Two
+execution backends implement it: the durable Temporal workflow (described
+above) and an in-process local manager (see "Local execution backend" below).
+The local backend is available through explicit construction only; startup
+commands and settings do not select it yet.
 
 - Application (`application/investigation_runtime.py`): the steps an
   investigation takes - begin, prepare a model step, release an answer, ask,
@@ -82,9 +84,71 @@ setting to select one.
   evaluation entry points.
 
 Architecture tests reject Temporal imports in the shared agent, model
-adapters and general investigation composition (also transitive ones), and a
-test runs the shared agent in an interpreter where Temporal cannot be
-imported.
+adapters, the local backend and general/local investigation composition (also
+transitive ones), and tests build and run the shared agent and the local
+manager in an interpreter where Temporal cannot be imported.
+
+## Local execution backend
+
+`adapters/local/investigations.py` (`LocalInvestigationManager`) runs each
+investigation as an asyncio task of the process that opens it - the API
+process. It implements the same `InvestigationScheduler` port and carries out
+the same lifecycle decisions as the workflow, over the same
+`InvestigationRuntime` steps and shared agent; it holds no business rules of
+its own. `bootstrap/local_investigations.py` composes it:
+
+```python
+local = build_local_investigations(settings, persistence, access, model)
+async with local.manager:  # lock, orphan sweep, admit ... graceful shutdown
+    await local.services.control.start(
+        principal, session_id=..., text=..., submission_key=...
+    )
+```
+
+What it promises, and what it does not:
+
+- Tasks belong to the manager (the application lifespan), never to an HTTP
+  request or SSE connection. Clients disconnect and reconnect freely;
+  attachment replays persisted events and never starts or restarts work.
+  Concurrent agent work is bounded (`max_concurrent`, default 4); waiting
+  runs do not hold a slot.
+- Starting the same run twice (resubmission, concurrent duplicates, a direct
+  scheduler call) never creates a second task. One active run per session,
+  steering, queueing, clarification, cancellation, stale-context restarts,
+  budgets, output gates and provider fallback are the shared application
+  behaviour.
+- Clarification waits in memory for a notification that input was persisted;
+  no model call and no polling. The wait is bounded by the same seven-day
+  limit while the process lives.
+- Process lifetime only; no replay. The manager does not retry steps or
+  persist agent progress. When the process stops, shutdown stops admission,
+  cancels the tasks and, within a bounded grace period (default 10 s), ends
+  each run as **interrupted**: FAILED (CANCELLED if cancellation was already
+  requested) with a notice, the open question closed, pending steering and the
+  session's queued requests discarded (kept as history, named in the notice,
+  never started). Running warehouse jobs get cancellation requested by their
+  recorded job ID; a job that cannot be confirmed stopped is reported as such,
+  never as cancelled.
+- When the process dies instead, nothing records an outcome at that moment.
+  The next manager to open sweeps the orphaned local runs the same way before
+  admitting work (`application/investigation_interruption.py`). No model or
+  tool call is replayed and no warehouse job is resubmitted. Messages,
+  evidence, reports, budgets and operation/job records are kept; the session
+  accepts a new request, which the user sends explicitly. This differs from
+  Temporal, which resumes an interrupted investigation.
+- One manager per database: opening takes a process-lifetime PostgreSQL
+  advisory lock and fails clearly when another manager holds it. This is not
+  distributed scheduling, leases or leader election; the lock goes away with
+  its connection.
+- Ownership: every run records its execution backend from creation
+  (`runs.execution_backend`, migration 0019; existing runs are `temporal`).
+  Local runs store the owning manager instance (`local_execution_id`) and
+  never carry Temporal workflow IDs. The local manager refuses to start or
+  sweep Temporal runs and their queued requests; the Temporal recovery
+  dispatcher ignores local runs and sessions led by a local run.
+- Unlike Temporal activities, a failing step is not retried: a run whose step
+  fails (for example the database is unavailable) stops with its verified
+  findings.
 
 ## Recovery boundaries
 
@@ -155,7 +219,17 @@ the run as "model unavailable" instead of being retried.
 ```sh
 ./scripts/check.sh
 python -m pytest -m docker tests/integration/test_investigations.py
+python -m pytest -m docker tests/integration/test_local_investigations.py \
+  tests/integration/test_local_agent_runtime.py
 ```
+
+The local-backend suites use PostgreSQL only (no Temporal service). They run
+the acceptance conversations of `test_agent_runtime.py` unchanged on the local
+manager, the lifecycle cases above, shutdown and the one-manager lock, and a
+process killed with SIGKILL during a warehouse job, followed by a restart that
+records the interruption, reconciles the job by its recorded ID without
+resubmitting it, discards the queued request with a notice and accepts a new
+request.
 
 The Docker suite creates an isolated PostgreSQL/Temporal stack. It kills a
 worker after an external effect commits but before the activity replies,

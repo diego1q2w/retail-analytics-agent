@@ -74,7 +74,12 @@ class RunRepository(Protocol):
         ...
 
     async def attach_workflow(self, run_id: str, workflow: WorkflowRef) -> Run:
-        """Record the Temporal execution of the run, once."""
+        """Record the execution of the run, once.
+
+        Raises ``IdempotencyConflict`` when the run belongs to another
+        execution backend (``workflow.backend``) or already has a different
+        execution: no backend takes over another's runs.
+        """
         ...
 
 

@@ -182,3 +182,16 @@ class LifecycleDecision:
     resource: BudgetResource | None = None
     # Set by admission when the run is already being cancelled.
     cancelling: bool = False
+
+
+# Interrupted local executions (``application.investigation_interruption``).
+
+
+@dataclass(frozen=True, slots=True)
+class InterruptionSweep:
+    """What a startup sweep of orphaned local runs changed."""
+
+    # Runs that ended interrupted (FAILED, or CANCELLED if cancelling).
+    interrupted: tuple[str, ...] = ()
+    # Queued requests discarded with a notice instead of being started.
+    discarded_queued: int = 0

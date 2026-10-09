@@ -131,3 +131,91 @@ def test_probe_blocks_the_temporal_adapter() -> None:
     )
     assert completed.returncode != 0
     assert "ImportError" in completed.stderr
+
+
+_LOCAL_PROBE = r"""
+import asyncio, importlib.abc, json, sys
+
+repo, src, blocked = sys.argv[1], sys.argv[2], tuple(json.loads(sys.argv[3]))
+sys.path[:0] = [src, repo]
+refused = []
+
+class Blocked(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if any(name == b or name.startswith(b + ".") for b in blocked):
+            refused.append(name)
+            raise ImportError("blocked: " + name)
+        return None
+
+sys.meta_path.insert(0, Blocked())
+
+from pydantic_ai.models.function import FunctionModel
+from retail_analytics.bootstrap.access import build_access
+from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.local_investigations import (
+    build_local_investigations,
+)
+from retail_analytics.bootstrap.persistence import build_persistence
+from tests.unit.local.fakes import harness
+
+async def main():
+    out = {}
+    # Full local composition (an engine connects lazily: nothing is contacted).
+    persistence = build_persistence("postgresql+psycopg://u:p@127.0.0.1:9/none")
+    local = build_local_investigations(
+        BackendSettings(),
+        persistence,
+        build_access(persistence, verifier=None),
+        FunctionModel(lambda messages, info: None),
+    )
+    out["backend"] = local.manager.backend.value
+    persistence.close()
+    # Local execution: shared agent + lifecycle decisions in-process.
+    h = harness(ends_with="clarify")
+    await h.manager.open()
+    await h.manager.start("r1")
+    while h.runtime.steps("r1")[-1:] != ["resume"]:
+        await asyncio.sleep(0.01)
+    h.runtime.add_input("r1")
+    await h.manager.notify_input("r1")
+    while h.manager.running():
+        await asyncio.sleep(0.01)
+    await h.manager.close()
+    out["steps"] = h.runtime.steps("r1")
+    out["answers"] = [a.text for a in h.runtime.answers]
+    return out
+
+result = asyncio.run(main())
+result["loaded"] = sorted(
+    m for m in sys.modules if any(m == b or m.startswith(b + ".") for b in blocked)
+)
+result["refused"] = sorted(set(refused))
+print(json.dumps(result))
+"""
+
+
+def test_local_manager_builds_and_runs_with_temporal_imports_blocked() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            _LOCAL_PROBE,
+            str(REPO),
+            str(REPO / "src"),
+            json.dumps(BLOCKED),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env={"PYDANTIC_AI_NO_BANNER": "1"},
+    )
+    assert completed.returncode == 0, completed.stderr[-4000:]
+    report = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert report["loaded"] == [] and report["refused"] == []
+    assert report["backend"] == "local"
+    assert report["steps"][:3] == ["begin", "ask", "resume"]
+    assert report["steps"][-1] == "release_answer"
+    assert report["answers"] == ["Sales grew 4%."]

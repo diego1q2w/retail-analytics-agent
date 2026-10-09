@@ -203,6 +203,7 @@ class InvestigationLauncher:
                 submission_key=submission_key,
                 message_id=message_id_for(request_input),
                 request_text=text,
+                execution_backend=self._scheduler.backend,
             )
         )
         run = started.run

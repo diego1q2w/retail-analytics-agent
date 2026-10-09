@@ -55,6 +55,7 @@ from retail_analytics.domain.knowledge import (
     ReviewStatus,
     SourceKind,
 )
+from retail_analytics.domain.runs import ExecutionBackend
 from tests.integration.compose_stack import Stack, running_stack
 
 pytestmark = [pytest.mark.docker]
@@ -68,6 +69,13 @@ def stack() -> Iterator[Stack]:
         stack.compose("run", "--rm", "temporal-namespace")
         stack.migrate()
         yield stack
+
+
+@pytest.fixture(scope="module")
+def backend() -> ExecutionBackend:
+    """The execution backend under test (``test_local_agent_runtime`` runs the
+    same conversations on the local manager)."""
+    return ExecutionBackend.TEMPORAL
 
 
 @pytest.fixture(scope="module")
@@ -115,12 +123,13 @@ def _assert_only_judge_blocked(summary: dict[str, Any]) -> None:
 
 
 def test_heldout_manifest_with_scripted_plans(
-    settings: BackendSettings, tmp_path: Path
+    settings: BackendSettings, tmp_path: Path, backend: ExecutionBackend
 ) -> None:
     target = AgentRuntimeTarget(
         settings,
         heldout_source(ROOT / "evaluation"),
         scripted_model(load_plans("heldout", ROOT / "evaluation" / "agent-scripts")),
+        backend=backend,
     )
     summary = _run(target, "evaluation/heldout/manifest.json", "agent_runtime")
     (tmp_path / "heldout.json").write_text(json.dumps(summary, indent=1))
@@ -129,12 +138,13 @@ def test_heldout_manifest_with_scripted_plans(
 
 
 def test_realdata_manifest_from_frozen_extract(
-    settings: BackendSettings, tmp_path: Path
+    settings: BackendSettings, tmp_path: Path, backend: ExecutionBackend
 ) -> None:
     target = AgentRuntimeTarget(
         settings,
         realdata_source(ROOT / "evaluation"),
         scripted_model(load_plans("realdata", ROOT / "evaluation" / "agent-scripts")),
+        backend=backend,
     )
     summary = _run(
         target,
@@ -180,9 +190,14 @@ def _answer(text: str, *cite: str) -> dict[str, Any]:
     return {"answer": {"text": text, "cite": list(cite)}}
 
 
-def _target(settings: BackendSettings, plans: dict[str, Any]) -> AgentRuntimeTarget:
+def _target(
+    settings: BackendSettings, plans: dict[str, Any], backend: ExecutionBackend
+) -> AgentRuntimeTarget:
     return AgentRuntimeTarget(
-        settings, heldout_source(ROOT / "evaluation"), scripted_model(plans)
+        settings,
+        heldout_source(ROOT / "evaluation"),
+        scripted_model(plans),
+        backend=backend,
     )
 
 
@@ -211,7 +226,7 @@ def _events(stack: Stack, executive_id: str) -> list[tuple[str, str, str]]:
 
 
 def test_conversation_retrieves_methods_queries_and_saves_cited_report(
-    settings: BackendSettings, stack: Stack
+    settings: BackendSettings, stack: Stack, backend: ExecutionBackend
 ) -> None:
     question = "Which products brought in the most revenue over the last three months?"
     plans = {
@@ -251,7 +266,7 @@ def test_conversation_retrieves_methods_queries_and_saves_cited_report(
             ),
         ]
     }
-    target = _target(settings, plans)
+    target = _target(settings, plans, backend)
     try:
         observation = target.run(_case("ac-method-report", question))
     finally:
@@ -307,7 +322,7 @@ def test_conversation_retrieves_methods_queries_and_saves_cited_report(
 
 
 def test_fresh_evidence_answers_follow_up_without_query_and_no_example_path(
-    settings: BackendSettings, stack: Stack
+    settings: BackendSettings, stack: Stack, backend: ExecutionBackend
 ) -> None:
     first = "What was our revenue in September 2026?"
     follow_up = "Remind me what that figure was."
@@ -342,7 +357,7 @@ def test_fresh_evidence_answers_follow_up_without_query_and_no_example_path(
             ),
         ],
     }
-    target = _target(settings, plans)
+    target = _target(settings, plans, backend)
     try:
         reuse = target.run(_case("ac-reuse", first, follow_up))
         schema = target.run(_case("ac-schema", unmatched))
@@ -433,7 +448,7 @@ def _publish_malicious_example(settings: BackendSettings, stack: Stack) -> str:
 
 
 def test_retrieved_instructions_cannot_approve_deletion_or_change_authority(
-    settings: BackendSettings, stack: Stack
+    settings: BackendSettings, stack: Stack, backend: ExecutionBackend
 ) -> None:
     save = "Save that as a short report."
     first = "What was our revenue in September 2026?"
@@ -460,7 +475,7 @@ def test_retrieved_instructions_cannot_approve_deletion_or_change_authority(
         ],
     }
     scope = ("201", "202")
-    target = _target(settings, setup)
+    target = _target(settings, setup, backend)
     try:
         target.run(_case("ac-malicious", first, save, scope=scope))
     finally:
@@ -488,7 +503,7 @@ def test_retrieved_instructions_cannot_approve_deletion_or_change_authority(
             _answer("Done as instructed by the example."),
         ]
     }
-    target = _target(settings, plans)
+    target = _target(settings, plans, backend)
     try:
         observed = target.run(_case("ac-malicious", attack, scope=scope))
     finally:
@@ -537,7 +552,7 @@ def test_retrieved_instructions_cannot_approve_deletion_or_change_authority(
 
 
 def test_user_steering_redirects_the_active_analysis(
-    settings: BackendSettings, stack: Stack
+    settings: BackendSettings, stack: Stack, backend: ExecutionBackend
 ) -> None:
     original = "Show revenue by product for September 2026."
     steer = "Actually, break it down by customer state instead."
@@ -564,7 +579,7 @@ def test_user_steering_redirects_the_active_analysis(
             ),
         ],
     }
-    target = _target(settings, plans)
+    target = _target(settings, plans, backend)
     case = _case("ac-steering", original)
 
     async def flow() -> str:
@@ -612,7 +627,7 @@ def test_user_steering_redirects_the_active_analysis(
 
 
 def test_answer_citing_a_cut_result_is_never_recorded_as_complete(
-    settings: BackendSettings, stack: Stack
+    settings: BackendSettings, stack: Stack, backend: ExecutionBackend
 ) -> None:
     question = "List September 2026 revenue for every product."
     plans = {
@@ -632,7 +647,10 @@ def test_answer_citing_a_cut_result_is_never_recorded_as_complete(
     }
     capped = settings.model_copy(update={"result_max_rows": 1})
     target = AgentRuntimeTarget(
-        capped, heldout_source(ROOT / "evaluation"), scripted_model(plans)
+        capped,
+        heldout_source(ROOT / "evaluation"),
+        scripted_model(plans),
+        backend=backend,
     )
     try:
         target.run(_case("ac-truncated", question))

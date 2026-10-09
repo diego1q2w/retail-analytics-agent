@@ -114,6 +114,7 @@ from retail_analytics.domain.investigations import (
     QuestionStatus,
     RunInput,
     answer_message_id,
+    input_id_for,
     message_id_for,
     question_id_for,
 )
@@ -170,6 +171,42 @@ def stop_message(reason: StopReason, resource: BudgetResource | None) -> str:
     if reason is StopReason.BUDGET and resource is not None:
         return budget_message(resource)
     return _STOP_MESSAGES.get(reason, _STOP_MESSAGES[StopReason.INTERRUPTED])
+
+
+INTERRUPTED_NOTICE = (
+    "This investigation was interrupted because the analysis service stopped. "
+    "It was not resumed and nothing was run again; earlier results and saved "
+    "reports are kept. Send the request again to restart it."
+)
+
+INTERRUPTED_SUMMARY = (
+    "Interrupted: the analysis service stopped. Nothing was resumed; send the "
+    "request again."
+)
+
+
+def interruption_notice(*, unsettled: int, queued: int) -> str:
+    """What the user is told when a run's execution was lost or shut down."""
+    parts = [INTERRUPTED_NOTICE]
+    if unsettled:
+        parts.append(
+            "A running query could not be confirmed stopped; it ends at its time limit."
+        )
+    if queued == 1:
+        parts.append(
+            "Your queued request was not started; send it again if you still need it."
+        )
+    elif queued:
+        parts.append(
+            f"Your {queued} queued requests were not started; send them again "
+            "if you still need them."
+        )
+    return " ".join(parts)
+
+
+def interruption_message_id(run_id: str) -> str:
+    """The assistant message announcing the run's interruption (once)."""
+    return message_id_for(input_id_for(run_id, "interrupted"))
 
 
 def _utc_now() -> datetime:
@@ -506,6 +543,65 @@ class InvestigationRuntime:
             return CancelProgress(0)
         if run.status is not RunStatus.CANCELLING:
             await self._runs.transition_run(run_id, RunStatus.CANCELLING)
+        return CancelProgress(await self._cancel_operations(run_id))
+
+    async def interrupt(self, run_id: str) -> StepOutcome:
+        """End a run whose execution is gone without resuming or replaying it.
+
+        For an execution runtime without durable recovery (the in-process
+        local manager) when its process stops, or after it died. No model
+        call and no tool is run again: running external operations only get
+        cancellation requested through their recorded job references, and an
+        unconfirmed one is reported as such. The run ends FAILED (CANCELLED
+        when cancellation was already requested) with a notice; pending
+        steering/answers and the session's queued requests are discarded,
+        kept as history and named in the notice, and nothing queued is
+        started: the user sends a new request. Earlier messages, evidence,
+        reports, budgets and operation records are kept.
+        """
+        run = await self._runs.get_run(run_id)
+        if run is None or run.status.is_terminal:
+            return StepOutcome(
+                StepResult.STOPPED, status=None if run is None else run.status
+            )
+        unsettled = await self._cancel_operations(run_id)
+        queued = await self._discard_queued(run.session_id)
+        status = (
+            RunStatus.CANCELLED
+            if run.status is RunStatus.CANCELLING
+            else RunStatus.FAILED
+        )
+        notice = interruption_notice(unsettled=unsettled, queued=queued)
+        closure = await self._inputs.close_run(
+            run_id,
+            status,
+            output=AssistantOutput(interruption_message_id(run_id), notice),
+            force=True,
+        )
+        await self._inputs.discard_pending(run_id)
+        if not closure.closed:
+            # It ended meanwhile (its own outcome stands).
+            return StepOutcome(StepResult.STOPPED, status=closure.run.status)
+        await self._record_run_end(closure.run, None)
+        kind = (
+            EventKind.RUN_CANCELLED
+            if status is RunStatus.CANCELLED
+            else EventKind.RUN_FAILED
+        )
+        await self._publish_once(closure.run, kind, INTERRUPTED_SUMMARY)
+        return StepOutcome(
+            StepResult.STOPPED,
+            status=closure.run.status,
+            stop_reason=StopReason.INTERRUPTED,
+        )
+
+    async def _cancel_operations(self, run_id: str) -> int:
+        """Request cancellation of the run's unfinished operations.
+
+        Returns how many may still leave an external effect (cancellation not
+        confirmed). Queries are cancelled through their recorded job
+        reference, never resubmitted.
+        """
         unsettled = 0
         for op in await self._operations.for_run(run_id):
             if op.status.is_terminal:
@@ -526,7 +622,14 @@ class InvestigationRuntime:
                     attempt=max(op.attempt_count, 1),
                     detail="cancelled",
                 )
-        return CancelProgress(unsettled)
+        return unsettled
+
+    async def _discard_queued(self, session_id: str) -> int:
+        discarded = 0
+        while (queued := await self._inputs.next_queued(session_id)) is not None:
+            await self._inputs.discard(queued.input_id)
+            discarded += 1
+        return discarded
 
     async def reconcile_cancel(self, run_id: str) -> CancelProgress:
         unsettled = 0

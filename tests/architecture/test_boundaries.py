@@ -62,10 +62,13 @@ def test_runtime_neutral_checks_reject_invalid_fixture(
         f"{agent}.wired",
         "runtime-neutral code must not import fixture_app.adapters.temporal",
     ) in found
+    # The local backend is held to the same rule as the shared agent.
+    local = "fixture_app.adapters.local.scheduler"
+    assert (local, "runtime-neutral code must not import temporalio") in found
     # The Temporal adapter itself may use Temporal; a transitive load is only
     # visible at import time.
     neutral = {m for m, detail in found if detail.startswith("runtime-neutral")}
-    assert neutral == {f"{agent}.durable", f"{agent}.wired"}
+    assert neutral == {f"{agent}.durable", f"{agent}.wired", local}
 
     problems = check_runtime_neutral(FIXTURE_ROOT, FIXTURE_PACKAGE)
     assert "runtime-neutral import loads temporalio" in problems

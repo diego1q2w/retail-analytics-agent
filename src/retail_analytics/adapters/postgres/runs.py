@@ -31,6 +31,7 @@ from retail_analytics.application.contracts.persistence import (
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.runs import (
     ACTIVE_RUN_STATUSES,
+    ExecutionBackend,
     Run,
     RunStatus,
     WorkflowRef,
@@ -39,9 +40,22 @@ from retail_analytics.domain.runs import (
 _ACTIVE = [status.value for status in ACTIVE_RUN_STATUSES]
 
 
+def _execution(m: sa.RowMapping) -> tuple[ExecutionBackend, WorkflowRef | None]:
+    backend = ExecutionBackend(m["execution_backend"])
+    if backend is ExecutionBackend.LOCAL:
+        local_id = m["local_execution_id"]
+        return backend, None if local_id is None else WorkflowRef(
+            local_id, None, ExecutionBackend.LOCAL
+        )
+    workflow_id = m["temporal_workflow_id"]
+    return backend, None if workflow_id is None else WorkflowRef(
+        workflow_id, m["temporal_run_id"]
+    )
+
+
 def run_from_row(row: sa.Row[tuple[object, ...]]) -> Run:
     m = row._mapping
-    workflow_id = m["temporal_workflow_id"]
+    backend, workflow = _execution(m)
     return Run(
         run_id=m["run_id"],
         session_id=m["session_id"],
@@ -52,9 +66,8 @@ def run_from_row(row: sa.Row[tuple[object, ...]]) -> Run:
         created_at=m["created_at"],
         updated_at=m["updated_at"],
         completed_at=m["completed_at"],
-        workflow=None
-        if workflow_id is None
-        else WorkflowRef(workflow_id, m["temporal_run_id"]),
+        workflow=workflow,
+        execution_backend=backend,
     )
 
 
@@ -155,6 +168,7 @@ class PostgresRunRepository:
                     trigger_message_id=request.message_id,
                     submission_key=request.submission_key,
                     status=RunStatus.RUNNING.value,
+                    execution_backend=request.execution_backend.value,
                     created_at=now,
                     updated_at=now,
                 )
@@ -225,6 +239,9 @@ class PostgresRunRepository:
         self, connection: sa.Connection, run_id: str, workflow: WorkflowRef
     ) -> Run:
         run = lock_run(connection, run_id)
+        if run.execution_backend is not workflow.backend:
+            # Another backend owns the run: never start or take it over.
+            raise IdempotencyConflict("run execution backend", run_id)
         current = run.workflow
         if current == workflow:
             return run
@@ -235,15 +252,18 @@ class PostgresRunRepository:
         )
         if current is not None and not filling_in:
             raise IdempotencyConflict("run workflow", run_id)
+        if workflow.backend is ExecutionBackend.LOCAL:
+            ids: dict[str, str | None] = {"local_execution_id": workflow.workflow_id}
+        else:
+            ids = {
+                "temporal_workflow_id": workflow.workflow_id,
+                "temporal_run_id": workflow.workflow_run_id,
+            }
         try:
             row = connection.execute(
                 sa.update(runs)
                 .where(runs.c.run_id == run_id)
-                .values(
-                    temporal_workflow_id=workflow.workflow_id,
-                    temporal_run_id=workflow.workflow_run_id,
-                    updated_at=self._db.clock(),
-                )
+                .values(**ids, updated_at=self._db.clock())
                 .returning(*runs.c)
             ).one()
         except exc.IntegrityError:

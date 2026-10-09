@@ -138,3 +138,21 @@ def test_report_schema_upgrades_and_downgrades_offline() -> None:
     sql = buffer.getvalue()
     for table in ("report_evidence", "report_versions", "reports"):
         assert f"DROP TABLE {table}" in sql
+
+
+def test_run_execution_backend_upgrades_and_downgrades_offline() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0018:0019", sql=True)
+    sql = buffer.getvalue()
+    # Existing runs were all created for Temporal: backfilled by the default.
+    assert "ADD COLUMN execution_backend TEXT DEFAULT 'temporal' NOT NULL" in sql
+    assert "ADD COLUMN local_execution_id TEXT" in sql
+    assert "execution_backend = 'local' AND temporal_workflow_id IS NULL" in sql
+    assert "CREATE INDEX ix_runs_active_local" in sql
+
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0019:0018", sql=True)
+    sql = buffer.getvalue()
+    # Refuses instead of re-labelling local runs as Temporal runs.
+    assert "RAISE EXCEPTION 'local runs exist" in sql
+    assert "DROP COLUMN execution_backend" in sql

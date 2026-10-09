@@ -13,7 +13,9 @@ worker. Only two things are replaced at this root:
 
 It needs PostgreSQL (migrated) and Temporal from the settings
 (``RETAIL_ANALYTICS_DATABASE_URL``, ``RETAIL_ANALYTICS_TEMPORAL_ADDRESS``),
-e.g. the local stack from ``./scripts/bootstrap.sh``. Each scenario gets a
+e.g. the local stack from ``./scripts/bootstrap.sh``. Constructed explicitly
+with ``backend=ExecutionBackend.LOCAL`` it runs the same investigations on the
+in-process local manager instead (PostgreSQL only, no Temporal). Each scenario gets a
 fresh evaluation executive, product entitlements and session; nothing is
 shared with other executives. If the stack is unreachable every scenario is
 blocked (``TargetUnavailable``), never passed.
@@ -55,6 +57,7 @@ from retail_analytics.adapters.evaluation.fixture_warehouse import (
     heldout_fixture_warehouse,
 )
 from retail_analytics.adapters.exchange_rates.fixture import FixtureRateProvider
+from retail_analytics.adapters.local.investigations import LocalInvestigationManager
 from retail_analytics.adapters.models.scripted import scripted_model
 from retail_analytics.application.authentication import (
     AuthenticationFailed,
@@ -98,6 +101,9 @@ from retail_analytics.bootstrap.investigations import (
     build_investigations,
 )
 from retail_analytics.bootstrap.knowledge import build_knowledge
+from retail_analytics.bootstrap.local_investigations import (
+    build_local_investigations,
+)
 from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import (
     Persistence,
@@ -117,7 +123,7 @@ from retail_analytics.bootstrap.temporal import (
 from retail_analytics.domain.access import Role, permissions_for
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.evidence import scope_digest
-from retail_analytics.domain.runs import RunStatus
+from retail_analytics.domain.runs import ExecutionBackend, RunStatus
 
 TARGET_ID: Final = "agent_runtime"
 EVALUATION_DIR: Final = Path("evaluation")
@@ -272,8 +278,9 @@ class _Harness:
     services: InvestigationServices
     reports: ReportService
     evidence: EvidenceService
-    worker_task: asyncio.Task[None]
-    client: Client
+    # Temporal: the worker task. Local: the opened in-process manager.
+    worker_task: asyncio.Task[None] | None
+    manager: LocalInvestigationManager | None = None
 
 
 @dataclass
@@ -286,6 +293,7 @@ class AgentRuntimeTarget:
     turn_timeout: float = 240.0
     seed_knowledge: bool = True
     target_id: str = TARGET_ID
+    backend: ExecutionBackend = ExecutionBackend.TEMPORAL
     _loop: _Loop | None = field(default=None, init=False, repr=False)
     _harness: _Harness | None = field(default=None, init=False, repr=False)
 
@@ -307,10 +315,13 @@ class AgentRuntimeTarget:
         harness = self._harness
         if harness is None:
             return
-        harness.worker_task.cancel()
-        # Worker shutdown is best effort; its cancellation is expected.
-        with contextlib.suppress(BaseException):
-            await harness.worker_task
+        if harness.manager is not None:
+            await harness.manager.close()
+        if harness.worker_task is not None:
+            harness.worker_task.cancel()
+            # Worker shutdown is best effort; its cancellation is expected.
+            with contextlib.suppress(BaseException):
+                await harness.worker_task
         harness.persistence.close()
         self._harness = None
 
@@ -318,18 +329,21 @@ class AgentRuntimeTarget:
         if self._harness is not None:
             return self._harness
         settings = self.settings
-        if settings.database_url is None or settings.temporal_address is None:
+        local_backend = self.backend is ExecutionBackend.LOCAL
+        if settings.database_url is None or (
+            settings.temporal_address is None and not local_backend
+        ):
             raise TargetUnavailable
+        client: Client | None = None
         try:
-            client = await connect(
-                settings.temporal_address, settings.temporal_namespace
-            )
+            if not local_backend:
+                client = await connect(
+                    settings.temporal_address or "", settings.temporal_namespace
+                )
             persistence = persistence_from_settings(settings)
         except Exception:
             raise TargetUnavailable from None
         access = build_access(persistence, _NoTokens())
-        queue = "eval-" + uuid.uuid4().hex
-        scheduler = temporal_scheduler(client, queue)
         # The evaluation warehouse needs no BigQuery project; references use
         # a key that exists only for this process.
         local = settings.model_copy(
@@ -354,18 +368,33 @@ class AgentRuntimeTarget:
         if self.seed_knowledge:
             await _seed_if_empty(persistence, knowledge)
         retriever = build_retrieval(local, knowledge, embedder=HashingEmbedder())
-        services = build_investigations(
-            local,
-            persistence,
-            access,
-            scheduler,
-            self.model,
-            discovery=discovery,
-            queries=queries,
-            artifacts=artifacts,
-            retriever=retriever,
-            exchange_rates=FixtureRateProvider({}),
-        )
+        wiring: dict[str, Any] = {
+            "discovery": discovery,
+            "queries": queries,
+            "artifacts": artifacts,
+            "retriever": retriever,
+            "exchange_rates": FixtureRateProvider({}),
+        }
+        task: asyncio.Task[None] | None = None
+        manager: LocalInvestigationManager | None = None
+        if client is None:
+            built = build_local_investigations(
+                local, persistence, access, self.model, **wiring
+            )
+            services, manager = built.services, built.manager
+            await manager.open()
+        else:
+            queue = "eval-" + uuid.uuid4().hex
+            services = build_investigations(
+                local,
+                persistence,
+                access,
+                temporal_scheduler(client, queue),
+                self.model,
+                **wiring,
+            )
+            worker = investigation_worker(client, queue, services)
+            task = asyncio.get_running_loop().create_task(worker.run())
         evidence = build_evidence(persistence, settings=local)
         context = build_context(
             persistence, access, evidence, build_preferences(persistence, access)
@@ -373,10 +402,8 @@ class AgentRuntimeTarget:
         reports = build_reports(
             persistence, artifacts.service, evidence, context.gate, access.resolver
         )
-        worker = investigation_worker(client, queue, services)
-        task = asyncio.get_running_loop().create_task(worker.run())
         self._harness = _Harness(
-            persistence, access, services, reports, evidence, task, client
+            persistence, access, services, reports, evidence, task, manager
         )
         return self._harness
 

@@ -7,13 +7,17 @@ from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
-from retail_analytics.domain.runs import WorkflowRef
+from retail_analytics.domain.runs import ExecutionBackend, WorkflowRef
 
 
 class TemporalInvestigationScheduler:
     def __init__(self, client: Client, task_queue: str) -> None:
         self._client = client
         self._task_queue = task_queue
+
+    @property
+    def backend(self) -> ExecutionBackend:
+        return ExecutionBackend.TEMPORAL
 
     @staticmethod
     def workflow_id(run_id: str) -> str:

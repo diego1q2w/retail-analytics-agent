@@ -1,10 +1,15 @@
-"""Persisted investigation intents for the notification recovery dispatcher."""
+"""Persisted investigation intents for the notification recovery dispatcher.
+
+Only Temporal-owned runs are candidates: the dispatcher never starts a
+workflow for a run of the local in-process manager (or its queued requests).
+"""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import distinct_on
 
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.schema import (
@@ -16,7 +21,11 @@ from retail_analytics.adapters.postgres.schema import (
 from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.contracts.investigations import RecoveryCandidate
 from retail_analytics.domain.investigations import InputKind, InputStatus
-from retail_analytics.domain.runs import ACTIVE_RUN_STATUSES, RunStatus
+from retail_analytics.domain.runs import (
+    ACTIVE_RUN_STATUSES,
+    ExecutionBackend,
+    RunStatus,
+)
 
 
 class PostgresRecoveryCandidates:
@@ -43,7 +52,10 @@ class PostgresRecoveryCandidates:
                     run_principals, runs.c.run_id == run_principals.c.run_id
                 ).join(messages, runs.c.trigger_message_id == messages.c.message_id)
             )
-            .where(runs.c.status.in_([s.value for s in ACTIVE_RUN_STATUSES]))
+            .where(
+                runs.c.status.in_([s.value for s in ACTIVE_RUN_STATUSES]),
+                runs.c.execution_backend == ExecutionBackend.TEMPORAL.value,
+            )
         ).all()
         return tuple(
             RecoveryCandidate(
@@ -69,6 +81,26 @@ class PostgresRecoveryCandidates:
                 .where(
                     run_inputs.c.kind == InputKind.QUEUED.value,
                     run_inputs.c.status == InputStatus.PENDING.value,
+                    run_inputs.c.session_id.not_in(
+                        sessions_led_by(ExecutionBackend.LOCAL)
+                    ),
                 )
             ).scalars()
         )
+
+
+def sessions_led_by(backend: ExecutionBackend) -> sa.Select[tuple[str]]:
+    """Sessions whose most recent run belongs to ``backend``.
+
+    A queued request waits behind the session's latest run, so that run's
+    backend owns the request; another backend must not start it.
+    """
+    latest = (
+        sa.select(runs.c.session_id, runs.c.execution_backend)
+        .ext(distinct_on(runs.c.session_id))
+        .order_by(runs.c.session_id, runs.c.created_at.desc(), runs.c.run_id.desc())
+        .subquery()
+    )
+    return sa.select(latest.c.session_id).where(
+        latest.c.execution_backend == backend.value
+    )

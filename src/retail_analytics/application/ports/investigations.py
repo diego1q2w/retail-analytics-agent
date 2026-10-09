@@ -13,6 +13,7 @@ from retail_analytics.domain.investigations import (
     RunInput,
 )
 from retail_analytics.domain.runs import (
+    ExecutionBackend,
     RunStatus,
     WorkflowRef,
 )
@@ -99,11 +100,16 @@ class InvestigationInputs(Protocol):
 
 
 class InvestigationScheduler(Protocol):
-    """Port to the execution runtime (today a Temporal workflow per run).
+    """Port to the execution runtime (a Temporal workflow per run, or the
+    in-process local manager).
 
     Notifications carry identifiers only; the runtime reads persisted input.
-    ``start`` is idempotent per run.
+    ``start`` is idempotent per run and refuses (``IdempotencyConflict``) a
+    run that belongs to another backend. Runs are created for ``backend``.
     """
+
+    @property
+    def backend(self) -> ExecutionBackend: ...
 
     async def start(self, run_id: str) -> WorkflowRef: ...
 

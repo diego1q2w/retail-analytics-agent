@@ -6,7 +6,7 @@ from datetime import datetime
 from retail_analytics.domain.conversation import Message
 from retail_analytics.domain.executions import ToolExecution
 from retail_analytics.domain.operations import SideEffect
-from retail_analytics.domain.runs import Run
+from retail_analytics.domain.runs import ExecutionBackend, Run
 
 
 class PersistenceError(Exception):
@@ -48,6 +48,8 @@ class RunRequest:
     submission_key: str
     message_id: str
     request_text: str
+    # The backend that will execute (and alone may manage) the run.
+    execution_backend: ExecutionBackend = ExecutionBackend.TEMPORAL
 
 
 @dataclass(frozen=True, slots=True)

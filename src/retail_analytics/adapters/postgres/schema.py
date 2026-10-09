@@ -50,6 +50,8 @@ runs = sa.Table(
     sa.Column("status", sa.Text, nullable=False),
     sa.Column("temporal_workflow_id", sa.Text),
     sa.Column("temporal_run_id", sa.Text),
+    sa.Column("execution_backend", sa.Text, nullable=False),
+    sa.Column("local_execution_id", sa.Text),
     sa.Column("last_event_sequence", sa.Integer, nullable=False),
     _ts("created_at"),
     _ts("updated_at"),

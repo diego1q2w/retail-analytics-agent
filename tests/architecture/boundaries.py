@@ -105,7 +105,9 @@ FORBIDDEN_AT_IMPORT_TIME_BY_LAYER: dict[str, frozenset[str]] = {
 RUNTIME_NEUTRAL_MODULES = (
     "adapters.agent",
     "adapters.models",
+    "adapters.local",
     "bootstrap.investigations",
+    "bootstrap.local_investigations",
 )
 TEMPORAL_MODULES = ("temporalio", "pydantic_ai.durable_exec.temporal")
 TEMPORAL_ADAPTER = "adapters.temporal"
