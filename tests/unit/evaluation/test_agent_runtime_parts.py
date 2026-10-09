@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import date
 from pathlib import Path
 
 from retail_analytics.adapters.evaluation.fixture_warehouse import (
@@ -18,6 +19,10 @@ from retail_analytics.application.contracts.evaluation import (
     ConversationRecord,
     ObservedTable,
     ScenarioCanaries,
+)
+from retail_analytics.application.contracts.warehouse_jobs import (
+    JobRef,
+    JobSubmission,
 )
 from retail_analytics.application.evaluation.agent_observation import observe
 from retail_analytics.application.evaluation.manifest import Manifest
@@ -186,6 +191,28 @@ def test_fixture_warehouse_exposes_source_layout() -> None:
     assert {c.name for c in schema.tables["users"]} >= {"email", "age", "state"}
     names = dict(warehouse.product_names())
     assert names["201"] == "Aster Parka"
+
+
+def test_fixture_warehouse_keeps_bigquery_date_type_for_date_trunc() -> None:
+    # DuckDB alone returns a naive TIMESTAMP here, which evidence rejects
+    # (T12-F1: the INTERNAL_ERROR attempts of the T26-F9 evaluation runs).
+    warehouse = heldout_fixture_warehouse(EVALUATION / "heldout" / "fixture")
+    submission = JobSubmission(
+        ref=JobRef("p", "US", "job-date-trunc"),
+        sql=(
+            "SELECT DATE_TRUNC(DATE(o.created_at), MONTH) AS month_start, "
+            "COUNT(*) AS n "
+            "FROM `bigquery-public-data.thelook_ecommerce.order_items` AS o "
+            "GROUP BY DATE_TRUNC(DATE(o.created_at), MONTH)"
+        ),
+        parameters=(),
+        maximum_bytes_billed=1,
+        fingerprint="f",
+    )
+    asyncio.run(warehouse.submit(submission))
+    rows = asyncio.run(warehouse.fetch_rows(submission.ref, max_rows=100))
+    assert rows.rows
+    assert all(type(row[0]) is date for row in rows.rows)
 
 
 def test_heldout_canaries_follow_the_scope() -> None:

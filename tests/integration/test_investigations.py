@@ -713,6 +713,118 @@ async def test_execute_analysis_reconciles_lost_response_and_records_one_evidenc
         env.db.close()
 
 
+async def test_execute_analysis_recovers_evidence_lost_after_the_job_finished(
+    stack: Stack,
+) -> None:
+    """T12-F1: evidence persistence fails after the job succeeded (once before
+    committing, once after committing). The call recovers from the finished
+    job by its recorded ID: one job, one counted query, one evidence record,
+    also when the call is replayed (an activity retry)."""
+    from retail_analytics.application.contracts.query_execution import QueryAuthority
+    from retail_analytics.application.query_execution import (
+        QueryExecutionService,
+        QueryExecutionSettings,
+    )
+    from retail_analytics.application.result_privacy import ResultPrivacyBoundary
+    from retail_analytics.application.tool_runner import ToolRunnerSettings
+    from retail_analytics.application.tools import ToolSucceeded
+    from retail_analytics.bootstrap.budgets import build_run_budgets
+    from tests.unit.privacy.support import COMPILERS, customer_database
+    from tests.unit.query_execution.fakes import FakeWarehouse, oracle_runner
+    from tests.unit.sql_compiler.support import view
+
+    env = await TestEnv.create(stack)
+    oracle = customer_database()
+    store = env.db.evidence
+    original = store.record
+    faults = ["before_commit", "after_commit"]
+    writes: list[str] = []
+
+    async def flaky_record(new: Any) -> Any:
+        writes.append(new.operation_id)
+        fault = faults.pop(0) if faults else None
+        if fault == "before_commit":
+            raise ConnectionError("evidence store unavailable")
+        stored = await original(new)
+        if fault == "after_commit":
+            raise ConnectionError("acknowledgement lost")
+        return stored
+
+    try:
+
+        class Authority:
+            async def resolve(
+                self, principal: Principal, run_id: str, *, trace_id: str | None = None
+            ) -> QueryAuthority:
+                context = await env.access.resolver.context_for_run(
+                    principal, run_id, trace_id=trace_id
+                )
+                return QueryAuthority(
+                    context, view(version=context.product_scope.entitlement_version)
+                )
+
+        budgets = build_run_budgets(
+            BackendSettings(mode=RuntimeMode.FIXTURE), env.db.budgets
+        )
+        warehouse = FakeWarehouse(oracle_runner(oracle))
+        queries = QueryExecutionService(
+            settings=QueryExecutionSettings(project="test-project", location="US"),
+            authority=Authority(),
+            compilers=COMPILERS,
+            boundary=ResultPrivacyBoundary(),
+            warehouse=warehouse,
+            operations=env.db.tool_executions,
+            jobs=env.db.query_jobs,
+            admission=budgets,
+            usage=budgets,
+        )
+        store.record = flaky_record  # type: ignore[method-assign]
+        env.services = build_investigations(
+            BackendSettings(mode=RuntimeMode.FIXTURE),
+            env.db,
+            env.access,
+            env.scheduler,
+            FunctionModel(scripted_model),
+            queries=queries,
+        )
+        env.services.tools._settings = ToolRunnerSettings(follow_seconds=0)
+        env.services.tools._sleep = _no_sleep
+        run_id = await env.start()
+        await env.services.runtime.begin(run_id)
+        args: dict[str, JsonValue] = {
+            "sql": "SELECT SUM(sale_amount) AS sales FROM sales_items",
+            "purpose": "Total completed sales",
+        }
+        result = await env.services.tools.run(
+            run_id, "query-one", "execute_analysis", args
+        )
+        assert isinstance(result.outcome, ToolSucceeded), result.outcome
+        assert len(writes) == 3 and not faults
+        repeated = await env.services.tools.run(
+            run_id, "query-one", "execute_analysis", args
+        )
+        assert isinstance(repeated.outcome, ToolSucceeded)
+        assert repeated.outcome.output.evidence_id == result.outcome.output.evidence_id
+        assert len(warehouse.created) == 1 and warehouse.submit_calls == 1
+        evidence = await env.db.evidence.candidates(
+            env.principal.executive_id, env.session_id
+        )
+        assert len(evidence) == 1
+        assert evidence[0].evidence.evidence_id == result.outcome.output.evidence_id
+        budget = await env.db.budgets.get(run_id)
+        assert budget and budget.usage.queries == 1
+        jobs = await env.db.query_jobs.jobs(result.operation_id)
+        assert len(jobs) == 1
+    finally:
+        store.record = original  # type: ignore[method-assign]
+        oracle.close()
+        env.db.close()
+
+
+async def _no_sleep(seconds: float) -> None:
+    return None
+
+
 async def test_clarification_expiry_does_not_discard_already_recorded_answer(
     stack: Stack,
 ) -> None:

@@ -125,6 +125,8 @@ class Span(StrEnum):
     MODEL_ATTEMPT = "model.attempt"
     QUERY = "query.execute"
     COMPILE = "query.compile"
+    # Recording a finished query's released rows as evidence (or failing to).
+    EVIDENCE = "evidence.record"
     RETRIEVAL = "retrieval.search"
     ANSWER = "answer.release"
     LIFECYCLE = "run.step"

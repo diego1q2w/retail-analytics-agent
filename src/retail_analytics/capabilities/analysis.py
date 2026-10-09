@@ -35,11 +35,13 @@ from typing import Annotated
 from pydantic import Field, StringConstraints
 
 from retail_analytics.application.budgets import RunBudgets, budget_message
+from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.contracts.query_compiler import (
     AnalysisQuery,
     CompiledQuery,
 )
 from retail_analytics.application.contracts.sql_dialect import SQL_DIALECT_NOTE
+from retail_analytics.application.contracts.telemetry import Span
 from retail_analytics.application.evidence import (
     EvidenceRejected,
     EvidenceService,
@@ -61,6 +63,7 @@ from retail_analytics.application.query_execution import (
 )
 from retail_analytics.application.recovery import classify
 from retail_analytics.application.scope_values import ScopeValueCheck
+from retail_analytics.application.telemetry import telemetry
 from retail_analytics.application.tools import (
     AuthorizationSpec,
     CapabilitySpec,
@@ -97,6 +100,10 @@ _CORRECTABLE = frozenset(
 _ACCESS = "This data is not available to you."
 _CANCELLED = "The query was cancelled and produced no result."
 _RECONCILING = "The query is being stopped; its outcome is being confirmed."
+_NOT_SAVED = (
+    "The query finished, but its result could not be saved as evidence. A "
+    "retry reads the finished query's result again; the query is not re-run."
+)
 
 
 class ExecuteAnalysisInput(ToolInput):
@@ -144,6 +151,103 @@ def analysis_capability(
 ) -> CapabilitySpec[ExecuteAnalysisInput, ExecuteAnalysisOutput]:
     catalog = metrics or default_catalog()
 
+    async def record(
+        outcome: QuerySucceeded, ctx: OperationContext, principal: Principal
+    ) -> ToolOutcome[ExecuteAnalysisOutput]:
+        """Record the released rows as evidence for this operation (idempotent:
+        one record per operation, identical when replayed)."""
+        operation = await operations.get(ctx.operation_id)
+        if operation is None or operation.status is not ToolExecutionStatus.SUCCEEDED:
+            return ToolFailed(
+                code=ToolErrorCode.INTERNAL_ERROR,
+                message="The query result could not be verified.",
+            )
+        effective = await preferences.effective(
+            principal, session_id=ctx.execution.correlation.session_id
+        )
+        recorded = await evidence.record_query(
+            ctx,
+            outcome.compiled,
+            outcome.result,
+            # Definitions, term meanings, period and date basis come from the
+            # compiled query, the metric catalog and the effective preferences,
+            # never from the model.
+            query_basis(
+                outcome.compiled,
+                metrics=catalog,
+                effective=effective,
+                released=outcome.result,
+            ),
+            # Evidence identity includes its timestamp. Replaying a committed
+            # job must reproduce the same immutable record.
+            computed_at=operation.updated_at,
+        )
+        recovery = classify(outcome)
+        rows = len(outcome.result.rows)
+        note = _note(rows, recovery.complete)
+        if scope_values is not None and outcome.compiled.value_filters:
+            outside = await scope_values.assess(
+                outcome.compiled.value_filters, ctx.execution.product_scope
+            )
+            if outside is not None:
+                note = f"{outside.note()} {note}"
+        return ToolSucceeded(
+            output=ExecuteAnalysisOutput(
+                evidence_id=recorded.evidence_id,
+                columns=tuple(c.name for c in outcome.result.columns),
+                row_count=rows,
+                complete=recovery.complete,
+                truncated=recovery.truncated,
+                note=note,
+            ),
+            empty=rows == 0,
+        )
+
+    async def record_result(
+        outcome: QuerySucceeded, ctx: OperationContext, principal: Principal
+    ) -> ToolOutcome[ExecuteAnalysisOutput]:
+        """``record`` under its own span. The warehouse job already finished:
+        a failure here never re-runs it. A temporary failure is retried by the
+        tool runner, whose next attempt re-reads the finished job's rows by
+        its recorded ID (``QuerySucceeded.replayed``) and records them."""
+        run_id = ctx.execution.correlation.run_id
+        with telemetry().span(
+            Span.EVIDENCE,
+            run_id=run_id,
+            attributes={
+                "run_id": run_id,
+                "operation_id": ctx.operation_id,
+                "attempt": ctx.attempt,
+                "job_id": outcome.job.job_id,
+                "replayed": outcome.replayed,
+            },
+        ) as span:
+            try:
+                result = await record(outcome, ctx, principal)
+            except EvidenceRejected as rejected:
+                result = _rejected(rejected)
+                span.set({"reason": rejected.reason})
+            except Exception as error:
+                # Never echo the exception: it may carry data values.
+                result = ToolFailed(
+                    code=ToolErrorCode.TEMPORARY_FAILURE, message=_NOT_SAVED
+                )
+                span.set({"reason": "store_failed", "error_type": type(error).__name__})
+            match result:
+                case ToolSucceeded():
+                    evidence_id = result.output.evidence_id
+                    kind = "recovered" if outcome.replayed else "recorded"
+                    span.set({"outcome": kind, "evidence_id": evidence_id})
+                    if span.captures:
+                        span.outputs(
+                            {"job_id": outcome.job.job_id, "evidence_id": evidence_id}
+                        )
+                case ToolFailed():
+                    code = result.code.value.lower()
+                    span.set({"outcome": "failed", "error_code": code})
+                    span.fail(code)
+        return result
+
     async def execute_analysis(
         args: ExecuteAnalysisInput, ctx: OperationContext
     ) -> ToolOutcome[ExecuteAnalysisOutput]:
@@ -166,64 +270,7 @@ def analysis_capability(
         )
         match outcome:
             case QuerySucceeded():
-                operation = await operations.get(ctx.operation_id)
-                if (
-                    operation is None
-                    or operation.status is not ToolExecutionStatus.SUCCEEDED
-                ):
-                    return ToolFailed(
-                        code=ToolErrorCode.INTERNAL_ERROR,
-                        message="The query result could not be verified.",
-                    )
-                effective = await preferences.effective(
-                    principal, session_id=ctx.execution.correlation.session_id
-                )
-                try:
-                    recorded = await evidence.record_query(
-                        ctx,
-                        outcome.compiled,
-                        outcome.result,
-                        # Definitions, term meanings, period and date basis come
-                        # from the compiled query, the metric catalog and the
-                        # effective preferences, never from the model.
-                        query_basis(
-                            outcome.compiled,
-                            metrics=catalog,
-                            effective=effective,
-                            released=outcome.result,
-                        ),
-                        # Evidence identity includes its timestamp. Replaying a
-                        # committed job must reproduce the same immutable record.
-                        computed_at=operation.updated_at,
-                    )
-                except EvidenceRejected as rejected:
-                    code = (
-                        ToolErrorCode.ACCESS_DENIED
-                        if rejected.reason
-                        in ("stale_authorization", "no_product_scope")
-                        else ToolErrorCode.INTERNAL_ERROR
-                    )
-                    return ToolFailed(code=code, message=rejected.message)
-                recovery = classify(outcome)
-                rows = len(outcome.result.rows)
-                note = _note(rows, recovery.complete)
-                if scope_values is not None and outcome.compiled.value_filters:
-                    outside = await scope_values.assess(
-                        outcome.compiled.value_filters, ctx.execution.product_scope
-                    )
-                    if outside is not None:
-                        note = f"{outside.note()} {note}"
-                return ToolSucceeded(
-                    output=ExecuteAnalysisOutput(
-                        evidence_id=recorded.evidence_id,
-                        columns=tuple(c.name for c in outcome.result.columns),
-                        row_count=rows,
-                        complete=recovery.complete,
-                        truncated=recovery.truncated,
-                        note=note,
-                    ),
-                    empty=rows == 0,
-                )
+                return await record_result(outcome, ctx, principal)
             case QueryPending():
                 return ToolPending(reference=outcome.job.job_id)
             case QueryOutcomeUnknown():
@@ -330,6 +377,25 @@ def query_progress_label(compiled: CompiledQuery) -> str | None:
     if compiled.latest_month is not None:
         return f"Calculating {measure} for the latest month."
     return f"Calculating {measure}."
+
+
+def _rejected(rejected: EvidenceRejected) -> ToolFailed:
+    """A specific class for each reason evidence cannot be recorded."""
+    match rejected.reason:
+        case "stale_authorization" | "no_product_scope":
+            code = ToolErrorCode.ACCESS_DENIED
+        case "too_large":
+            # Reformulating can resolve it: fewer or more aggregated rows.
+            code = ToolErrorCode.INVALID_QUERY
+        case "unstorable_value":
+            # Our defect, not the query's: never tell the model its valid SQL
+            # was wrong. Not retried (the same rows would fail the same way).
+            code = ToolErrorCode.INTERNAL_ERROR
+        case _:
+            # Catalog moved between compile and release: a retry recompiles
+            # under the current catalog and re-reads the finished job.
+            code = ToolErrorCode.TEMPORARY_FAILURE
+    return ToolFailed(code=code, message=rejected.message)
 
 
 def _note(rows: int, complete: bool) -> str:

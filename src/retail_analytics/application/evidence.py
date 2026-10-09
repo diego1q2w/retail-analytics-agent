@@ -122,6 +122,8 @@ from retail_analytics.domain.evidence import (
     check_bounds,
     compatibility_block,
     content_digest,
+    encode_provenance,
+    encode_table,
     scope_digest,
     snapshot,
 )
@@ -151,6 +153,19 @@ class EvidenceRejected(Exception):
         "stale_authorization": "Your access changed; the query must be run again",
         "input_unavailable": "A finding this depends on is no longer available",
         "invalid": "The result could not be recorded as evidence",
+        # An application defect: the query and its result are valid, but this
+        # code cannot store one of the values (the query is not at fault).
+        "unstorable_value": (
+            "The query ran correctly, but the application could not store its "
+            "result as evidence. This is an application problem, not a problem "
+            "with the query; running it again will not help"
+        ),
+        # Too much to store: a query returning fewer or more aggregated rows
+        # can be recorded.
+        "too_large": (
+            "The result is too large to record as evidence: aggregate further "
+            "or return fewer rows"
+        ),
     }
 
     def __init__(self, reason: str) -> None:
@@ -459,7 +474,7 @@ class EvidenceService:
                 analytical_slots=basis.analytical_slots,
             )
         except EvidenceError:
-            raise EvidenceRejected("invalid") from None
+            raise EvidenceRejected("unstorable_value") from None
         return await self._store(ctx, content, refreshes, computed_at)
 
     async def record(
@@ -487,9 +502,15 @@ class EvidenceService:
         execution = ctx.execution
         _require_analysis(execution)
         try:
+            # A value the store cannot encode is our defect, not the query's.
+            encode_table(content.table)
+            encode_provenance(content.provenance)
+        except EvidenceError:
+            raise EvidenceRejected("unstorable_value") from None
+        try:
             check_bounds(content)
         except EvidenceError:
-            raise EvidenceRejected("invalid") from None
+            raise EvidenceRejected("too_large") from None
         authority = self._authority(execution)
         imported = (
             {

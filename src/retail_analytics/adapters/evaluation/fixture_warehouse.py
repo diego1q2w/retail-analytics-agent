@@ -215,8 +215,19 @@ class FixtureWarehouse:
 
     def _execute(self, submission: JobSubmission) -> QueryRows:
         import sqlglot
+        from sqlglot import exp
 
         tree = sqlglot.parse_one(submission.sql, read="bigquery")
+        # BigQuery's DATE_TRUNC over a DATE returns a DATE; DuckDB's returns a
+        # TIMESTAMP (a naive datetime evidence cannot record). The compiler
+        # only admits DATE_TRUNC over dates, so keep BigQuery's type.
+        tree = tree.transform(
+            lambda node: (
+                exp.cast(node, exp.DataType.Type.DATE)
+                if isinstance(node, exp.DateTrunc)
+                else node
+            )
+        )
         sql = tree.sql(dialect="duckdb")
         params = {
             p.name: list(p.value) if isinstance(p.value, tuple) else p.value

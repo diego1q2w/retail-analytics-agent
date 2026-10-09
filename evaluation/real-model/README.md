@@ -829,6 +829,40 @@ Transcripts: [`refusal`](efficiency/results/transcripts/t26f10-refusal.md),
 [`mixed`](efficiency/results/transcripts/t26f10-mixed.md),
 [`mixed-1query`](efficiency/results/transcripts/t26f10-mixed-1query.md).
 
+## Evidence persistence failure (T12-F1)
+
+Two T26-F9 attempts (`t26f9-regression.json`, run
+`run_b8ce43fbfc1adff353f9cd00fdee2a68`; `t26f9-intent.json`, run
+`run_11186a9bafdecb005d79f7d6787f8c16`) record an `execute_analysis` query that
+succeeded on the warehouse but stored no evidence (`INTERNAL_ERROR`).
+
+**Evidence limitation.** The original attempts cannot be inspected: the result
+files and transcripts keep run IDs only, not the tool-execution (operation),
+warehouse job or trace IDs, and the harness held its spans in memory (nothing
+exported). Throwaway PostgreSQL records from those runs were not retained. The
+cause below comes from a reproduction, not from a recovered original trace.
+
+**Reproduction.** Both failing queries contain `DATE_TRUNC(ordered_date, MONTH)`.
+The SQL is valid. These runs used the offline DuckDB fixture warehouse over the
+frozen extract (no BigQuery job, no BigQuery charge), and DuckDB returns a
+timestamp without time zone for it where BigQuery returns a `DATE`. Running the
+attempted SQL on the frozen extract gives such values; evidence refuses
+timestamps without a time zone, and the tool reported that as `INTERNAL_ERROR`.
+The "retry" in the record is the model's next, different query (a new
+operation and a new fixture job), not a repeat of the same operation.
+
+**Fix.** The fixture warehouse keeps BigQuery's `DATE` type for `DATE_TRUNC`.
+Whatever the warehouse, a query that finished but whose evidence could not be
+saved is handled by class (span `evidence.record`, see
+`docs/observability.md`): a temporary store failure is retried by reading the
+finished job again by its recorded ID (no resubmission, no second charge, one
+evidence record); a value the application cannot store is an application error
+(`INTERNAL_ERROR`, a message that does not blame the query); a result too
+large to store asks for a more aggregated query (`INVALID_QUERY`). Recovery stays inside the run's active deadline (T11-F1): after it, nothing is re-read or recovered, and a cancelled job is never recovered. Tests:
+`tests/unit/query_execution/test_evidence_recovery.py`,
+`tests/integration/test_investigations.py` (Docker),
+`tests/unit/evaluation/test_agent_runtime_parts.py`. No live rerun was made.
+
 ## Limitations
 
 - Ten conversations, one run each, one day: no variance estimate, and no

@@ -46,7 +46,7 @@ import hashlib
 import json
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -187,6 +187,9 @@ class QuerySucceeded:
     compiled: CompiledQuery
     job: QueryJob
     statistics: JobStatistics
+    # The operation had already succeeded: its finished job's rows were read
+    # again by the recorded job ID (no new submission, nothing charged).
+    replayed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -440,6 +443,7 @@ def _observe_outcome(
             kind = "succeeded"
             attributes: dict[str, object] = {
                 "job_id": outcome.job.job_id,
+                "replayed": outcome.replayed,
                 "record_count": len(outcome.result.rows),
                 "bytes_processed": stats.bytes_processed or 0,
                 "bytes_billed": stats.bytes_billed or 0,
@@ -452,7 +456,8 @@ def _observe_outcome(
                 ("processed", stats.bytes_processed),
                 ("billed", stats.bytes_billed),
             ):
-                if amount:
+                # A replay re-reads a job already counted when it finished.
+                if amount and not outcome.replayed:
                     telemetry().count(
                         Metric.QUERY_BYTES, {Label.KIND: label}, float(amount)
                     )
@@ -1044,7 +1049,10 @@ class QueryExecutionService:
             snapshot = None
         statistics = JobStatistics() if snapshot is None else snapshot.statistics
         done = JobSnapshot(JobRef.of(job), JobState.DONE, fingerprint, None, statistics)
-        return await self._release(attempt, compiled, job, done)
+        outcome = await self._release(attempt, compiled, job, done)
+        if isinstance(outcome, QuerySucceeded):
+            return replace(outcome, replayed=True)
+        return outcome
 
     async def _terminal_summary(self, op: ToolExecution) -> QueryOutcome:
         job = await self._jobs.get_job(op.operation_id)
