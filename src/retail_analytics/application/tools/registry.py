@@ -103,6 +103,12 @@ class RetrySpec:
 type Handler[InputT: ToolInput, OutputT: ToolOutput] = Callable[
     [InputT, OperationContext], Awaitable[ToolOutcome[OutputT]]
 ]
+# Optional, more specific tool.started text for validated arguments. It must
+# return one of the capability's own application-authored templates (never
+# argument text) or None to keep ``progress_label``.
+type ProgressContext[InputT: ToolInput] = Callable[
+    [InputT, OperationContext], Awaitable[str | None]
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +124,7 @@ class CapabilitySpec[InputT: ToolInput, OutputT: ToolOutput]:
     authorization: AuthorizationSpec
     side_effect: SideEffect
     retry: RetrySpec
+    progress_context: ProgressContext[InputT] | None = None
 
     def __post_init__(self) -> None:
         if not _NAME.fullmatch(self.name):

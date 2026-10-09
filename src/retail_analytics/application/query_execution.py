@@ -544,6 +544,23 @@ class QueryExecutionService:
             _observe_outcome(span, outcome, watch)
         return outcome
 
+    async def describe(self, attempt: QueryAttempt) -> CompiledQuery | None:
+        """The query as the compiler accepts it under current authority, for
+        progress wording only; None when it would be refused. Touches no
+        operation, job or warehouse; ``execute`` compiles again."""
+        try:
+            authority = await self._authority.resolve(
+                attempt.principal, attempt.run_id, trace_id=attempt.trace_id
+            )
+            compiler = self._compilers.for_executive(authority.context.executive_id)
+            return compiler.compile(
+                attempt.query,
+                catalog=authority.catalog,
+                scope=authority.context.product_scope,
+            )
+        except (AccessDenied, CatalogUnavailable, QueryRejected):
+            return None
+
     async def cancel(self, run_id: str, operation_id: str) -> QueryOutcome:
         """Stop the operation and reconcile its job.
 

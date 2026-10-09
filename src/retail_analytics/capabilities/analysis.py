@@ -35,7 +35,10 @@ from typing import Annotated
 from pydantic import Field, StringConstraints
 
 from retail_analytics.application.budgets import RunBudgets, budget_message
-from retail_analytics.application.contracts.query_compiler import AnalysisQuery
+from retail_analytics.application.contracts.query_compiler import (
+    AnalysisQuery,
+    CompiledQuery,
+)
 from retail_analytics.application.contracts.sql_dialect import SQL_DIALECT_NOTE
 from retail_analytics.application.evidence import (
     EvidenceRejected,
@@ -235,6 +238,25 @@ def analysis_capability(
             case QueryCancelled():
                 return ToolFailed(code=ToolErrorCode.INTERNAL_ERROR, message=_CANCELLED)
 
+    async def describe_query(
+        args: ExecuteAnalysisInput, ctx: OperationContext
+    ) -> str | None:
+        run_id = ctx.execution.correlation.run_id
+        principal = await principals.get(run_id)
+        if principal is None or principal.executive_id != ctx.execution.executive_id:
+            return None
+        compiled = await executions.describe(
+            QueryAttempt(
+                principal=principal,
+                run_id=run_id,
+                operation_id=ctx.operation_id,
+                attempt=ctx.attempt,
+                query=AnalysisQuery(args.sql, dict(args.parameters)),
+                trace_id=ctx.execution.correlation.trace_id,
+            )
+        )
+        return None if compiled is None else query_progress_label(compiled)
+
     return CapabilitySpec(
         name=QUERY_CAPABILITY,
         version=QUERY_CAPABILITY_VERSION,
@@ -245,7 +267,8 @@ def analysis_capability(
             "evidence context. Aggregate in SQL rather than fetching detail rows. "
             "Cite evidence ids for every figure you report."
         ),
-        progress_label="Running a query.",
+        progress_label=QUERY_LABEL,
+        progress_context=describe_query,
         input_model=ExecuteAnalysisInput,
         output_model=ExecuteAnalysisOutput,
         handler=execute_analysis,
@@ -256,6 +279,57 @@ def analysis_capability(
         side_effect=SideEffect.EXTERNAL_JOB,
         retry=RetrySpec(RecoveryMode.RECONCILE_FIRST, 3, attempt_timeout),
     )
+
+
+QUERY_LABEL = "Running a query."
+
+# Progress wording for a compiled query: fixed application templates chosen
+# from the logical fields the compiler verified. Never the model's purpose,
+# SQL, column aliases or filter values (product, brand or customer names), so
+# the label says what kind of figure is computed and nothing about the data.
+_MEASURES: tuple[tuple[str, str], ...] = (
+    ("sale_amount", "revenue"),
+    ("order_ref", "order counts"),
+    ("customer_ref", "customer counts"),
+)
+_BREAKDOWNS: tuple[tuple[str, str, str], ...] = (
+    ("products", "category", "by category"),
+    ("products", "brand", "by brand"),
+    ("products", "department", "by department"),
+    ("customers", "country", "by country"),
+    ("customers", "state", "by state"),
+    ("products", "product_id", "by product"),
+    ("sales_items", "product_id", "by product"),
+)
+
+
+def query_progress_label(compiled: CompiledQuery) -> str | None:
+    """``Comparing revenue by category.``, ``Calculating order counts.`` or
+    None (the generic label) when the query's shape is not recognized."""
+    aggregated = {
+        ref.field
+        for output in compiled.outputs
+        if not output.direct
+        for ref in output.sources
+    }
+    measure = next((noun for f, noun in _MEASURES if f in aggregated), None)
+    if measure is None:
+        return None
+    grouped = {
+        (ref.relation, ref.field)
+        for output in compiled.outputs
+        if output.direct
+        for ref in output.sources
+    }
+    breakdown = next(
+        (words for relation, f, words in _BREAKDOWNS if (relation, f) in grouped),
+        None,
+    )
+    if breakdown is not None:
+        return f"Comparing {measure} {breakdown}."
+    if compiled.latest_month is not None:
+        return f"Calculating {measure} for the latest month."
+    return f"Calculating {measure}."
 
 
 def _note(rows: int, complete: bool) -> str:
@@ -310,8 +384,10 @@ def _latest_query(
 
 
 __all__ = [
+    "QUERY_LABEL",
     "SQL_DIALECT_NOTE",
     "ExecuteAnalysisInput",
     "ExecuteAnalysisOutput",
     "analysis_capability",
+    "query_progress_label",
 ]

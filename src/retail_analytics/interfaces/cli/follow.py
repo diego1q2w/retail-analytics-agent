@@ -66,6 +66,8 @@ def follow_run(
     after: str | None = None,
     on_event: Callable[[JsonObject], None],
     on_notice: Callable[[str], None] = lambda _text: None,
+    on_connected: Callable[[], None] = lambda: None,
+    on_keepalive: Callable[[], None] = lambda: None,
     should_stop: Callable[[], bool] = lambda: False,
     stall_seconds: float = DEFAULT_STALL_SECONDS,
     max_failures: int = DEFAULT_MAX_FAILURES,
@@ -81,6 +83,9 @@ def follow_run(
     at the start of every connection, and a keepalive right after connecting,
     prove nothing: a server that keeps closing right after that preamble must
     still run out of attempts and raise ``StreamLost``.
+
+    ``on_connected`` (a stream opened) and ``on_keepalive`` (a transport
+    comment) are presentation hints only; they never count as progress here.
     """
     api.require_token()
     last_id = after
@@ -104,6 +109,7 @@ def follow_run(
                     if error.status == 503:
                         raise httpx.ConnectError("unavailable")
                     raise error
+                on_connected()
                 for item in parse_sse(response.iter_lines()):
                     if should_stop():
                         return FollowResult("stopped", None, last_id, last_sequence)
@@ -111,6 +117,7 @@ def follow_run(
                         retry_seconds = min(max(item.milliseconds / 1000, 0.2), 10.0)
                         continue
                     if isinstance(item, SseComment):
+                        on_keepalive()
                         if monotonic() - connected_at >= HEALTHY_CONNECTION_SECONDS:
                             failures = 0
                         continue

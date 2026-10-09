@@ -779,3 +779,26 @@ async def test_stale_attempt_is_superseded(h: Harness) -> None:
 
     assert isinstance(outcome, QueryOutcomeUnknown)
     assert outcome.reason == "superseded_attempt"
+
+
+# --- progress wording (T22-F6) -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_describe_compiles_without_any_record_or_warehouse_call(
+    h: Harness,
+) -> None:
+    from retail_analytics.capabilities.analysis import query_progress_label
+
+    service = h.service()
+    compiled = await service.describe(
+        QueryAttempt(PRINCIPAL, RUN, OP, 1, AnalysisQuery(TOP_CUSTOMERS, VALUES))
+    )
+    assert compiled is not None
+    assert query_progress_label(compiled) == "Calculating revenue."
+    rejected = await service.describe(
+        QueryAttempt(PRINCIPAL, RUN, OP, 1, AnalysisQuery("DELETE FROM x", {}))
+    )
+    assert rejected is None
+    assert h.operations.records == {}
+    assert h.warehouse.submit_calls == 0 and h.warehouse.dry_runs == []

@@ -135,7 +135,10 @@ def test_follow_shows_correction_and_ends_with_the_normal_answer() -> None:
     result = CliRunner().invoke(cli, ["follow", "r1"], obj=backend.client)
     assert result.exit_code == 0, result.output
     assert QUERY_NEEDS_ADJUSTMENT in result.output
-    assert QUERY_ADJUSTING in result.output
+    # The corrected query started and finished within the same instant as
+    # the answer: its routine status is superseded by the result (T22-F6),
+    # never printed after it. Paced runs show it (test_progress_pacing).
+    assert QUERY_ADJUSTING not in result.output.split("September revenue")[1]
     assert "September revenue was 10." in result.output
     assert "UNSUPPORTED_SQL" not in result.output
     assert "failed" not in result.output.lower()

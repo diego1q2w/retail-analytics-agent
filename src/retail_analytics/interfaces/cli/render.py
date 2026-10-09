@@ -52,7 +52,7 @@ ANSWERED = "Answer sent; the investigation continues."
 STEERING_APPLIED = "Your message was applied; the investigation continues with it."
 
 
-def _needs_adjustment(kind: str, tool: JsonObject) -> bool:
+def needs_adjustment(kind: str, tool: JsonObject) -> bool:
     return (
         kind == "tool.failed"
         and tool.get("capability") == _QUERY_TOOL
@@ -76,7 +76,7 @@ class EventFormatter:
         tool = event.get("tool") or {}
         if kind.startswith("run."):
             self._adjusting = False
-        elif _needs_adjustment(kind, tool):
+        elif needs_adjustment(kind, tool):
             self._adjusting = True
         elif (
             kind == "tool.started"
@@ -96,7 +96,8 @@ def format_event(event: JsonObject) -> str | None:
     if kind == "run.started":
         return click.style(WORKING, dim=True)
     if kind == "analysis.progress":
-        return click.style(f"  ... {summary}", dim=True)
+        # A model step. Model-written text is never displayed as status.
+        return click.style("  ... Preparing the next step.", dim=True)
     if kind == "tool.started":
         return click.style(f"  > {summary}", fg="cyan")
     if kind == "tool.retrying":
@@ -110,7 +111,7 @@ def format_event(event: JsonObject) -> str | None:
         )
     if kind == "tool.succeeded":
         return click.style(f"  ok {summary}", fg="green")
-    if _needs_adjustment(kind, tool):
+    if needs_adjustment(kind, tool):
         # The code and details stay in the run's events and traces.
         return click.style(f"  ~ {QUERY_NEEDS_ADJUSTMENT}", fg="yellow")
     if kind == "tool.failed":

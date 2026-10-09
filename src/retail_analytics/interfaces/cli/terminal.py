@@ -9,6 +9,10 @@ mode, no echo; signals such as Ctrl-C keep working) and owns the input line:
   clears the input line, prints, and draws the one active prompt again with
   the text typed so far. It writes plain ANSI erase/cursor-up sequences, and
   bolds the prompt label (via ``click.style``) when asked.
+- An optional *status line* (the run's current progress) sits directly above
+  the input line and is redrawn in place, so routine progress does not fill
+  the transcript. It is erased before a line is submitted and whenever
+  output is printed above, so it never lingers in the scrollback.
 - ``RawTerminal`` switches the terminal mode, reads keys on a thread and
   restores the mode on exit.
 
@@ -52,6 +56,9 @@ class LineEditor:
         self.prompt: str | None = None
         self._buffer: list[str] = []
         self._escape = ""
+        self._status: str | None = None
+        # Whether the status row is on screen above the input right now.
+        self._status_drawn = False
 
     @property
     def active(self) -> bool:
@@ -65,7 +72,7 @@ class LineEditor:
         """Show ``prompt`` and start a new line (typed-ahead keys follow)."""
         self.prompt = prompt
         self._buffer = []
-        self._write(self._styled(prompt))
+        self._draw()
 
     def set_prompt(self, prompt: str) -> None:
         """Switch the active prompt (e.g. ``steer>`` to ``answer>``), keeping
@@ -73,6 +80,15 @@ class LineEditor:
         if self.prompt is not None and prompt != self.prompt:
             self._erase()
             self.prompt = prompt
+            self._draw()
+
+    def set_status(self, status: str | None) -> None:
+        """Show ``status`` on the line above the input (None removes it)."""
+        if status == self._status:
+            return
+        self._status = status
+        if self.prompt is not None:
+            self._erase()
             self._draw()
 
     def print_above(self, emit: Callable[[], None]) -> None:
@@ -87,6 +103,7 @@ class LineEditor:
     def interrupt(self) -> None:
         """Ctrl-C: abandon the line being typed."""
         if self.prompt is not None:
+            self._settle_line()
             self._write("^C\n")
         self.prompt = None
         self._buffer = []
@@ -103,12 +120,14 @@ class LineEditor:
             self._escape = key
         elif key in ("\r", "\n"):
             line = self.text
+            self._settle_line()
             self._write("\n")
             self.prompt = None
             self._buffer = []
             return True, line
         elif key == "\x04":
             if not self._buffer:
+                self._settle_line()
                 self._write("\n")
                 self.prompt = None
                 return True, None
@@ -134,7 +153,20 @@ class LineEditor:
         self._draw()
 
     def _draw(self) -> None:
-        self._write(f"{self._styled(self.prompt or '')}{self.text}")
+        status = ""
+        if self._status:
+            width = max(self._columns() - 1, 1)
+            status = click.style(self._status[:width], dim=True) + "\n"
+        self._status_drawn = bool(status)
+        self._write(f"{status}{self._styled(self.prompt or '')}{self.text}")
+
+    def _settle_line(self) -> None:
+        """Leave the submitted input in the transcript without the status
+        row above it."""
+        if self._status_drawn:
+            self._erase()
+            self._status_drawn = False
+            self._write(f"{self._styled(self.prompt or '')}{self.text}")
 
     def _styled(self, prompt: str) -> str:
         # Bold covers only the label; the typed text stays plain. The escape
@@ -148,6 +180,8 @@ class LineEditor:
         used = len(self.prompt or "") + len(self._buffer)
         columns = max(self._columns(), 1)
         rows_up = (used - 1) // columns if used > 0 else 0
+        rows_up += 1 if self._status_drawn else 0
+        self._status_drawn = False
         self._write(("\r" + f"\x1b[{rows_up}A" if rows_up else "") + _CLEAR)
 
 

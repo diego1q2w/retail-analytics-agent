@@ -145,6 +145,44 @@ def test_wrapped_input_is_erased_completely() -> None:
     assert screen.visible()[:2] == ["progress", "you> a long question"]
 
 
+def test_status_line_redraws_in_place_and_keeps_the_typed_text() -> None:
+    line_editor, screen = editor()
+    line_editor.begin("steer> ")
+    type_text(line_editor, "and by sta")
+    for status in ("  Calculating revenue.", "  Calculating revenue (10 s so far)."):
+        line_editor.set_status(status)
+        assert screen.visible() == [status, "steer> and by sta"]
+    line_editor.print_above(lambda: screen.feed("  ~ notice\n"))
+    assert screen.visible() == [
+        "  ~ notice",
+        "  Calculating revenue (10 s so far).",
+        "steer> and by sta",
+    ]
+    type_text(line_editor, "te")
+    line_editor.set_status(None)
+    assert screen.visible() == ["  ~ notice", "steer> and by state"]
+
+
+def test_submitted_input_leaves_no_status_row_behind() -> None:
+    line_editor, screen = editor()
+    line_editor.begin("steer> ")
+    line_editor.set_status("  Calculating revenue.")
+    assert type_text(line_editor, "by month\r") == (True, "by month")
+    assert screen.visible() == ["steer> by month", ""]
+
+
+def test_status_with_wrapped_input_is_erased_completely() -> None:
+    screen = Screen()
+    line_editor = LineEditor(screen.feed, columns=lambda: 10)
+    line_editor.begin("you> ")
+    line_editor.set_status("  status")
+    type_text(line_editor, "a long question")  # wraps onto a second row
+    screen.lines = ["  status", "you> a lon", "g question"]
+    screen.row, screen.col = 2, 10
+    line_editor.print_above(lambda: screen.feed("progress\n"))
+    assert screen.visible() == ["progress", "  status", "you> a long question"]
+
+
 # --- the chat on a real pseudo-terminal -----------------------------------------
 
 
@@ -241,9 +279,9 @@ def test_chat_on_a_terminal_keeps_one_prompt_and_the_typed_text() -> None:
         term.read_until("Running a query.")
         term.settle()
         lines = term.screen.visible()
-        # Progress lines are clean, the partial input appears once, at the
-        # bottom, under the single active prompt.
-        assert "  > Running a query." in lines
+        # The run's status is one clean line right above the input; the
+        # partial input appears once, at the bottom, under the one prompt.
+        assert lines[-2] == "  Running a query."
         assert lines[-1] == "steer> and by sta"
         assert sum("and by sta" in line for line in lines) == 1
         assert prompts(lines) == ["you> How much revenue?", "steer> and by sta"]
@@ -258,7 +296,11 @@ def test_chat_on_a_terminal_keeps_one_prompt_and_the_typed_text() -> None:
         term.read_until("Revenue was 10.")
         term.settle()
         lines = term.screen.visible()
-        assert "  > Checking the evidence." in lines
+        # The status was drawn while it was current, and does not linger in
+        # the transcript once the result is shown.
+        assert "Checking the evidence." in term.screen.raw
+        assert not any("Checking the evidence." in line for line in lines)
+        assert not any("Running a query." in line for line in lines)
         assert lines[-1] == "you>"  # back to idle, one prompt
         # One blank line (not more) separates the finished response from it.
         assert lines[-2] == ""

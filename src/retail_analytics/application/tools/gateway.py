@@ -32,6 +32,7 @@ from retail_analytics.application.tools.contracts import (
     ToolSucceeded,
 )
 from retail_analytics.application.tools.registry import (
+    MAX_LABEL_LENGTH,
     CapabilityRegistry,
     CapabilitySpec,
 )
@@ -187,7 +188,7 @@ async def _run(
         ProgressUpdate(
             correlation=context.correlation,
             kind=EventKind.TOOL_STARTED,
-            summary=spec.progress_label,
+            summary=await _started_label(spec, arguments, context),
             tool=_activity(spec.name, spec.version, context),
         )
     )
@@ -197,6 +198,27 @@ async def _run(
         # Deliberately not echoing the exception: it may contain data values.
         return _unverified(spec)
     return _checked(spec, outcome)
+
+
+async def _started_label(
+    spec: CapabilitySpec[Any, Any], arguments: Any, context: OperationContext
+) -> str:
+    """The capability's contextual template for these validated arguments,
+    or its fixed label. A failing or malformed description never blocks the
+    call and never shows argument text."""
+    if spec.progress_context is None:
+        return spec.progress_label
+    try:
+        label = await spec.progress_context(arguments, context)
+    except Exception:
+        return spec.progress_label
+    if (
+        not isinstance(label, str)
+        or not 0 < len(label.strip()) <= MAX_LABEL_LENGTH
+        or not label.isprintable()
+    ):
+        return spec.progress_label
+    return label
 
 
 def _checked(spec: CapabilitySpec[Any, Any], outcome: object) -> _Outcome:

@@ -40,8 +40,8 @@ from retail_analytics.interfaces.cli.follow import (
     StreamLost,
     follow_run,
 )
+from retail_analytics.interfaces.cli.progress import ProgressPresenter
 from retail_analytics.interfaces.cli.render import (
-    EventFormatter,
     format_acknowledgement,
     format_definition_notices,
     format_deletion_preview,
@@ -92,16 +92,18 @@ class Chat:
         sleep: Callable[[float], None] = time.sleep,
         write_file: Callable[[str, bytes], None] | None = None,
         terminal: RawTerminal | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.api = api
         self.session_id = session_id
         self._raw_out = out
-        self._format_event = EventFormatter()
         self.out = self._print
         self._terminal = terminal
         self._editor = (
             None if terminal is None else LineEditor(terminal.write, bold_prompt=True)
         )
+        # Presentation of the followed run's progress (pace, status line).
+        self._progress = ProgressPresenter(live=self._editor is not None, clock=clock)
         self._keys = ""
         self._fixed_prompt: str | None = None
         self._stdin = stdin
@@ -120,10 +122,9 @@ class Chat:
         self.last_event_id: str | None = None
         self.queued = 0
         self._offered: set[str] = set()
-        # Runs whose start this chat already acknowledged from the server's
-        # receipt (their run.started is then not shown again), and runs it
-        # has followed (to find a queued request's run once it exists).
-        self._acknowledged: set[str] = set()
+        # Runs this chat has followed (to find a queued request's run once it
+        # exists). Runs acknowledged from the server's receipt are known to
+        # the progress presenter, which then does not show run.started.
         self._followed: set[str] = set()
         self._eof = False
         self._line: str | None = None
@@ -161,6 +162,8 @@ class Chat:
 
     def _farewell(self) -> None:
         self._generation += 1  # stops any follower thread; the run is untouched
+        self._progress.stop(self.run_id)
+        self._sync_status()
         if self.running and self.run_id:
             extra = ""
             if self.question:
@@ -266,10 +269,34 @@ class Chat:
             self._pump_once(0.2)
 
     def _pump_once(self, timeout: float) -> None:
+        due = self._progress.next_due()
+        if due is not None:
+            timeout = min(timeout, max(due, 0.01))
         try:
             item = self._inbox.get(timeout=timeout)
         except queue.Empty:
+            self._tick()
             return
+        try:
+            self._pump_item(item)
+        finally:
+            self._tick()
+
+    def _tick(self) -> None:
+        """Due coalesced status or waiting update (presentation only)."""
+        lines = self._progress.tick()
+        for line in lines:
+            self.out(line)
+        if lines and self._interactive and self._editor is None:
+            self._redraw = True
+        self._sync_status()
+
+    def _sync_status(self) -> None:
+        if self._editor is not None:
+            status = self._progress.status_line
+            self._editor.set_status(None if status is None else f"  {status}")
+
+    def _pump_item(self, item: _Item) -> None:
         if item.kind == "line":
             self._line = item.payload
             self._have_line = True
@@ -294,16 +321,15 @@ class Chat:
     def _handle(self, item: _Item) -> None:
         if item.kind == "event":
             event: JsonObject = item.payload
+            # The cursor always advances, whether or not anything is shown.
             self.last_event_id = str(event.get("event_id") or self.last_event_id)
-            text = self._format_event(event)
-            if event.get("kind") == "deletion.proposed" or (
-                event.get("kind") == "run.started" and self.run_id in self._acknowledged
-            ):
-                # A proposal is shown in full below, from the server's own
-                # record; a start was already acknowledged when accepted.
-                text = None
-            if text:
-                self.out(text)
+            lines = self._progress.event(str(self.run_id), event)
+            self._sync_status()
+            if event.get("kind") == "deletion.proposed":
+                # Shown in full below, from the server's own record.
+                lines = []
+            for line in lines:
+                self.out(line)
             if event.get("kind") == "deletion.proposed":
                 self._offer_deletion(str(event.get("deletion_proposal_id") or ""))
             if event.get("kind") == "input.required" and self.run_id:
@@ -313,11 +339,18 @@ class Chat:
                     self.out(format_question(question.text))
                     self.out("Type your answer below.")
         elif item.kind == "notice":
+            self._progress.disconnected(str(self.run_id))
+            self._sync_status()
             self.out(item.payload)
+        elif item.kind == "connected":
+            self._progress.connected(str(self.run_id))
+            self._sync_status()
         elif item.kind == "end":
             self._finish()
         elif item.kind == "error":
             self.following = False
+            self._progress.stop(self.run_id)
+            self._sync_status()
             error = item.payload
             if isinstance(error, StreamLost):
                 self.out(
@@ -340,6 +373,9 @@ class Chat:
         self.question = None
         if finished is None:
             return
+        # Routine progress of this run is dropped before its result shows.
+        self._progress.close(finished)
+        self._sync_status()
         run = self.api.get_run(finished)
         self.out(format_run_result(run))
         self._turn_gap()
@@ -419,6 +455,8 @@ class Chat:
         self._followed.add(run_id)
         if after is None:
             self.last_event_id = None
+        self._progress.follow(run_id)
+        self._sync_status()
 
         def work() -> None:
             try:
@@ -428,6 +466,9 @@ class Chat:
                     after=after,
                     on_event=lambda e: self._inbox.put(_Item("event", generation, e)),
                     on_notice=lambda t: self._inbox.put(_Item("notice", generation, t)),
+                    on_connected=lambda: self._inbox.put(
+                        _Item("connected", generation, None)
+                    ),
                     should_stop=lambda: self._generation != generation,
                     stall_seconds=self._stall,
                     sleep=self._sleep,
@@ -442,6 +483,8 @@ class Chat:
     def _detach(self) -> None:
         self._generation += 1
         self.following = False
+        self._progress.stop(self.run_id)
+        self._sync_status()
         self.out(
             f"\nDetached. Run {self.run_id} keeps working (nothing was cancelled). "
             "/follow re-attaches, /cancel stops it."
@@ -492,6 +535,8 @@ class Chat:
             )
             self.out(format_acknowledgement({**receipt, "kind": "answer"}))
             self.question = None
+            self._progress.resume(self.run_id)
+            self._sync_status()
             self._ensure_following_after()
             return
         if self.running and self.run_id:
@@ -538,7 +583,7 @@ class Chat:
             return
         run_id = str(receipt["run_id"])
         if receipt.get("kind") != "steering":
-            self._acknowledged.add(run_id)
+            self._progress.acknowledge(run_id)
         if run_id != self.run_id or not self.running:
             self._follow(run_id, None)
         else:

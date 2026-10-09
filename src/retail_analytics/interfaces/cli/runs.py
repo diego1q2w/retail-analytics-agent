@@ -12,8 +12,8 @@ from retail_analytics.interfaces.cli.follow import (
     StopFollowing,
     follow_run,
 )
+from retail_analytics.interfaces.cli.progress import ProgressPresenter
 from retail_analytics.interfaces.cli.render import (
-    EventFormatter,
     format_question,
     format_run_result,
 )
@@ -74,21 +74,31 @@ def drive_run(
     quiet: bool = False,
     stall_seconds: float = DEFAULT_STALL_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
 ) -> Driven:
     """Follow ``run_id``; answer questions from ``answers`` then ``ask``;
-    stop when the run ends or a question has no answer available."""
+    stop when the run ends or a question has no answer available.
+
+    Progress is plain lines at a readable pace (``ProgressPresenter``); with
+    no timer here, coalesced and waiting updates are written when the next
+    event or keepalive arrives, never after the run's end."""
     pending = list(answers)
-    format_event = EventFormatter()
+    progress = ProgressPresenter(live=False, clock=clock)
+    progress.follow(run_id)
+
+    def show(lines: list[str]) -> None:
+        if not quiet:
+            for line in lines:
+                out(line)
+
     given = 0
     last_id = after
     while True:
         found: list[Question] = []
 
         def on_event(event: JsonObject, found: list[Question] = found) -> None:
-            if not quiet:
-                line = format_event(event)
-                if line:
-                    out(line)
+            show(progress.tick())
+            show(progress.event(run_id, event))
             if event.get("kind") == "input.required":
                 question = open_question(api, run_id, sleep=sleep)
                 if question is not None:
@@ -101,11 +111,13 @@ def drive_run(
             after=last_id,
             on_event=on_event,
             on_notice=(lambda text: None) if quiet else out,
+            on_keepalive=lambda: show(progress.tick()),
             stall_seconds=stall_seconds,
             sleep=sleep,
         )
         last_id = result.last_event_id
         if not found:
+            progress.close(run_id)
             run = api.get_run(run_id)
             if not quiet:
                 out(format_run_result(run))
@@ -117,6 +129,7 @@ def drive_run(
         if text is None:
             return Driven("waiting", api.get_run(run_id), question, last_id)
         given += 1
+        progress.resume(run_id)
         if not quiet:
             out(f"> {text}")
         api.answer(

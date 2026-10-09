@@ -454,6 +454,12 @@ def test_rejected_query_is_corrected_and_shown_as_ongoing_progress(
     assert [p["tool"]["error_code"] for p in failed] == ["UNSUPPORTED_SQL"]
     assert "scalar subquery" in failed[0]["summary"]
     assert payloads[-1]["kind"] == "run.completed"
+    # tool.started text (T22-F6): the refused query keeps the generic label;
+    # the accepted one is described from its compiled fields, never its SQL.
+    assert [p["summary"] for p in payloads if p["kind"] == "tool.started"][-2:] == [
+        "Running a query.",
+        "Calculating revenue.",
+    ]
     formatter = EventFormatter()
     shown = "\n".join(safe(line) for p in payloads if (line := formatter(p)))
     assert QUERY_NEEDS_ADJUSTMENT in shown and QUERY_ADJUSTING in shown

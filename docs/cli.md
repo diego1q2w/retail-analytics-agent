@@ -31,9 +31,8 @@ $ analytics chat
 Session 6f1c...  Ask a question; /help lists commands, /quit leaves.
 you> How did Women's revenue trend last quarter?
 Working on it.
-  > Looking up the available data.
-  > Running a query.
-  ok Query finished.
+  > Checking which data is available.
+  > Comparing revenue by category.
 The assistant needs an answer to continue:
   Which sales period should I use?
 answer> the last full calendar quarter
@@ -66,8 +65,10 @@ run's next step (`> Your message was applied; ...`); if the run ends first,
 the chat says it was not applied (`! ...`) and the answer ends with a notice
 quoting it, so a finished answer never pretends to include it.
 
-On a terminal the chat keeps one input line at the bottom: progress is
-printed above it, and the prompt (`you>` idle, `steer>` while a run works,
+On a terminal the chat keeps one input line at the bottom, with the run's
+current status on one line just above it (redrawn in place, removed when the
+run ends or asks you something); notices such as failures, steering applied
+or not, and the answer are printed above both. The prompt (`you>` idle, `steer>` while a run works,
 `answer>` while it waits for your answer) is redrawn with whatever you have
 typed so far. On a terminal the prompt label is bold and one blank line
 separates a finished response from the next input; piped output has neither
@@ -94,6 +95,26 @@ deterministic.
 
 * Progress shows tool and analysis steps only (no private reasoning exists in
   the stream). Retries, pending and outcome-unknown steps are marked.
+* Status text is written by the application, never by the model: a step's
+  fixed label (`Reading earlier results.`, `Saving the report.`), or for a
+  query a template chosen from the fields the compiler verified
+  (`Comparing revenue by category.`, `Calculating order counts.`; otherwise
+  `Running a query.`). Filter values, names, SQL and the model's stated
+  purpose are never shown. Parallel steps are combined
+  (`A / B (2 at once).`). Between steps the status is
+  `Preparing the next step.` (a model request is in progress).
+* Pace: a change is shown at once unless another was shown less than about
+  a second ago; then the *latest* state is shown when that second ends (no
+  backlog of old steps). After about 10 seconds without a new status the
+  line says how long it has been (`(20 s so far)`), refreshed at most every
+  10 seconds on a terminal and every 30 seconds in piped output. Nothing
+  ticks while the run waits for you, after it ends, after detaching, or
+  while the stream reconnects (the status then says it is unavailable).
+  These are local defaults, not measured optima. Failures, questions,
+  deletion proposals, cancellation, limits and the answer are never held
+  back, and a finished run's pending status is dropped before its answer.
+  Pacing changes only what is displayed: every event is still consumed in
+  order and the resume position advances.
 * **Partial** answers start with a `PARTIAL RESULT` banner; the answer says
   what stopped the run (a named budget, a cut-off result) and what is missing;
   truncated report
