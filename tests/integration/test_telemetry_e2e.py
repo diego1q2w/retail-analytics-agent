@@ -326,7 +326,7 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
         (admission,) = by_name["run.admission"]
         admitted = span_attributes(admission)
         assert admitted["decision"] == "proceed"
-        assert admitted["classifier_version"] == "request-scope/2"
+        assert admitted["classifier_version"] == "request-scope/3"
         assert admitted["topic"] and admitted["reason"]
         tree = span_lines(spans)
         assert tree[0].startswith("investigation.run")

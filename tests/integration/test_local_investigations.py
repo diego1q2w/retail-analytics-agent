@@ -621,7 +621,7 @@ async def test_local_run_exports_one_acyclic_tree_under_a_parentless_root(
     (admission,) = [s for s in spans.values() if s.name == Span.ADMISSION]
     attributes = dict(admission.attributes or {})
     assert attributes["decision"] == "proceed"
-    assert attributes["classifier_version"] == "request-scope/2"
+    assert attributes["classifier_version"] == "request-scope/3"
     assert set(attributes) >= {"topic", "reason", "run_id", "session_id"}
     # The lookup prints it as one well-formed tree.
     exported = [

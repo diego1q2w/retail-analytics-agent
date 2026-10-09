@@ -9,6 +9,11 @@ data or help is available (data discovery) proceeds, a short follow-up inside
 an ongoing investigation counts as steering it, and an ambiguous first
 request gets a focused clarification instead of a guess.
 
+Misspelled analytical words ("revienew of september") are matched tolerantly
+against a bounded core of the analytical vocabulary, with length-aware edit
+costs so short words and real neighbours ("revenge", "stack", "tends") do
+not match; there is no list of accepted misspellings.
+
 Every admission carries a reason code and the classifier version so the
 decision can be diagnosed from telemetry without the request text.
 
@@ -25,7 +30,7 @@ from enum import StrEnum
 from retail_analytics.domain.disclosure import normalize
 
 # Bump when the patterns change, so diagnostics show which rules decided.
-CLASSIFIER_VERSION = "request-scope/2"
+CLASSIFIER_VERSION = "request-scope/3"
 
 
 class RequestTopic(StrEnum):
@@ -50,6 +55,8 @@ class AdmissionReason(StrEnum):
     PREFERENCE_PATTERN = "preference_pattern"
     DISCOVERY_PATTERN = "discovery_pattern"
     ANALYSIS_TERMS = "analysis_terms"
+    # A misspelled analytical word matched tolerantly ("revienew").
+    ANALYSIS_TERMS_TOLERANT = "analysis_terms_tolerant"
     FOLLOW_UP = "follow_up"
     NO_ANALYSIS_TERMS = "no_analysis_terms"
 
@@ -162,6 +169,111 @@ _OFF_TOPIC = re.compile(
 )
 _FOLLOW_UP_WORDS = 25
 
+# Core words of ``_ANALYTICS`` that are matched tolerantly. Words shorter than
+# five letters (aov, top, why, cost, sale) are only ever matched exactly.
+_TOLERANT_VOCABULARY = frozenset(
+    {
+        "revenue", "sales", "order", "orders", "product", "products",
+        "customer", "customers", "category", "categories", "brands",
+        "department", "departments", "demographics", "countries", "regions",
+        "returns", "returned", "cancelled", "cancellations", "margins", "profit",
+        "discounts", "conversion", "retention", "cohorts", "trends",
+        "growth", "month", "monthly", "weekly", "quarter", "quarterly",
+        "yearly", "period", "metrics", "performance", "breakdown", "inventory",
+        "volume", "currency", "forecast", "analyze", "analyse", "analysis",
+        "insights", "compare", "comparison", "increase", "decrease", "evidence",
+        "definition", "items", "prices", "buyers", "shoppers",
+    }
+)  # fmt: skip
+# "w" and "y" count as vowels: "revienew" sounds out "revenue".
+_VOWELS = frozenset("aeiouwy")
+_WORD = re.compile(r"[a-z]+")
+_MIN_TOLERANT_LENGTH = 5
+_MAX_TOLERANT_WORDS = 200
+_MAX_LENGTH_GAP = 1
+
+
+def _budget(target: str) -> float:
+    """Total edit cost allowed for ``target``; longer words tolerate more."""
+    if len(target) <= 6:
+        return 1.0
+    return 1.5 if len(target) <= 8 else 2.0
+
+
+def _edit_cost(typed: str, target: str) -> float:
+    """Weighted edit distance (with adjacent transpositions) from typed to target.
+
+    Vowel slips are cheap and consonant changes expensive, because a vowel
+    slip keeps the word recognisable while a changed consonant usually makes
+    another real word ("revenge"). Short targets only tolerate one dropped
+    vowel or one swap of adjacent letters.
+    """
+    short = len(target) <= 6
+    swap = 1.0
+    hard = 2.0
+
+    def gap(ch: str, *, dropped: bool) -> float:
+        if short:
+            return 1.0 if dropped and ch in _VOWELS else hard
+        if ch in _VOWELS:
+            return 0.5
+        return 1.5 if dropped else hard
+
+    def change(a: str, b: str) -> float:
+        if a == b:
+            return 0.0
+        if a in _VOWELS and b in _VOWELS and not short:
+            return 0.5
+        return hard
+
+    rows, cols = len(typed) + 1, len(target) + 1
+    dist = [[0.0] * cols for _ in range(rows)]
+    for i in range(1, rows):
+        dist[i][0] = dist[i - 1][0] + gap(typed[i - 1], dropped=False)
+    for j in range(1, cols):
+        dist[0][j] = dist[0][j - 1] + gap(target[j - 1], dropped=True)
+    for i in range(1, rows):
+        for j in range(1, cols):
+            best = min(
+                dist[i - 1][j] + gap(typed[i - 1], dropped=False),
+                dist[i][j - 1] + gap(target[j - 1], dropped=True),
+                dist[i - 1][j - 1] + change(typed[i - 1], target[j - 1]),
+            )
+            if (
+                i > 1
+                and j > 1
+                and typed[i - 1] == target[j - 2]
+                and typed[i - 2] == target[j - 1]
+            ):
+                best = min(best, dist[i - 2][j - 2] + swap)
+            dist[i][j] = best
+    return dist[-1][-1]
+
+
+def _collapse(word: str) -> str:
+    """Fold doubled letters ("cancelled", "ordders") before comparing."""
+    return re.sub(r"(.)\1+", r"\1", word)
+
+
+def _near_analytical_word(word: str) -> bool:
+    if len(word) < _MIN_TOLERANT_LENGTH - 1:
+        return False
+    typed = _collapse(word)
+    for term in _TOLERANT_VOCABULARY:
+        target = _collapse(term)
+        if (
+            typed[0] == target[0]
+            and abs(len(typed) - len(target)) <= _MAX_LENGTH_GAP
+            and _edit_cost(typed, target) <= _budget(target)
+        ):
+            return True
+    return False
+
+
+def _has_misspelled_analytical_word(text: str) -> bool:
+    words = _WORD.findall(text.lower())[:_MAX_TOLERANT_WORDS]
+    return any(_near_analytical_word(word) for word in words)
+
 
 def _classify(
     text: str, *, ongoing_investigation: bool
@@ -184,6 +296,8 @@ def _classify(
         return RequestTopic.DATA_DISCOVERY, AdmissionReason.DISCOVERY_PATTERN
     if _ANALYTICS.search(normalized):
         return RequestTopic.ANALYSIS, AdmissionReason.ANALYSIS_TERMS
+    if _has_misspelled_analytical_word(normalized):
+        return RequestTopic.ANALYSIS, AdmissionReason.ANALYSIS_TERMS_TOLERANT
     if ongoing_investigation and len(normalized.split()) <= _FOLLOW_UP_WORDS:
         # "And for women?" / "Only last week" steer the current investigation.
         return RequestTopic.ANALYSIS, AdmissionReason.FOLLOW_UP
