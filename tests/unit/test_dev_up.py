@@ -370,3 +370,12 @@ def test_temporal_readiness_waits_for_the_worker(
     assert code == 1
     assert any("still waiting for worker (Temporal connection)" in x for x in lines)
     assert set(seen) == {ExecutionBackend.TEMPORAL}
+
+
+def test_next_steps_point_to_the_chat_launcher_for_the_default_env_file() -> None:
+    ctx = local_setup.SetupContext(
+        root=local_setup.ROOT, env_file=local_setup.ROOT / ".env", project="p"
+    )
+    text = "\n".join(local_setup.next_steps(ctx))
+    assert "./scripts/local_cli.sh" in text
+    assert "analytics-token" not in text

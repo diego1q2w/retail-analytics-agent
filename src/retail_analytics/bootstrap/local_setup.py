@@ -505,11 +505,23 @@ def next_steps(ctx: SetupContext) -> list[str]:
         "      # worker + API together, prefixed logs, Ctrl-C stops both"
         if temporal
         else "      # the API (hosting the investigations), Ctrl-C stops it",
-        "  then, in another terminal (after: source .venv/bin/activate):",
-        f"  (umask 077; {issue_cmd} > ~/.analytics-token)",
-        "      # the local admin's dev token, written to a private file only",
-        "  export CLI_TOKEN_FILE=~/.analytics-token",
-        "  analytics chat                             # ask a question",
+    ]
+    if custom:
+        # The launcher reads the repository .env; a custom file needs the
+        # token and chat steps spelled out.
+        lines += [
+            "  then, in another terminal (after: source .venv/bin/activate):",
+            f"  (umask 077; {issue_cmd} > ~/.analytics-token)",
+            "      # the local admin's dev token, written to a private file only",
+            "  export CLI_TOKEN_FILE=~/.analytics-token",
+            "  analytics chat                             # ask a question",
+        ]
+    else:
+        lines += [
+            "  then, in another terminal:",
+            "  ./scripts/local_cli.sh       # sign in as the local admin and chat",
+        ]
+    lines += [
         "  ./scripts/bootstrap.sh                     # rerun any time (idempotent)",
         "  (the production design runs the API and Temporal workers as "
         "separate services; see README, 'Temporal execution')",
