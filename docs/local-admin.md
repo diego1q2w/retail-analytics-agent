@@ -23,9 +23,12 @@ You are `local-admin`. Roles grant operations; products are a separate
 explicit grant, so the admin role by itself gives no product data. The two
 restricted identities are brand managers for showing authorization: their
 brands resolve to products through the brand catalog that bootstrap syncs from
-BigQuery in live mode (`retail-analytics-dev-access sync-brands`; fixture mode
-has no catalog, so they see nothing). Their data never overlaps, and neither
-can read the other's reports.
+BigQuery in live mode (`retail-analytics-dev-access sync-brands`). In fixture
+mode the same step reads the synthetic fixture catalog and the managers get
+other brands: `demo-a` Aster and Birch, `demo-b` Cedar and Dune. Their data
+never overlaps, and neither can read the other's reports. The `local-admin`
+grant is an explicit list of today's product IDs, so products added later are
+not covered until it is changed.
 
 Change a manager's brands (exact catalog spelling; each change bumps the
 authorization version and is audited):
@@ -36,7 +39,12 @@ retail-analytics-dev-access brands assign demo-a "Tommy Hilfiger"
 retail-analytics-dev-access brands remove demo-a "Levi's"
 ```
 
-See [brand-based access](brand-access.md) for the rules and open questions.
+A brand change only affects what the brand contributes: products that are
+also granted explicitly stay (explicit grants and brands are added together).
+New products of an assigned brand appear after the next `sync-brands`; every
+change that alters a manager's products bumps the authorization version and
+is audited. See [brand-based access](brand-access.md) for the rules, the
+lifecycle as implemented and the open questions.
 
 ```sh
 (umask 077; retail-analytics-dev-access token demo-b > ~/.analytics-token-b)

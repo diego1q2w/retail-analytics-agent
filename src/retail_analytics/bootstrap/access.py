@@ -64,11 +64,21 @@ def build_access_audit(
 
 
 def product_brand_source(settings: BackendSettings) -> ProductBrandSource | None:
-    """The trusted ``products.brand`` reader: BigQuery in live mode.
+    """The trusted ``products.brand`` reader.
 
-    Fixture mode has no warehouse, so there is no source and the brand
-    catalog is not synced (brand-assigned managers then see no products).
+    Live mode reads BigQuery. Fixture mode has no warehouse, so it reads the
+    synthetic held-out fixture's brands instead (an explicit, deterministic
+    demo catalog; see docs/brand-access.md). Live mode without a project has
+    no source.
     """
+    if settings.mode is RuntimeMode.FIXTURE:
+        from pathlib import Path
+
+        from retail_analytics.adapters.evaluation.fixture_warehouse import (
+            HeldoutProductBrands,
+        )
+
+        return HeldoutProductBrands(Path("evaluation") / "heldout" / "fixture")
     if settings.mode is not RuntimeMode.LIVE or settings.bigquery_project is None:
         return None
     from retail_analytics.adapters.bigquery.product_brands import (

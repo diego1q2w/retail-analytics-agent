@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from click.testing import CliRunner
 
 from retail_analytics.adapters.bigquery.product_brands import (
     BYTES_CAP,
@@ -31,7 +30,7 @@ from retail_analytics.application.contracts.brand_access import (
     BrandCatalogSync,
     ProductBrandCatalog,
 )
-from retail_analytics.bootstrap import dev_access, local_setup
+from retail_analytics.bootstrap import local_setup
 from retail_analytics.bootstrap.local_setup import SetupContext
 from retail_analytics.domain.access import (
     ExecutiveAccess,
@@ -241,18 +240,8 @@ async def test_sync_needs_a_source_and_refuses_an_empty_catalog() -> None:
 # -- local commands and bootstrap ---------------------------------------------
 
 
-def test_sync_brands_needs_live_mode_with_a_project() -> None:
-    result = CliRunner().invoke(
-        dev_access.main,
-        ["sync-brands"],
-        env={"APP_MODE": "fixture", "APP_DATABASE_URL": "postgresql://x@h/db"},
-    )
-    assert result.exit_code == 1
-    assert "no brand catalog source" in result.output
-
-
-def test_brand_catalog_step_runs_after_credentials_and_skips_fixture(
-    tmp_path: Path,
+def test_brand_catalog_step_runs_after_credentials_and_syncs_in_both_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     names = [s.name for s in local_setup.STEPS]
     assert names.index("brand-catalog") > names.index("check-credentials")
@@ -263,6 +252,13 @@ def test_brand_catalog_step_runs_after_credentials_and_skips_fixture(
         root=tmp_path, env_file=env_file, project="p", echo=lambda _line: None
     )
     ctx.refresh_values()
+    calls: list[tuple[str, ...]] = []
+
+    def record(self: SetupContext, *args: str, show: bool = False) -> str:
+        calls.append(args)
+        return ""
+
+    monkeypatch.setattr(SetupContext, "python", record)
     result = local_setup.step_brand_catalog(ctx)
-    assert result.status == "skipped"
-    assert "brand managers see no products" in result.message
+    assert result.status == "done" and calls[0][-1] == "sync-brands"
+    assert "Aster" in result.message and "Cedar" in result.message

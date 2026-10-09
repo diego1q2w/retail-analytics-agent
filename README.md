@@ -91,7 +91,7 @@ More: [CLI guide](docs/cli.md) (commands, resuming with `analytics chat --resume
 2. creates `.env` from `.env.example`, or only adds the keys an existing `.env` lacks. It never overwrites or reorders a value, generates local-only secrets (`AUTH_SIGNING_KEY`, `REFERENCE_KEY`, and the database passwords for a new Compose volume) with `secrets`, and fills the connection defaults. It prints `<generated>`, `<kept>`, `<default>` or `<missing: action>` per key, never a value;
 3. checks Docker, starts PostgreSQL and waits until it is healthy (Temporal only when [selected](#temporal-execution-opt-in));
 4. runs `alembic upgrade head`;
-5. provisions the local admin and the two restricted demo brand managers (live mode then syncs the brand catalog from BigQuery), and seeds the Golden knowledge library;
+5. provisions the local admin and the two restricted demo brand managers (then syncs the brand catalog: from BigQuery in live mode, from the synthetic fixture brands in fixture mode), and seeds the Golden knowledge library;
 6. validates the configuration and, when BigQuery and Gemini are configured, checks that access.
 
 `./scripts/dev.sh` (or `python -m retail_analytics.bootstrap.dev_up`) starts the backend; call it with a dev token through the [CLI](docs/cli.md) or the [HTTP and SSE API](docs/http-api.md).

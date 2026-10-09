@@ -394,13 +394,13 @@ def step_check_credentials(ctx: SetupContext) -> StepResult:
 
 
 def step_brand_catalog(ctx: SetupContext) -> StepResult:
+    ctx.python("-m", "retail_analytics.bootstrap.dev_access", "sync-brands", show=True)
     if ctx.values.get("APP_MODE", "live") == "fixture":
         return StepResult(
-            "skipped",
-            "Explicit fixture mode: no warehouse brand catalog; "
-            "demo brand managers see no products.",
+            "done",
+            "synthetic fixture brand catalog synced; demo-a: Aster, Birch; "
+            "demo-b: Cedar, Dune",
         )
-    ctx.python("-m", "retail_analytics.bootstrap.dev_access", "sync-brands", show=True)
     return StepResult("done", "brand catalog synced; brand managers resolved")
 
 

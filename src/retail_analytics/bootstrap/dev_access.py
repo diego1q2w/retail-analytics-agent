@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Coroutine, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any
 
@@ -51,6 +51,7 @@ from retail_analytics.bootstrap.access import (
 from retail_analytics.bootstrap.config import (
     BackendSettings,
     ConfigError,
+    RuntimeMode,
     load_backend_settings,
 )
 from retail_analytics.bootstrap.entrypoint import CONFIG_ERROR_EXIT_CODE
@@ -76,6 +77,14 @@ class DemoExecutive:
     product_ids: frozenset[str]
     # Assigned brands, resolved to products through the synced catalog.
     brands: frozenset[str] = frozenset()
+    # Brands used instead in fixture mode: the synthetic held-out fixture's
+    # catalog (Aster, Birch, Cedar, Dune, Ember) has none of the real names.
+    fixture_brands: frozenset[str] = frozenset()
+
+    def for_mode(self, mode: RuntimeMode) -> DemoExecutive:
+        if mode is RuntimeMode.FIXTURE and self.brands:
+            return replace(self, brands=self.fixture_brands)
+        return self
 
 
 def _ids(first: int, last: int) -> frozenset[str]:
@@ -109,6 +118,7 @@ DEMO_EXECUTIVES: tuple[DemoExecutive, ...] = (
         roles=frozenset({Role.EXECUTIVE, Role.EDITOR}),
         product_ids=frozenset(),
         brands=frozenset({"Calvin Klein", "Levi's"}),
+        fixture_brands=frozenset({"Aster", "Birch"}),
     ),
     DemoExecutive(
         key="demo-b",
@@ -118,6 +128,7 @@ DEMO_EXECUTIVES: tuple[DemoExecutive, ...] = (
         roles=frozenset({Role.EXECUTIVE, Role.REVIEWER}),
         product_ids=frozenset(),
         brands=frozenset({"Carhartt", "Columbia"}),
+        fixture_brands=frozenset({"Cedar", "Dune"}),
     ),
 )
 
@@ -179,19 +190,20 @@ def main() -> None:
 def provision() -> None:
     """Create the local admin and the two restricted demo brand managers."""
     settings = _settings()
+    demos = tuple(demo.for_mode(settings.mode) for demo in LOCAL_EXECUTIVES)
     persistence = _persistence(settings)
     try:
         results = asyncio.run(
             provision_demo_executives(
                 persistence.access_admin,
                 settings.auth_issuer,
-                LOCAL_EXECUTIVES,
+                demos,
                 brands=persistence.brand_access,
             )
         )
     finally:
         persistence.close()
-    for demo, access in zip(LOCAL_EXECUTIVES, results, strict=True):
+    for demo, access in zip(demos, results, strict=True):
         roles = ",".join(sorted(access.roles))
         brands = f" brands={_brand_list(demo.brands)}" if demo.brands else ""
         click.echo(
@@ -199,11 +211,16 @@ def provision() -> None:
             f"products={len(access.product_ids)}{brands} "
             f"authorization_version={access.authorization_version}"
         )
-    pairs = zip(LOCAL_EXECUTIVES, results, strict=True)
+    pairs = zip(demos, results, strict=True)
     if any(demo.brands and not access.product_ids for demo, access in pairs):
+        where = (
+            "sync-brands reads the synthetic fixture catalog"
+            if settings.mode is RuntimeMode.FIXTURE
+            else "sync-brands needs live mode"
+        )
         click.echo(
             "Brand managers see no products until the brand catalog is synced "
-            "(retail-analytics-dev-access sync-brands, live mode)."
+            f"(retail-analytics-dev-access sync-brands; {where})."
         )
 
 
@@ -312,7 +329,8 @@ def remove(executive: str, brand_names: tuple[str, ...]) -> None:
 def sync_brands() -> None:
     """Read products.brand from the warehouse into the trusted snapshot.
 
-    Live mode only (BigQuery). Executives whose brands now resolve to other
+    Live mode reads BigQuery; fixture mode reads the synthetic held-out
+    fixture brands. Executives whose brands now resolve to other
     products get a new authorization version, so cached evidence, schema
     context and report access are re-checked against the new scope.
     """
@@ -320,7 +338,8 @@ def sync_brands() -> None:
     source = product_brand_source(settings)
     if source is None:
         raise click.ClickException(
-            "no brand catalog source: needs live mode with BIGQUERY_PROJECT"
+            "no brand catalog source: needs APP_MODE=fixture (synthetic catalog) "
+            "or live mode with BIGQUERY_PROJECT"
         )
     persistence = _persistence(settings)
     try:

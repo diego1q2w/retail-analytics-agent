@@ -31,6 +31,16 @@ because of an admin role.
 
 ## Rules
 
+- **Union rule: explicit grants are independent of brands.** A manager's
+  products are the explicit grants (`product_entitlements`) plus the products
+  of the assigned brands. Removing a brand removes only what that brand
+  contributed; a product that is also granted explicitly stays. Example:
+  `exec-x` has the explicit grant `{101}` and the brand "Levi's" (products
+  `{101, 102}`). Resolved scope: `{101, 102}`. After
+  `brands remove exec-x "Levi's"` the scope is `{101}`, not empty. To take a
+  product away completely, remove its brand assignment and its explicit
+  grant. The demo brand managers have no explicit grants, so for them brand
+  assignment is the whole scope.
 - **Exact match.** No case folding, trimming or fuzzy matching. The catalog
   holds case variants (for example "Hugo Boss" and "HUGO BOSS", 39 such
   groups on 2026-10-09) and related labels ("Calvin Klein" and
@@ -54,6 +64,29 @@ because of an admin role.
   syncs serialize on one advisory lock, so a change is never resolved against
   a half-applied catalog.
 
+## Lifecycle as implemented
+
+| Event | Effect |
+| --- | --- |
+| New product in an assigned brand | Not visible until the next `sync-brands` (or bootstrap in live mode). The sync adds it to the snapshot and to the manager's scope. |
+| Product moves to another brand | At the next sync the old manager loses it and the new one gains it. |
+| Brand assigned or removed | The manager's `authorization_version` is bumped at once; audit event `access.brands_changed`. |
+| Sync that changes a manager's products | That manager's `authorization_version` is bumped; audit `access.brand_catalog_changed` (and one `access.brand_catalog_synced` if the snapshot changed). |
+| Sync that changes nothing | No version bump, no audit event for managers. |
+
+A version bump has these effects through the existing mechanisms (nothing
+brand-specific): authority is re-resolved at the model, tool and release
+boundaries, so an open run whose manager lost products is stopped and its
+answer is withheld or masked with the access-changed notice instead of being
+released under the old scope; evidence stamped with the old version is not
+reused; the model context and schema-context cache are rebuilt; saved reports
+and citations whose required scope is no longer covered show as access
+changed. Report titles are not protected after access narrowing; that
+gap is documented and out of scope here.
+
+Timing is not otherwise defined. Nothing runs a sync on a schedule and nobody
+is notified: production timing and policy are open (see below).
+
 ## Catalog changes
 
 When a product moves to another brand, or a brand gains or loses products, the
@@ -68,7 +101,7 @@ branded products at all is refused and the previous snapshot stays in force,
 because accepting it would revoke every brand grant. An unreachable warehouse
 changes nothing either. A product added to an assigned brand is granted at the
 next sync. The explicit all-products grant of `exec-local-admin` does not grow
-by itself.
+by itself (see the CEO limitation below).
 
 ## Local data sources
 
@@ -78,8 +111,33 @@ by itself.
 | Held-out fixture (`evaluation/heldout/fixture`) | yes (5 synthetic brands) | `FixtureWarehouse.read_product_brands` (evaluation and tests) |
 | Frozen real-data extract (`evaluation/realdata/extract`) | no (column never extracted) | empty catalog: evaluation uses explicit product grants |
 
-Fixture mode (`APP_MODE=fixture`) has no warehouse. The bootstrap step is
-skipped there, and the demo brand managers see no products.
+Fixture mode (`APP_MODE=fixture`) has no warehouse, and the real brand names
+do not exist in the synthetic data. It is therefore provisioned explicitly:
+`provision` assigns the demo managers synthetic brands and `sync-brands` (also
+a bootstrap step) reads the held-out fixture's `products.json`
+(`HeldoutProductBrands`, no DuckDB needed; run from the repository root).
+
+| Manager | Live brands | Fixture brands | Fixture products |
+| --- | --- | --- | --- |
+| `demo-a` | Calvin Klein, Levi's | Aster, Birch | 201-204 |
+| `demo-b` | Carhartt, Columbia | Cedar, Dune | 205-207 |
+
+"Ember" (product 208) is assigned to nobody. The scopes are disjoint: in the
+evaluation fixture `demo-a` gets real sales rows for 201-204 and a query for
+Cedar's products is outside its scope; `demo-b` is the mirror. An executive
+with an empty scope is refused ("No product data is available to you"), never
+answered with empty data. Switching `APP_MODE` and rerunning `provision` plus
+`sync-brands` reconciles the assignments. The frozen real-data extract has no
+brands; evaluation using it keeps explicit product grants.
+
+## CEO and all-products access (demo limitation)
+
+The CEO equivalent (`exec-local-admin`) holds an explicit list of today's
+product IDs (1-29120). That is a snapshot of the demo dataset, not an
+"all products" entitlement: products added to the catalog later are not
+covered until the list is changed. No wildcard or all-products entitlement
+type exists, and this documentation does not add one. How the CEO's access
+follows new products is an open lifecycle question.
 
 ## Open questions (access lifecycle, out of scope)
 
@@ -99,4 +157,6 @@ still open and nothing here implements them:
   today the existing required-scope rule applies.
 - How often the catalog should be synced, and canonical brand identity (should
   case variants be merged?).
-- How the CEO's all-brand grant follows new products.
+- How the CEO's all-brand grant follows new products (today an explicit list
+  of existing product IDs; a permanent all-products entitlement does not
+  exist).

@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from retail_analytics.application.access_check import PUBLIC_DATASET
+from retail_analytics.application.brand_access import ProductBrandsUnavailable
 from retail_analytics.application.contracts.brand_access import ProductBrandCatalog
 from retail_analytics.application.contracts.result_privacy import QueryRows
 from retail_analytics.application.contracts.warehouse_jobs import (
@@ -320,3 +321,31 @@ __all__ = [
     "frozen_extract_warehouse",
     "heldout_fixture_warehouse",
 ]
+
+
+class HeldoutProductBrands:
+    """``ProductBrandSource`` over the synthetic held-out fixture's products.
+
+    Reads only ``products.json`` (no DuckDB), so fixture-mode bootstrap can
+    give the demo brand managers a deterministic synthetic brand catalog.
+    """
+
+    def __init__(self, fixture_dir: Path) -> None:
+        self._path = fixture_dir / "products.json"
+
+    async def read_product_brands(self) -> ProductBrandCatalog:
+        try:
+            data = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise ProductBrandsUnavailable(
+                f"synthetic brand fixture not readable at {self._path}; "
+                "run from the repository root"
+            ) from None
+        brands, skipped = branded_products(
+            (str(row["product_id"]), row.get("brand")) for row in data
+        )
+        return ProductBrandCatalog(
+            brands=brands,
+            source_ref="heldout-fixture-1",
+            products_without_brand=skipped,
+        )

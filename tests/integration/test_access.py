@@ -316,6 +316,7 @@ async def test_dev_command_provisions_and_issues_a_working_token(
     stack: Stack, services: AccessServices
 ) -> None:
     env = {
+        "APP_MODE": "fixture",
         "APP_DATABASE_URL": stack.app_url,
         "AUTH_SIGNING_KEY": KEY,
     }
@@ -325,7 +326,7 @@ async def test_dev_command_provisions_and_issues_a_working_token(
     )
     assert provisioned.exit_code == 0, provisioned.output
     assert (
-        "exec-demo-b: roles=executive,reviewer products=0 brands=Carhartt,Columbia"
+        "exec-demo-b: roles=executive,reviewer products=0 brands=Cedar,Dune"
         in provisioned.output
     )
     assert stack.app_password not in provisioned.output
