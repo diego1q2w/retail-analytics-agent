@@ -261,6 +261,42 @@ class PinHolder:
             raise EvidenceError("pin holder needs a kind and id")
 
 
+@dataclass(frozen=True, slots=True)
+class ReportSource:
+    """Where evidence linked into another session came from: one of the
+    owner's saved report versions (a historical snapshot, never refreshed).
+
+    ``title`` is the saved title (it passed the REPORT output check when the
+    version was saved); ``imported_at`` is when it entered the session.
+    """
+
+    report_id: str
+    version: int
+    title: str
+    imported_at: datetime
+
+    def __post_init__(self) -> None:
+        if not self.report_id or self.version < 1:
+            raise EvidenceError("report source needs an id and version >= 1")
+        if self.imported_at.tzinfo is None:
+            raise EvidenceError("imported_at must be timezone-aware")
+
+    def describe(self, evidence: Evidence) -> str:
+        """Provenance line shown wherever the reused figures appear."""
+        analysis = evidence.content.analysis
+        when = evidence.computed_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        parts = [f'from saved report "{self.title}" (v{self.version})']
+        parts.append(f"computed {when}")
+        if analysis.period is not None:
+            parts.append(f"period {analysis.period.describe()}")
+        if analysis.definitions:
+            parts.append(
+                "definitions " + ", ".join(str(d) for d in sorted(analysis.definitions))
+            )
+        parts.append(f"catalog v{analysis.catalog_version}")
+        return ", ".join(parts) + "; historical snapshot, not current data"
+
+
 # --- Reuse policy -----------------------------------------------------------
 
 
@@ -381,6 +417,31 @@ class ReusePolicy:
             return ReuseBlock.INVALIDATED
         return None
 
+    def imported_block(
+        self,
+        evidence: Evidence,
+        authority: CurrentAuthority,
+        *,
+        covered: bool,
+        invalidated: bool,
+    ) -> ReuseBlock | None:
+        """Authority for the owner's report evidence linked into another of
+        their sessions (T18-F1 rule, no extra grant): same owner, and the
+        current products cover the exact set it was computed under
+        (``covered``, judged from trusted scope snapshots). Widened access
+        keeps it usable; losing any required product withholds it."""
+        if evidence.executive_id != authority.executive_id:
+            return ReuseBlock.NOT_OWNED
+        if authority.scope.is_empty:
+            return ReuseBlock.NO_PRODUCT_SCOPE
+        if not covered:
+            return ReuseBlock.AUTHORIZATION_CHANGED
+        if not evidence.is_intact:
+            return ReuseBlock.TAMPERED
+        if invalidated:
+            return ReuseBlock.INVALIDATED
+        return None
+
     def assess(
         self,
         evidence: Evidence,
@@ -395,6 +456,24 @@ class ReusePolicy:
         block = self.authority_block(evidence, authority, invalidated=invalidated)
         if block is not None:
             return block
+        return self.suitability(
+            evidence, requirements=requirements, intent=intent, now=now
+        )
+
+    def suitability(
+        self,
+        evidence: Evidence,
+        *,
+        requirements: Requirements,
+        intent: ReuseIntent,
+        now: datetime,
+    ) -> ReuseBlock | None:
+        """Meaning, freshness and sufficiency, once authority has passed.
+
+        Applies unchanged to report evidence linked from another session: a
+        question about current data still needs a record younger than the
+        freshness limit, so an old report snapshot is recomputed.
+        """
         block = _meaning_block(evidence.content, requirements)
         if block is not None:
             return block
@@ -409,6 +488,41 @@ class ReusePolicy:
         if requirements.requires_complete and evidence.content.table.truncated:
             return ReuseBlock.TRUNCATED
         return None
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisCompatibility:
+    """The meaning a reused historical record must still have *now*.
+
+    ``current_definitions`` maps each metric to its current version; a record
+    computed under an older (or unknown) version is not reused as a result.
+    ``preference_fingerprint`` is the caller's current effective analytical
+    fingerprint for the session the record would be reused in.
+    """
+
+    catalog_version: int
+    policy_version: int
+    preference_fingerprint: str
+    current_definitions: Mapping[str, int]
+
+
+def compatibility_block(
+    content: EvidenceContent, compatibility: AnalysisCompatibility
+) -> ReuseBlock | None:
+    """Whether a record's meaning still matches current definitions/settings."""
+    stamp = content.analysis
+    if stamp.catalog_version != compatibility.catalog_version:
+        return ReuseBlock.CATALOG_CHANGED
+    if stamp.policy_version != compatibility.policy_version:
+        return ReuseBlock.POLICY_CHANGED
+    if any(
+        compatibility.current_definitions.get(d.metric_id) != d.version
+        for d in stamp.definitions
+    ):
+        return ReuseBlock.DEFINITIONS_CHANGED
+    if stamp.preference_fingerprint != compatibility.preference_fingerprint:
+        return ReuseBlock.PREFERENCES_CHANGED
+    return None
 
 
 def _meaning_block(content: EvidenceContent, req: Requirements) -> ReuseBlock | None:

@@ -5,7 +5,9 @@ from typing import Protocol
 
 from retail_analytics.application.contracts.evidence import (
     DEFAULT_CANDIDATE_LIMIT,
+    ImportedEvidence,
     NewEvidence,
+    NewEvidenceImport,
     RunEvidenceLink,
     StoredEvidence,
 )
@@ -48,6 +50,30 @@ class EvidenceRepository(Protocol):
         ...
 
     async def for_run(self, run_id: str) -> Sequence[RunEvidenceLink]: ...
+
+
+class SessionEvidenceImports(Protocol):
+    """Saved-report evidence linked into the owner's other sessions."""
+
+    async def add_import(self, new: NewEvidenceImport) -> None:
+        """Record the link (repeating it is a no-op) and link the evidence
+        to ``new.run_id`` as reused, in one transaction. The evidence must
+        belong to ``new.executive_id`` and the session too, else
+        ``AccessDenied``."""
+        ...
+
+    async def imported(
+        self,
+        executive_id: str,
+        session_id: str,
+        *,
+        evidence_id: str | None = None,
+        subject_key: str | None = None,
+        limit: int = DEFAULT_CANDIDATE_LIMIT,
+    ) -> Sequence[ImportedEvidence]:
+        """The executive's report evidence linked into that session, newest
+        import first (optionally one record or one subject)."""
+        ...
 
 
 class EvidencePins(Protocol):

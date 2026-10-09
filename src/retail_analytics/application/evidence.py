@@ -16,6 +16,21 @@ An empty product scope never reads or reuses anything.
 
 Report-owned retention uses ``pin_for``/``release_pins``; pins keep records
 beyond the investigation but never authorize reading them.
+
+Reusing a saved report in another session (T18-F2)
+---------------------------------------------------
+``import_report_evidence`` links the owner's report evidence into a run of
+another of their sessions, with its source (report, version, title). There is
+no grant, role or confirmation: each record must pass the normal automatic
+checks: same owner, the owner's *current* products cover the exact set it
+was computed under (trusted scope snapshots, T18-F1 rule), intact, not
+invalidated, and its meaning still matches current definitions and settings
+(``compatibility_block``). Imported records then count as session evidence
+everywhere (``session_standing``, ``usable_in_session``, ``find_reusable``,
+``link_to_run``), but are re-judged by ``ReusePolicy.imported_block`` on every
+use, so losing a required product withholds them and the answers that cited
+them. They stay historical snapshots: never refreshed, and current-data
+reuse still applies the freshness limit.
 """
 
 from __future__ import annotations
@@ -30,7 +45,9 @@ from typing import ClassVar
 from retail_analytics.application.authorization import AccessDenied
 from retail_analytics.application.contracts.evidence import (
     DEFAULT_CANDIDATE_LIMIT,
+    ImportedEvidence,
     NewEvidence,
+    NewEvidenceImport,
     StoredEvidence,
 )
 from retail_analytics.application.contracts.query_compiler import (
@@ -44,11 +61,14 @@ from retail_analytics.application.contracts.tools import (
 from retail_analytics.application.ports.evidence import (
     EvidencePins,
     EvidenceRepository,
+    ProductScopeSnapshots,
+    SessionEvidenceImports,
 )
 from retail_analytics.application.result_privacy import ReleasedResult
-from retail_analytics.domain.access import Permission
+from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.context import EvidenceStanding
 from retail_analytics.domain.evidence import (
+    AnalysisCompatibility,
     AnalysisStamp,
     AuthorityStamp,
     CurrentAuthority,
@@ -64,6 +84,7 @@ from retail_analytics.domain.evidence import (
     JsonValue,
     PinHolder,
     Provenance,
+    ReportSource,
     Requirements,
     ReuseBlock,
     ReuseIntent,
@@ -71,7 +92,9 @@ from retail_analytics.domain.evidence import (
     Snapshot,
     canonical_json,
     check_bounds,
+    compatibility_block,
     content_digest,
+    scope_digest,
     snapshot,
 )
 from retail_analytics.domain.periods import DEFAULT_TIME_ZONE, DateWindow
@@ -147,6 +170,21 @@ class ReuseOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class ReportEvidenceImport:
+    """What ``import_report_evidence`` did with each cited record.
+
+    ``linked`` are usable in the run now (with their source); ``refused``
+    name the first failed check (for example ``definitions_changed``):
+    those figures must be recomputed, never presented as results.
+    """
+
+    linked: tuple[str, ...]
+    refused: tuple[tuple[str, ReuseBlock], ...] = ()
+    # Provenance line per linked record ("from saved report ..., computed ...").
+    sources: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class SessionEvidence:
     """Session evidence with its current standing, newest computation first."""
 
@@ -177,9 +215,15 @@ class EvidenceService:
         clock: Callable[[], datetime],
         new_id: Callable[[], str],
         policy: ReusePolicy | None = None,
+        imports: SessionEvidenceImports | None = None,
+        scopes: ProductScopeSnapshots | None = None,
     ) -> None:
+        """Without ``imports`` and ``scopes`` evidence is strictly
+        session-scoped (report evidence cannot be reused elsewhere)."""
         self._repository = repository
         self._pins = pins
+        self._imports = imports if scopes is not None else None
+        self._scopes = scopes
         self._clock = clock
         self._new_id = new_id
         self._policy = policy or ReusePolicy()
@@ -269,7 +313,19 @@ class EvidenceService:
         except EvidenceError:
             raise EvidenceRejected("invalid") from None
         authority = self._authority(execution)
+        imported = (
+            {
+                s.evidence.evidence_id: s
+                for s in await self._imported_standings(authority, limit=200)
+            }
+            if content.derived_from
+            else {}
+        )
         for input_id in content.derived_from:
+            if input_id in imported:
+                if not imported[input_id].usable:
+                    raise EvidenceRejected("input_unavailable")
+                continue
             stored = await self._repository.get(input_id)
             if stored is None or self._policy.authority_block(
                 stored.evidence, authority, invalidated=stored.invalidated
@@ -309,25 +365,50 @@ class EvidenceService:
         authority = self._authority(ctx)
         if request.evidence_id is not None:
             found = await self._repository.get(request.evidence_id)
-            stored: Sequence[StoredEvidence] = () if found is None else (found,)
+            stored: list[StoredEvidence] = [] if found is None else [found]
         else:
-            stored = await self._repository.candidates(
-                authority.executive_id,
-                authority.session_id,
-                subject_key=request.subject_key,
+            stored = list(
+                await self._repository.candidates(
+                    authority.executive_id,
+                    authority.session_id,
+                    subject_key=request.subject_key,
+                )
             )
+        imported = await self._imported_standings(
+            authority, evidence_id=request.evidence_id, subject_key=request.subject_key
+        )
+        verdicts: dict[str, ReuseBlock | None] = {
+            s.evidence.evidence_id: s.block for s in imported
+        }
+        stored = [
+            *(s for s in stored if s.evidence.evidence_id not in verdicts),
+            *(StoredEvidence(s.evidence) for s in imported),
+        ]
+        stored.sort(
+            key=lambda s: (s.evidence.computed_at, s.evidence.version), reverse=True
+        )
         now = self._clock()
         considered: list[tuple[str, ReuseBlock]] = []
         for candidate in stored:
             evidence = candidate.evidence
-            block = self._policy.assess(
-                evidence,
-                authority=authority,
-                requirements=request.requirements,
-                intent=request.intent,
-                now=now,
-                invalidated=candidate.invalidated,
-            )
+            if evidence.evidence_id in verdicts:
+                # Report evidence from another session: coverage rule, then
+                # the same meaning/freshness rules as any other candidate.
+                block = verdicts[evidence.evidence_id] or self._policy.suitability(
+                    evidence,
+                    requirements=request.requirements,
+                    intent=request.intent,
+                    now=now,
+                )
+            else:
+                block = self._policy.assess(
+                    evidence,
+                    authority=authority,
+                    requirements=request.requirements,
+                    intent=request.intent,
+                    now=now,
+                    invalidated=candidate.invalidated,
+                )
             if block in (ReuseBlock.NOT_OWNED, ReuseBlock.OTHER_SESSION):
                 # Someone else's record looks exactly like a missing one.
                 continue
@@ -338,12 +419,10 @@ class EvidenceService:
                 return ReuseOutcome(
                     ReusedEvidence(evidence, snapshot(evidence, now)),
                     tuple(considered),
-                    considered[0][0] if considered else None,
+                    _refresh_of(considered, verdicts),
                 )
             considered.append((evidence.evidence_id, block))
-        return ReuseOutcome(
-            None, tuple(considered), considered[0][0] if considered else None
-        )
+        return ReuseOutcome(None, tuple(considered), _refresh_of(considered, verdicts))
 
     async def usable_in_session(
         self, ctx: ExecutionContext, *, limit: int = DEFAULT_CANDIDATE_LIMIT
@@ -361,14 +440,20 @@ class EvidenceService:
         stored = await self._repository.candidates(
             authority.executive_id, authority.session_id, limit=limit
         )
-        return tuple(
+        own = [
             s.evidence
             for s in stored
             if self._policy.authority_block(
                 s.evidence, authority, invalidated=s.invalidated
             )
             is None
-        )
+        ]
+        imported = [
+            s.evidence
+            for s in await self._imported_standings(authority, limit=limit)
+            if s.usable
+        ]
+        return tuple(own + imported)
 
     async def session_standing(
         self,
@@ -394,7 +479,14 @@ class EvidenceService:
                 authority.executive_id, authority.session_id, limit=limit
             )
         )
-        known = {s.evidence.evidence_id for s in stored}
+        own = {s.evidence.evidence_id for s in stored}
+        imported = [
+            s
+            for s in await self._imported_standings(authority, limit=limit)
+            if s.evidence.evidence_id not in own
+        ]
+        # Imported records must not be reloaded below as other-session ones.
+        known = own | {s.evidence.evidence_id for s in imported}
         run_links: dict[str, frozenset[str]] = {}
         for run_id in dict.fromkeys(run_ids):
             links = await self._repository.for_run(run_id)
@@ -413,6 +505,7 @@ class EvidenceService:
             )
             for s in stored
         ]
+        standings += imported
         standings.sort(
             key=lambda s: (s.evidence.computed_at, s.evidence.version), reverse=True
         )
@@ -430,8 +523,18 @@ class EvidenceService:
         """
         _require_analysis(ctx)
         authority = self._authority(ctx)
+        imported = {
+            s.evidence.evidence_id
+            for s in await self._imported_standings(authority, limit=200)
+        }
         linked: list[str] = []
         for evidence_id in dict.fromkeys(evidence_ids):
+            if evidence_id in imported:
+                await self._repository.link_run(
+                    ctx.correlation.run_id, evidence_id, EvidenceUse.REUSED
+                )
+                linked.append(evidence_id)
+                continue
             stored = await self._repository.get(evidence_id)
             if stored is None or (
                 stored.evidence.executive_id,
@@ -477,11 +580,146 @@ class EvidenceService:
     async def release_pins(self, holder: PinHolder) -> int:
         return await self._pins.unpin(holder)
 
+    async def import_report_evidence(
+        self,
+        ctx: ExecutionContext,
+        *,
+        report_id: str,
+        report_version: int,
+        report_title: str,
+        evidence_ids: Sequence[str],
+        compatibility: AnalysisCompatibility,
+    ) -> ReportEvidenceImport:
+        """Link the owner's evidence cited by a saved report version into
+        ``ctx``'s run and session, as historical snapshots with their source.
+
+        ``report_*`` must come from a report version the caller just read as
+        its owner (trusted code, never the model). Records already in this
+        session are only linked to the run. Every other record passes the
+        automatic checks (owner, current scope covers its computed scope,
+        intact, not invalidated, meaning compatible) or is refused with the
+        first failing rule; nothing needs a grant or a confirmation.
+        """
+        _require_analysis(ctx)
+        authority = self._authority(ctx)
+        if self._imports is None or authority.scope.is_empty:
+            return ReportEvidenceImport(
+                (),
+                tuple(
+                    (e, ReuseBlock.OTHER_SESSION) for e in dict.fromkeys(evidence_ids)
+                ),
+            )
+        found: list[StoredEvidence] = []
+        refused: list[tuple[str, ReuseBlock]] = []
+        for evidence_id in dict.fromkeys(evidence_ids):
+            stored = await self._repository.get(evidence_id)
+            if stored is None or stored.evidence.executive_id != ctx.executive_id:
+                refused.append((evidence_id, ReuseBlock.NOT_OWNED))
+            else:
+                found.append(stored)
+        covered = await self._covered(
+            authority.scope, {s.evidence.authority.scope_digest for s in found}
+        )
+        linked: list[str] = []
+        sources: list[tuple[str, str]] = []
+        source = ReportSource(report_id, report_version, report_title, self._clock())
+        for stored in found:
+            evidence = stored.evidence
+            if evidence.session_id == authority.session_id:
+                block = self._policy.authority_block(
+                    evidence, authority, invalidated=stored.invalidated
+                )
+            else:
+                block = self._policy.imported_block(
+                    evidence,
+                    authority,
+                    covered=evidence.authority.scope_digest in covered,
+                    invalidated=stored.invalidated,
+                )
+            block = block or compatibility_block(evidence.content, compatibility)
+            if block is not None:
+                refused.append((evidence.evidence_id, block))
+                continue
+            if evidence.session_id == authority.session_id:
+                await self._repository.link_run(
+                    ctx.correlation.run_id, evidence.evidence_id, EvidenceUse.REUSED
+                )
+            else:
+                await self._imports.add_import(
+                    NewEvidenceImport(
+                        session_id=authority.session_id,
+                        evidence_id=evidence.evidence_id,
+                        executive_id=ctx.executive_id,
+                        run_id=ctx.correlation.run_id,
+                        report_id=report_id,
+                        report_version=report_version,
+                        report_title=report_title,
+                    )
+                )
+            linked.append(evidence.evidence_id)
+            sources.append((evidence.evidence_id, source.describe(evidence)))
+        return ReportEvidenceImport(tuple(linked), tuple(refused), tuple(sources))
+
+    async def _imported_standings(
+        self,
+        authority: CurrentAuthority,
+        *,
+        evidence_id: str | None = None,
+        subject_key: str | None = None,
+        limit: int = DEFAULT_CANDIDATE_LIMIT,
+    ) -> list[EvidenceStanding]:
+        """Report evidence linked into the session, judged now by coverage."""
+        if self._imports is None:
+            return []
+        found: Sequence[ImportedEvidence] = await self._imports.imported(
+            authority.executive_id,
+            authority.session_id,
+            evidence_id=evidence_id,
+            subject_key=subject_key,
+            limit=limit,
+        )
+        covered = await self._covered(
+            authority.scope, {i.evidence.authority.scope_digest for i in found}
+        )
+        return [
+            EvidenceStanding(
+                i.evidence,
+                self._policy.imported_block(
+                    i.evidence,
+                    authority,
+                    covered=i.evidence.authority.scope_digest in covered,
+                    invalidated=i.invalidated,
+                ),
+                i.source,
+            )
+            for i in found
+        ]
+
+    async def _covered(self, scope: ProductScope, digests: set[str]) -> frozenset[str]:
+        if scope.is_empty or not digests:
+            return frozenset()
+        current = scope_digest(scope)
+        others = digests - {current}
+        found = (
+            await self._scopes.covered(others, scope)
+            if others and self._scopes is not None
+            else frozenset()
+        )
+        return found | (digests & {current})
+
     @staticmethod
     def _authority(ctx: ExecutionContext) -> CurrentAuthority:
         return CurrentAuthority(
             ctx.executive_id, ctx.correlation.session_id, ctx.product_scope
         )
+
+
+def _refresh_of(
+    considered: Sequence[tuple[str, ReuseBlock]], imported: Mapping[str, object]
+) -> str | None:
+    """Newest considered record of this session's own lineage (a report
+    snapshot from another session is never refreshed in place)."""
+    return next((e for e, _ in considered if e not in imported), None)
 
 
 def _require_analysis(ctx: ExecutionContext) -> None:

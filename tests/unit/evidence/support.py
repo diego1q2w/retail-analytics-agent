@@ -124,5 +124,11 @@ class Env:
     def __post_init__(self) -> None:
         self.store = FakeEvidenceStore(clock=self.clock)
         self.service = EvidenceService(
-            self.store, self.store, clock=self.clock, new_id=Ids(), policy=ReusePolicy()
+            self.store,
+            self.store,
+            clock=self.clock,
+            new_id=Ids(),
+            policy=ReusePolicy(),
+            imports=self.store,
+            scopes=self.store,
         )

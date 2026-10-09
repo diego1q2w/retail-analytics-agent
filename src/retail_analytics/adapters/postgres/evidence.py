@@ -24,11 +24,15 @@ from retail_analytics.adapters.postgres.schema import (
     evidence_invalidations,
     evidence_pins,
     run_evidence,
+    session_report_evidence,
+    sessions,
 )
 from retail_analytics.application.authorization import AccessDenied
 from retail_analytics.application.contracts.evidence import (
     DEFAULT_CANDIDATE_LIMIT,
+    ImportedEvidence,
     NewEvidence,
+    NewEvidenceImport,
     RunEvidenceLink,
     StoredEvidence,
 )
@@ -41,6 +45,7 @@ from retail_analytics.domain.evidence import (
     EvidenceKind,
     EvidenceUse,
     PinHolder,
+    ReportSource,
     decode_analysis,
     decode_provenance,
     decode_table,
@@ -65,6 +70,20 @@ _INVALIDATE = sa.text(
     INSERT INTO evidence_invalidations (evidence_id, reason, slot, invalidated_at)
     SELECT evidence_id, 'preference_changed', :slot, :now FROM affected
     ON CONFLICT (evidence_id) DO NOTHING
+    """
+)
+
+# A setting scoped to one session also supersedes report evidence linked into
+# that session (the record itself stays valid for its own session).
+_INVALIDATE_IMPORTS = sa.text(
+    """
+    UPDATE session_report_evidence s SET invalidated_at = :now
+    FROM evidence e
+    WHERE s.session_id = :session_id
+      AND s.executive_id = :executive_id
+      AND s.invalidated_at IS NULL
+      AND e.evidence_id = s.evidence_id
+      AND :slot = ANY(e.analytical_slots)
     """
 )
 
@@ -123,8 +142,8 @@ def _stored(row: Row) -> StoredEvidence:
 
 
 class PostgresEvidenceStore:
-    """Implements ``EvidenceRepository``, ``EvidencePins`` and the preference
-    ``FindingInvalidator`` port."""
+    """Implements ``EvidenceRepository``, ``SessionEvidenceImports``,
+    ``EvidencePins`` and the preference ``FindingInvalidator`` port."""
 
     def __init__(self, db: Database) -> None:
         self._db = db
@@ -313,21 +332,110 @@ class PostgresEvidenceStore:
 
         return await self._db.transaction(work)
 
+    # --- SessionEvidenceImports -------------------------------------------
+
+    async def add_import(self, new: NewEvidenceImport) -> None:
+        def work(connection: sa.Connection) -> None:
+            owner = connection.execute(
+                sa.select(evidence.c.executive_id).where(
+                    evidence.c.evidence_id == new.evidence_id
+                )
+            ).scalar_one_or_none()
+            session_owner = connection.execute(
+                sa.select(sessions.c.executive_id).where(
+                    sessions.c.session_id == new.session_id
+                )
+            ).scalar_one_or_none()
+            if owner != new.executive_id or session_owner != new.executive_id:
+                raise AccessDenied("evidence", new.evidence_id)
+            connection.execute(
+                pg_insert(session_report_evidence)
+                .values(
+                    session_id=new.session_id,
+                    evidence_id=new.evidence_id,
+                    executive_id=new.executive_id,
+                    run_id=new.run_id,
+                    report_id=new.report_id,
+                    report_version=new.report_version,
+                    report_title=new.report_title,
+                    imported_at=self._db.clock(),
+                )
+                .on_conflict_do_nothing()
+            )
+            self._link(connection, new.run_id, new.evidence_id, EvidenceUse.REUSED)
+
+        await self._db.transaction(work)
+
+    async def imported(
+        self,
+        executive_id: str,
+        session_id: str,
+        *,
+        evidence_id: str | None = None,
+        subject_key: str | None = None,
+        limit: int = DEFAULT_CANDIDATE_LIMIT,
+    ) -> Sequence[ImportedEvidence]:
+        imports = session_report_evidence
+        query = (
+            _select()
+            .add_columns(
+                imports.c.report_id,
+                imports.c.report_version,
+                imports.c.report_title,
+                imports.c.imported_at,
+                imports.c.invalidated_at,
+            )
+            .join(imports, imports.c.evidence_id == evidence.c.evidence_id)
+            .where(
+                imports.c.session_id == session_id,
+                imports.c.executive_id == executive_id,
+                evidence.c.executive_id == executive_id,
+            )
+        )
+        if evidence_id is not None:
+            query = query.where(evidence.c.evidence_id == evidence_id)
+        if subject_key is not None:
+            query = query.where(evidence.c.subject_key == subject_key)
+        query = query.order_by(
+            imports.c.imported_at.desc(), evidence.c.evidence_id
+        ).limit(limit)
+
+        def work(connection: sa.Connection) -> list[ImportedEvidence]:
+            found: list[ImportedEvidence] = []
+            for row in connection.execute(query):
+                stored = _stored(row)
+                m = row._mapping
+                found.append(
+                    ImportedEvidence(
+                        stored.evidence,
+                        ReportSource(
+                            m["report_id"],
+                            m["report_version"],
+                            m["report_title"],
+                            m["imported_at"],
+                        ),
+                        stored.invalidated or m["invalidated_at"] is not None,
+                    )
+                )
+            return found
+
+        return await self._db.transaction(work)
+
     # --- FindingInvalidator -------------------------------------------------
 
     async def invalidate_dependent_findings(
         self, executive_id: str, session_id: str | None, slot: str
     ) -> None:
         def work(connection: sa.Connection) -> None:
-            connection.execute(
-                _INVALIDATE,
-                {
-                    "executive_id": executive_id,
-                    "session_id": session_id,
-                    "slot": slot,
-                    "now": self._db.clock(),
-                },
-            )
+            params = {
+                "executive_id": executive_id,
+                "session_id": session_id,
+                "slot": slot,
+                "now": self._db.clock(),
+            }
+            connection.execute(_INVALIDATE, params)
+            if session_id is not None:
+                connection.execute(_INVALIDATE_IMPORTS, params)
 
         await self._db.transaction(work)
 

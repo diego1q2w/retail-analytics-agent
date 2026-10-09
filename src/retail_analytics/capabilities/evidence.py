@@ -84,6 +84,8 @@ class EvidenceSummary(ContractModel):
     columns: tuple[str, ...]
     total_rows: int
     truncated_at_source: bool
+    # Set for a saved report's evidence: cite with this source and date.
+    source: str | None = None
 
 
 class EvidenceRows(ContractModel):
@@ -100,6 +102,8 @@ class EvidenceRows(ContractModel):
     truncated_at_source: bool
     notes: tuple[str, ...]
     masked: bool
+    # Set for a saved report's evidence: cite with this source and date.
+    source: str | None = None
 
 
 class FetchEvidenceOutput(ToolOutput):
@@ -140,6 +144,7 @@ def fetch_evidence_capability(
                                 columns=x.columns,
                                 total_rows=x.total_rows,
                                 truncated_at_source=x.truncated_at_source,
+                                source=x.source,
                             )
                             for x in listing
                         ),
@@ -177,6 +182,7 @@ def fetch_evidence_capability(
                     truncated_at_source=page.truncated_at_source,
                     notes=page.notes,
                     masked=page.masked,
+                    source=page.source,
                 ),
                 guidance=_USE + (" " + _TRUNCATED if page.truncated_at_source else ""),
             ),

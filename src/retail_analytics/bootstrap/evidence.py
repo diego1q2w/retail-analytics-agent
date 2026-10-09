@@ -5,7 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
-from retail_analytics.adapters.postgres.database import Clock, utc_now
+from retail_analytics.adapters.postgres.database import Clock, Database, utc_now
+from retail_analytics.adapters.postgres.product_scopes import (
+    PostgresProductScopeSnapshots,
+)
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.persistence import Persistence
@@ -40,4 +43,8 @@ def build_evidence(
         clock=clock,
         new_id=new_evidence_id,
         policy=ReusePolicy(current_freshness),
+        # The owner's saved-report evidence may be reused in their other
+        # sessions, judged by required-scope coverage (T18-F2).
+        imports=persistence.evidence,
+        scopes=PostgresProductScopeSnapshots(Database(persistence.engine)),
     )

@@ -33,7 +33,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from retail_analytics.domain.conversation import Message, MessageRole
-from retail_analytics.domain.evidence import Evidence, ReuseBlock
+from retail_analytics.domain.evidence import Evidence, ReportSource, ReuseBlock
 
 # Rough characters-per-token ratio used for budget accounting; the budget is
 # a bound on prompt size, not a billing estimate.
@@ -95,6 +95,14 @@ class EvidenceStanding:
     evidence: Evidence
     # None: usable. Otherwise the first authority rule it fails.
     block: ReuseBlock | None
+    # Set when the record is the owner's saved-report evidence linked into
+    # this session from another one (a historical snapshot).
+    source: ReportSource | None = None
+
+    @property
+    def entered_at(self) -> datetime:
+        """When the record's figures could first appear in this session."""
+        return self.source.imported_at if self.source else self.evidence.computed_at
 
     @property
     def usable(self) -> bool:
@@ -121,18 +129,23 @@ class HistoryRules:
 
     @property
     def current_since(self) -> datetime | None:
-        """Earliest computation under the current authority, if any."""
-        times = [s.evidence.computed_at for s in self.standings.values() if s.usable]
+        """Earliest computation under the current authority, if any.
+
+        Report evidence linked from another session does not count: it stays
+        usable across widened access, so it says nothing about which
+        authority later messages were produced under.
+        """
+        times = [
+            s.evidence.computed_at
+            for s in self.standings.values()
+            if s.usable and s.source is None
+        ]
         return min(times) if times else None
 
     @property
     def withdrawn_since(self) -> datetime | None:
-        """Earliest computation of evidence now withheld for access reasons."""
-        times = [
-            s.evidence.computed_at
-            for s in self.standings.values()
-            if s.access_withdrawn
-        ]
+        """Earliest arrival of evidence now withheld for access reasons."""
+        times = [s.entered_at for s in self.standings.values() if s.access_withdrawn]
         return min(times) if times else None
 
     def treatment(self, message: Message) -> HistoryTreatment:

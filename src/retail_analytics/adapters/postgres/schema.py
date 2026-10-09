@@ -310,6 +310,20 @@ evidence_invalidations = sa.Table(
     _ts("invalidated_at"),
 )
 
+session_report_evidence = sa.Table(
+    "session_report_evidence",
+    metadata,
+    sa.Column("session_id", sa.Text, primary_key=True),
+    sa.Column("evidence_id", sa.Text, primary_key=True),
+    sa.Column("executive_id", sa.Text, nullable=False),
+    sa.Column("run_id", sa.Text, nullable=False),
+    sa.Column("report_id", sa.Text, nullable=False),
+    sa.Column("report_version", sa.Integer, nullable=False),
+    sa.Column("report_title", sa.Text, nullable=False),
+    _ts("imported_at"),
+    sa.Column("invalidated_at", sa.DateTime(timezone=True)),
+)
+
 evidence_pins = sa.Table(
     "evidence_pins",
     metadata,

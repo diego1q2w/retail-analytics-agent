@@ -9,7 +9,9 @@ from datetime import UTC, datetime, timedelta
 from retail_analytics.application.authorization import AccessDenied
 from retail_analytics.application.contracts.evidence import (
     DEFAULT_CANDIDATE_LIMIT,
+    ImportedEvidence,
     NewEvidence,
+    NewEvidenceImport,
     RunEvidenceLink,
     StoredEvidence,
 )
@@ -19,6 +21,7 @@ from retail_analytics.domain.evidence import (
     Evidence,
     EvidenceUse,
     PinHolder,
+    ReportSource,
     product_set_digest,
 )
 
@@ -53,6 +56,12 @@ class FakeEvidenceStore:
     pins: set[tuple[str, PinHolder]] = field(default_factory=set)
     # ProductScopeSnapshots: exact sets by digest, written with each record.
     snapshots: dict[str, frozenset[str]] = field(default_factory=dict)
+    # SessionEvidenceImports: (session, evidence) -> (import, imported_at).
+    imports: dict[tuple[str, str], tuple[NewEvidenceImport, datetime]] = field(
+        default_factory=dict
+    )
+    imports_invalidated: set[tuple[str, str]] = field(default_factory=set)
+    session_owners: dict[str, str] = field(default_factory=dict)
 
     async def record(self, new: NewEvidence) -> Evidence:
         for existing in self.records.values():
@@ -169,6 +178,50 @@ class FakeEvidenceStore:
                 break
             affected |= more
         self.invalidated |= affected
+        if session_id is not None:
+            self.imports_invalidated |= {
+                key
+                for key, (new, _) in self.imports.items()
+                if key[0] == session_id
+                and new.executive_id == executive_id
+                and slot in self.records[key[1]].content.analytical_slots
+            }
+
+    async def add_import(self, new: NewEvidenceImport) -> None:
+        record = self.records.get(new.evidence_id)
+        owner = self.session_owners.get(new.session_id, new.executive_id)
+        if record is None or not (record.executive_id == owner == new.executive_id):
+            raise AccessDenied("evidence", new.evidence_id)
+        self.imports.setdefault((new.session_id, new.evidence_id), (new, self.clock()))
+        await self.link_run(new.run_id, new.evidence_id, EvidenceUse.REUSED)
+
+    async def imported(
+        self,
+        executive_id: str,
+        session_id: str,
+        *,
+        evidence_id: str | None = None,
+        subject_key: str | None = None,
+        limit: int = DEFAULT_CANDIDATE_LIMIT,
+    ) -> Sequence[ImportedEvidence]:
+        found = [
+            ImportedEvidence(
+                self.records[key[1]],
+                ReportSource(new.report_id, new.report_version, new.report_title, at),
+                key[1] in self.invalidated or key in self.imports_invalidated,
+            )
+            for key, (new, at) in self.imports.items()
+            if key[0] == session_id
+            and new.executive_id == executive_id
+            and self.records[key[1]].executive_id == executive_id
+            and (evidence_id is None or key[1] == evidence_id)
+            and (
+                subject_key is None
+                or self.records[key[1]].content.subject_key == subject_key
+            )
+        ]
+        found.sort(key=lambda i: i.source.imported_at, reverse=True)
+        return found[:limit]
 
     async def pin(
         self, executive_id: str, evidence_ids: Sequence[str], holder: PinHolder

@@ -414,7 +414,7 @@ def _service_from_settings(env: Env, seconds: int | None) -> Any:
         else {"RETAIL_ANALYTICS_EVIDENCE_CURRENT_FRESHNESS_SECONDS": str(seconds)}
     )
     return build_evidence(
-        SimpleNamespace(evidence=env.store),  # type: ignore[arg-type]
+        SimpleNamespace(evidence=env.store, engine=None),  # type: ignore[arg-type]
         settings=load_backend_settings(environ=raw, env_file=None),
         clock=env.clock,
     )
@@ -448,7 +448,7 @@ async def test_explicit_constructor_value_overrides_settings() -> None:
     env = Env()
     compiled, _, _ = await _recorded(env)
     service = build_evidence(
-        SimpleNamespace(evidence=env.store),  # type: ignore[arg-type]
+        SimpleNamespace(evidence=env.store, engine=None),  # type: ignore[arg-type]
         current_freshness=timedelta(minutes=1),
         clock=env.clock,
     )

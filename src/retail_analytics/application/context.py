@@ -50,6 +50,7 @@ from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.domain.context import (
     CHARS_PER_TOKEN,
     ContextBudget,
+    EvidenceStanding,
     HistoryRules,
     HistoryTreatment,
     standings_by_id,
@@ -110,6 +111,8 @@ class EvidenceDigest:
     compacted: bool
     # Disclosures about display fallbacks (missing product names or brands).
     notes: tuple[str, ...] = ()
+    # Provenance of saved-report evidence linked from another session.
+    source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,9 +243,9 @@ class ContextBuilder:
         rules = HistoryRules(
             standings_by_id(session.standings), session.run_links, reset_at
         )
-        usable = [
-            e for e in session.usable if reset_at is None or e.computed_at >= reset_at
-        ]
+        current = _after_reset(session.standings, reset_at)
+        usable = [s.evidence for s in current]
+        sources = _sources(current)
         permitted = frozenset(r for e in usable for r in _references_in(e))
         protected = tuple(self._protected_terms()) + user_supplied_terms(
             [request, *(m.content for m in messages if m.role is MessageRole.USER)]
@@ -262,7 +265,12 @@ class ContextBuilder:
             if len(digests) >= budget.max_evidence:
                 over_budget_evidence += 1
                 continue
-            digest = _digest(evidence, budget.max_rows_per_evidence, screen)
+            digest = _digest(
+                evidence,
+                budget.max_rows_per_evidence,
+                screen,
+                sources.get(evidence.evidence_id),
+            )
             size = _evidence_size(digest)
             if used + size > budget.max_chars:
                 digest = _compact(digest)
@@ -310,8 +318,8 @@ class ContextBuilder:
         withheld = sum(1 for s in session.standings if not s.usable)
         before_reset = sum(
             1
-            for e in session.usable
-            if reset_at is not None and e.computed_at < reset_at
+            for s in session.standings
+            if s.usable and reset_at is not None and s.entered_at < reset_at
         )
         omissions = ContextOmissions(
             history_access_changed=counts[HistoryTreatment.WITHHELD_ACCESS_CHANGED],
@@ -348,7 +356,9 @@ class ContextBuilder:
         Authority is resolved now; evidence before a topic reset, invalidated
         or computed under other access is not listed.
         """
-        _, usable = await self._usable(principal, run_id, trace_id)
+        _, current = await self._usable(principal, run_id, trace_id)
+        sources = _sources(current)
+        usable = [s.evidence for s in current]
         return tuple(
             EvidenceListing(
                 evidence_id=e.evidence_id,
@@ -361,6 +371,7 @@ class ContextBuilder:
                 columns=e.content.table.column_names,
                 total_rows=len(e.content.table.rows),
                 truncated_at_source=e.content.table.truncated,
+                source=sources.get(e.evidence_id),
             )
             for e in usable
         )
@@ -385,7 +396,9 @@ class ContextBuilder:
         is bounded by rows and by half of the context character budget, and
         the source truncation flag is always carried.
         """
-        ctx, usable = await self._usable(principal, run_id, trace_id)
+        ctx, current = await self._usable(principal, run_id, trace_id)
+        sources = _sources(current)
+        usable = [s.evidence for s in current]
         target = next((e for e in usable if e.evidence_id == evidence_id), None)
         if target is None:
             return None
@@ -435,20 +448,19 @@ class ContextBuilder:
             truncated_at_source=table.truncated,
             notes=label_notes(table),
             masked=bool(screen.masked),
+            source=sources.get(target.evidence_id),
         )
 
     async def _usable(
         self, principal: Principal, run_id: str, trace_id: str | None
-    ) -> tuple[ExecutionContext, list[Evidence]]:
+    ) -> tuple[ExecutionContext, list[EvidenceStanding]]:
         ctx = await self._resolver.context_for_run(principal, run_id, trace_id=trace_id)
         reset = await self._resets.latest_reset(ctx.correlation.session_id)
         reset_at = reset.reset_at if reset else None
         session = await self._evidence.session_standing(
             ctx, limit=self._budget.evidence_scan
         )
-        return ctx, [
-            e for e in session.usable if reset_at is None or e.computed_at >= reset_at
-        ]
+        return ctx, _after_reset(session.standings, reset_at)
 
     async def reset_topic(
         self, principal: Principal, session_id: str, reset_id: str
@@ -499,6 +511,26 @@ def user_supplied_terms(texts: Iterable[str]) -> tuple[ProtectedTerm, ...]:
         for term in detected_terms(text, scan(text)):
             terms.setdefault(term.text.lower(), term)
     return tuple(terms.values())
+
+
+def _after_reset(
+    standings: Iterable[EvidenceStanding], reset_at: datetime | None
+) -> list[EvidenceStanding]:
+    """Usable records that entered the session after the latest topic reset
+    (report evidence counts from when it was linked in)."""
+    return [
+        s
+        for s in standings
+        if s.usable and (reset_at is None or s.entered_at >= reset_at)
+    ]
+
+
+def _sources(standings: Iterable[EvidenceStanding]) -> dict[str, str]:
+    return {
+        s.evidence.evidence_id: s.source.describe(s.evidence)
+        for s in standings
+        if s.source is not None
+    }
 
 
 def _references_in(evidence: Evidence) -> Iterable[str]:
@@ -554,7 +586,9 @@ def _cell_text(cell: EvidenceCell, fallback: str | None = None) -> str:
     return str(cell)
 
 
-def _digest(evidence: Evidence, max_rows: int, screen: _Screen) -> EvidenceDigest:
+def _digest(
+    evidence: Evidence, max_rows: int, screen: _Screen, source: str | None = None
+) -> EvidenceDigest:
     content = evidence.content
     table = content.table
     rows = tuple(
@@ -580,6 +614,7 @@ def _digest(evidence: Evidence, max_rows: int, screen: _Screen) -> EvidenceDiges
         truncated_at_source=table.truncated,
         compacted=False,
         notes=label_notes(table),
+        source=source,
     )
 
 
@@ -596,6 +631,7 @@ def _compact(digest: EvidenceDigest) -> EvidenceDigest:
         truncated_at_source=digest.truncated_at_source,
         compacted=True,
         notes=digest.notes,
+        source=digest.source,
     )
 
 
@@ -612,7 +648,10 @@ def _render_evidence(item: EvidenceDigest, can_fetch: bool = True) -> str:
         + f"; {item.total_rows} rows"
         + ("; incomplete result" if item.truncated_at_source else "")
     )
-    lines = [header, "columns: " + " | ".join(_quote(c) for c in item.columns)]
+    lines = [header]
+    if item.source:
+        lines.append(f"source: {_quote(item.source)}; cite with this source and date")
+    lines.append("columns: " + " | ".join(_quote(c) for c in item.columns))
     if item.compacted:
         lines.append(
             "rows omitted for space; read them with fetch_evidence"

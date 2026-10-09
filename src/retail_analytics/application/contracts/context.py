@@ -23,6 +23,9 @@ class EvidenceListing:
     columns: tuple[str, ...]
     total_rows: int
     truncated_at_source: bool
+    # Saved-report evidence from another session: "from saved report ...,
+    # computed ...; historical snapshot". State it wherever its figures appear.
+    source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,3 +48,6 @@ class EvidencePage:
     notes: tuple[str, ...] = ()
     # Personal data or unknown references were masked in this page.
     masked: bool = False
+    # Saved-report evidence from another session: "from saved report ...,
+    # computed ...; historical snapshot". State it wherever its figures appear.
+    source: str | None = None

@@ -35,6 +35,17 @@ read and export; there is no cached grant, and the report row never stores
 access rights. The subset check runs in the snapshot store, so product IDs are
 never loaded into reports, tool results or model context.
 
+Reusing a report's evidence in another session (T18-F2)
+--------------------------------------------------------
+``reuse_in_run`` links the evidence a version cites into a run of another of
+the owner's sessions, after the same automatic checks as reading plus a
+compatibility check (catalog, result policy, current metric definition
+versions and the session's analytical settings). No extra permission or
+confirmation exists for it. A definition change never blocks *reading* the
+report; it only stops its figures from being reused as results (they must be
+recomputed). Reused records keep their source and computation date
+(``ReportSource.describe``) wherever they appear.
+
 Search
 ------
 Search scans the owner's newest live reports (title, then Markdown content)
@@ -63,7 +74,10 @@ from retail_analytics.application.contracts.reports import (
     ReportSearchResult,
     SavedReport,
 )
-from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.application.evidence import (
+    EvidenceService,
+    ReportEvidenceImport,
+)
 from retail_analytics.application.output_privacy import (
     OutputDestination,
     OutputPrivacyGate,
@@ -71,15 +85,18 @@ from retail_analytics.application.output_privacy import (
 )
 from retail_analytics.application.ports.evidence import ProductScopeSnapshots
 from retail_analytics.application.ports.reports import ReportRepository
+from retail_analytics.application.result_privacy import PRIVACY_POLICY_VERSION
 from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.artifacts import MARKDOWN
 from retail_analytics.domain.evidence import (
+    AnalysisCompatibility,
     DefinitionRef,
     Evidence,
     PinHolder,
     scope_digest,
 )
 from retail_analytics.domain.labels import present_rows
+from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.metrics import MetricCatalog, UnknownMetricError
 from retail_analytics.domain.report_markdown import (
     DefinitionDescriber,
@@ -183,6 +200,8 @@ class ReportService:
         resolver: AccessResolver,
         metrics: MetricCatalog,
         scopes: ProductScopeSnapshots,
+        *,
+        catalog_version: int | None = None,
     ) -> None:
         self._repository = repository
         self._artifacts = artifacts
@@ -190,6 +209,12 @@ class ReportService:
         self._gate = gate
         self._resolver = resolver
         self._describe = metric_describer(metrics)
+        self._metrics = metrics
+        self._catalog_version = (
+            catalog_version
+            if catalog_version is not None
+            else default_logical_catalog().version
+        )
         self._scopes = scopes
         self._rule = ReportAccessRule(scopes)
 
@@ -338,6 +363,44 @@ class ReportService:
             media_type=MARKDOWN,
             content=body.encode(),
             version=record,
+        )
+
+    async def reuse_in_run(
+        self,
+        principal: Principal,
+        run_id: str,
+        document: ReportDocument,
+        *,
+        preference_fingerprint: str,
+    ) -> ReportEvidenceImport:
+        """Make a version's evidence citable in ``run_id`` (another session of
+        the same owner) as historical snapshots, after the automatic checks.
+
+        ``document`` must come from ``read`` by the same principal;
+        ``preference_fingerprint`` is the run's current effective analytical
+        fingerprint (trusted preference service). Raises ``AccessDenied`` when
+        the run or the report is not the caller's.
+        """
+        ctx = await self._resolver.context_for_run(principal, run_id)
+        record = document.version
+        if record.owner_id != ctx.executive_id:
+            raise AccessDenied("report", record.report_id)
+        compatibility = AnalysisCompatibility(
+            catalog_version=self._catalog_version,
+            policy_version=PRIVACY_POLICY_VERSION,
+            preference_fingerprint=preference_fingerprint,
+            current_definitions={
+                metric_id: self._metrics.latest_version(metric_id)
+                for metric_id in self._metrics.metric_ids()
+            },
+        )
+        return await self._evidence.import_report_evidence(
+            ctx,
+            report_id=record.report_id,
+            report_version=record.version,
+            report_title=record.title,
+            evidence_ids=record.evidence_ids,
+            compatibility=compatibility,
         )
 
     # --- search --------------------------------------------------------------

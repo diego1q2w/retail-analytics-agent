@@ -398,8 +398,9 @@ class InvestigationRuntime:
                 correctable=withheld.correctable,
             )
         await self._evidence.link_to_run(context, released.cited_evidence)
-        if status is RunStatus.COMPLETED and await self._cites_incomplete(
-            context, draft.run_id, released.cited_evidence
+        cited = await self._cited(context, draft.run_id, released.cited_evidence)
+        if status is RunStatus.COMPLETED and any(
+            s.evidence.content.table.truncated for s in cited
         ):
             # Never record an answer resting on a cut result as complete.
             status = RunStatus.PARTIAL
@@ -407,7 +408,8 @@ class InvestigationRuntime:
             draft.run_id,
             status,
             output=AssistantOutput(
-                answer_message_id(draft.run_id, draft.sequence), released.text
+                answer_message_id(draft.run_id, draft.sequence),
+                released.text + _source_notes(cited),
             ),
         )
         if not closure.closed:
@@ -634,18 +636,14 @@ class InvestigationRuntime:
             raise RunStopped(StopReason.ACCESS)
         return context
 
-    async def _cites_incomplete(
+    async def _cited(
         self, context: ExecutionContext, run_id: str, cited: Sequence[str]
-    ) -> bool:
+    ) -> list[EvidenceStanding]:
         if not cited:
-            return False
+            return []
         session = await self._evidence.session_standing(context, run_ids=[run_id])
         wanted = set(cited)
-        return any(
-            s.evidence.content.table.truncated
-            for s in session.standings
-            if s.evidence.evidence_id in wanted
-        )
+        return [s for s in session.standings if s.evidence.evidence_id in wanted]
 
     async def _build_context(self, principal: Principal, run: Run) -> ModelContext:
         inputs = await self._inputs.for_run(run.run_id)
@@ -825,3 +823,14 @@ def _partial_text(
         cited.append(evidence.evidence_id)
     lines.append("The remaining work was not completed.")
     return "\n".join(lines), tuple(cited)
+
+
+def _source_notes(cited: Sequence[EvidenceStanding]) -> str:
+    """Application-authored provenance for saved-report figures in an answer:
+    reused figures always keep their source and date, never read as current."""
+    lines = [
+        f"- {s.evidence.evidence_id}: {s.source.describe(s.evidence)}"
+        for s in cited
+        if s.source is not None
+    ]
+    return "\n\nSources from saved reports:\n" + "\n".join(lines) if lines else ""

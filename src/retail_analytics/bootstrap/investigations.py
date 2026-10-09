@@ -142,7 +142,12 @@ def build_capability_registry(
             access.resolver,
         )
         specs.extend(
-            report_capabilities(reports, principals=principals, evidence=evidence)
+            report_capabilities(
+                reports,
+                principals=principals,
+                evidence=evidence,
+                preferences=preferences,
+            )
         )
         specs.append(
             report_deletion_capability(

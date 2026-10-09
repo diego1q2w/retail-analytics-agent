@@ -8,6 +8,7 @@ from retail_analytics.domain.evidence import (
     Evidence,
     EvidenceContent,
     EvidenceUse,
+    ReportSource,
 )
 
 DEFAULT_CANDIDATE_LIMIT = 20
@@ -47,3 +48,30 @@ class RunEvidenceLink:
     evidence_id: str
     use: EvidenceUse
     linked_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class NewEvidenceImport:
+    """Link the owner's saved-report evidence into one of their sessions."""
+
+    session_id: str
+    evidence_id: str
+    executive_id: str
+    # The run that linked it (also linked to it as ``reused``).
+    run_id: str
+    report_id: str
+    report_version: int
+    report_title: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImportedEvidence:
+    """Report evidence linked into a session, with where it came from.
+
+    ``invalidated`` covers both the record itself and a later change of an
+    analytical setting scoped to the importing session.
+    """
+
+    evidence: Evidence
+    source: ReportSource
+    invalidated: bool = False

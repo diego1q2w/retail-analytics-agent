@@ -33,6 +33,7 @@ CONVERT_CURRENCY = "convert_currency"
 REMEMBER_PREFERENCE = "remember_preference"
 CONFIRM_PREFERENCE = "confirm_preference"
 SAVE_REPORT = "save_report"
+READ_REPORT = "read_report"
 LIST_REPORTS = "list_reports"
 SEARCH_REPORTS = "search_reports"
 PROPOSE_DELETION = "propose_report_deletion"
@@ -134,7 +135,10 @@ def _investigate_step(tools: frozenset[str]) -> str:
         )
     parts.append(
         "Fresh, sufficient evidence already in <evidence> can answer without a "
-        "new query."
+        "new query. Evidence with a source line is a saved report's historical "
+        "snapshot: use it for what that report found, with its source and "
+        "date, never as current values; a question about current numbers "
+        "needs a new query."
     )
     if FETCH_EVIDENCE in tools:
         parts.append(
@@ -203,6 +207,14 @@ def _memory_and_reports(tools: frozenset[str]) -> list[str]:
         )
     else:
         lines.append("- You cannot save reports for this user.")
+    if READ_REPORT in tools:
+        lines.append(
+            f"- {READ_REPORT} also makes the report's reusable evidence citable "
+            "here, with no extra step or confirmation. Cite it only with its "
+            "source line (report, computed date, period, definitions); "
+            "evidence marked not reusable (definitions or access changed) must "
+            "be recomputed."
+        )
     if PROPOSE_DELETION in tools:
         finders = _names(tools, LIST_REPORTS, SEARCH_REPORTS)
         source = f" with ids from {finders}" if finders else ""
