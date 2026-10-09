@@ -2,15 +2,16 @@
 
 ``BudgetedModel`` wraps one provider model (for example each member of a
 primary/backup ``FallbackModel``), so every request that reaches a provider -
-including fallback attempts and Temporal activity retries - is reserved
+including fallback attempts and runtime retries - is reserved
 against the run's shared budget *before* it is sent and settled with the
 reported token usage afterwards. A reservation refused by the budget stops
 the run (``RunStopped``) instead of sending the request.
 
-The request key combines the model activity attempt with a per-request
-sequence number, so a retried activity (which may have sent its request
-before the worker died), an in-activity retry and a fallback attempt are each
-charged again: provider attempts are never undercounted.
+The request key combines the execution attempt (the ``request_scope`` a
+runtime sets: the Temporal adapter uses the model activity attempt) with a
+per-request sequence number, so a retried attempt (which may have sent its
+request before the worker died), an in-attempt retry and a fallback attempt
+are each charged again: provider attempts are never undercounted.
 
 Settlement records actual usage only when the provider reported it. A
 response without usage, a lost response or a timeout keeps the reservation
@@ -23,8 +24,9 @@ from __future__ import annotations
 
 import itertools
 import uuid
-from collections.abc import AsyncGenerator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from pydantic_ai._run_context import get_current_run_context
@@ -40,10 +42,10 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import RunContext
 from pydantic_ai.usage import RequestUsage
 from pydantic_core import to_json
-from temporalio import activity
 
 from retail_analytics.application.contracts.budgets import ProviderUsage
-from retail_analytics.application.investigation_runtime import RunStopped, StopReason
+from retail_analytics.application.contracts.investigations import StopReason
+from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.application.ports.budgets import ProviderBudget
 from retail_analytics.domain.budgets import BudgetExhausted
 
@@ -59,13 +61,31 @@ def current_run_id() -> str:
     return run_id
 
 
-def activity_request_key(model_name: str) -> str:
-    """Stable per activity attempt; a fresh key outside an activity."""
-    if activity.in_activity():
-        info = activity.info()
-        return (f"{info.workflow_id}/{info.activity_id}/{info.attempt}/{model_name}")[
-            :200
-        ]
+_request_scope: ContextVar[str | None] = ContextVar(
+    "retail_analytics_request_scope", default=None
+)
+
+
+@contextmanager
+def request_scope(scope: str | None) -> Iterator[None]:
+    """Name the execution attempt whose provider requests follow.
+
+    A runtime that retries a model step (for example a Temporal activity
+    attempt) sets a scope that is stable for that attempt; None leaves every
+    request unscoped (a fresh key each).
+    """
+    token = _request_scope.set(scope)
+    try:
+        yield
+    finally:
+        _request_scope.reset(token)
+
+
+def scoped_request_key(model_name: str) -> str:
+    """Stable per execution attempt; a fresh key outside any scope."""
+    scope = _request_scope.get()
+    if scope is not None:
+        return f"{scope}/{model_name}"[:200]
     return f"local/{uuid.uuid4().hex}/{model_name}"[:200]
 
 
@@ -97,7 +117,7 @@ class BudgetedModel(WrapperModel):
         budget: ProviderBudget,
         *,
         run_id: Callable[[], str] = current_run_id,
-        request_key: Callable[[str], str] = activity_request_key,
+        request_key: Callable[[str], str] = scoped_request_key,
     ) -> None:
         super().__init__(wrapped)
         self._budget = budget

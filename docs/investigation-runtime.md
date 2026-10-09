@@ -48,6 +48,44 @@ claims it is complete.
 Tests supply a controlled provider and an external-effect fixture, while still
 using real PostgreSQL, Temporal and all application guards.
 
+## Runtime boundary
+
+Investigation behaviour is split from the engine that executes it. Temporal is
+the only runtime shipped; a local runtime is not implemented and there is no
+setting to select one.
+
+- Application (`application/investigation_runtime.py`): the steps an
+  investigation takes - begin, prepare a model step, release an answer, ask,
+  resume, finish, cancel - each re-checking authority and budgets and safe to
+  repeat. `application/investigation_lifecycle.py` decides what follows each
+  step (close, ask, wait for input, restart the agent with rebuilt context,
+  stop with partial findings, cancel, expire). It is pure and deterministic.
+  Payloads and decisions are plain records in
+  `application/contracts/investigations.py`; no Temporal or Pydantic AI type
+  enters the application.
+- Shared agent (`adapters/agent/investigator.py`): the one Pydantic AI agent,
+  its guarded model (fresh authority and context per request, stale-history
+  refusal), the permission-filtered catalog toolset and the mapping of its
+  output to answer/question drafts. It raises typed outcomes (`RunStopped`,
+  `InvestigationContextChanged`, `AgentUnbound`) and imports nothing from
+  Temporal; services are passed in through an `AgentBinding`.
+- Temporal adapter (`adapters/temporal/`): the workflow interprets lifecycle
+  decisions with activities, signals and durable timers; `agent.py` adds
+  `TemporalDurability`, activity timeouts/retries, translation of the typed
+  outcomes into non-retryable Temporal errors (and back into
+  runtime-neutral interruptions) and the per-attempt provider budget key.
+  Activity, workflow and error type names, and the payload records, are
+  recorded in workflow histories and stay stable.
+- Composition: `bootstrap/investigations.py` builds runtime-neutral services
+  and binds nothing; `bootstrap/temporal.py` connects the client, creates the
+  scheduler and binds and registers the worker for the worker, API and
+  evaluation entry points.
+
+Architecture tests reject Temporal imports in the shared agent, model
+adapters and general investigation composition (also transitive ones), and a
+test runs the shared agent in an interpreter where Temporal cannot be
+imported.
+
 ## Recovery boundaries
 
 PostgreSQL stores the authenticated principal ceiling, ordered inputs,

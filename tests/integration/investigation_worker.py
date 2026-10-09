@@ -18,11 +18,8 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from temporalio.client import Client
-from temporalio.worker import Worker
 
-from retail_analytics.adapters.temporal.activities import REGISTERED
 from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
-from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
 from retail_analytics.application.contracts.persistence import OperationRequest
 from retail_analytics.application.tools import (
     AuthorizationSpec,
@@ -40,6 +37,7 @@ from retail_analytics.bootstrap.investigations import build_investigations
 from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import Persistence, build_persistence
 from retail_analytics.bootstrap.telemetry import install_from_settings
+from retail_analytics.bootstrap.temporal import investigation_worker
 from retail_analytics.domain.executions import ToolExecutionStatus
 from retail_analytics.domain.operations import RecoveryMode, SideEffect
 
@@ -225,7 +223,7 @@ async def main() -> None:
     model: Any = FunctionModel(scripted_model, model_name="scripted")
     if os.environ.get("T14_PROVIDERS") == "fallback":
         model = fallback_chain(settings)
-    build_investigations(
+    services = build_investigations(
         settings,
         db,
         access,
@@ -234,12 +232,7 @@ async def main() -> None:
         registry=effect_registry(db),
     )
     try:
-        async with Worker(
-            client,
-            task_queue=settings.temporal_task_queue,
-            workflows=[InvestigationWorkflow],
-            activities=REGISTERED,
-        ):
+        async with investigation_worker(client, settings.temporal_task_queue, services):
             print("WORKER_READY", flush=True)
             await asyncio.Event().wait()
     finally:

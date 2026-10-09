@@ -65,7 +65,8 @@ _RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
 
 @dataclass(frozen=True, slots=True)
 class WorkflowRef:
-    """Temporal identifiers for the execution of a run."""
+    """Execution-runtime identifiers of a run (a Temporal workflow ID and
+    first run ID today). Plain strings: no runtime handle is stored."""
 
     workflow_id: str
     workflow_run_id: str | None = None

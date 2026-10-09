@@ -13,6 +13,7 @@ from tests.architecture.boundaries import (
     LAYERS,
     check_application_layout,
     check_import_time,
+    check_runtime_neutral,
     check_sources,
 )
 
@@ -38,6 +39,43 @@ def test_source_imports_respect_layer_rules() -> None:
 def test_inner_layers_import_without_sdks_or_side_effects(layer: str) -> None:
     problems = check_import_time(SRC, PACKAGE, layer)
     assert problems == [], "\n".join(problems)
+
+
+def test_runtime_neutral_modules_never_load_temporal() -> None:
+    problems = check_runtime_neutral(SRC, PACKAGE)
+    assert problems == [], "\n".join(problems)
+
+
+def test_runtime_neutral_checks_reject_invalid_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent = "fixture_app.adapters.agent"
+    found = {
+        (v.module, v.detail)
+        for v in check_sources(FIXTURE_ROOT / FIXTURE_PACKAGE, FIXTURE_PACKAGE)
+    }
+    assert (
+        f"{agent}.durable",
+        "runtime-neutral code must not import temporalio",
+    ) in found
+    assert (
+        f"{agent}.wired",
+        "runtime-neutral code must not import fixture_app.adapters.temporal",
+    ) in found
+    # The Temporal adapter itself may use Temporal; a transitive load is only
+    # visible at import time.
+    neutral = {m for m, detail in found if detail.startswith("runtime-neutral")}
+    assert neutral == {f"{agent}.durable", f"{agent}.wired"}
+
+    problems = check_runtime_neutral(FIXTURE_ROOT, FIXTURE_PACKAGE)
+    assert "runtime-neutral import loads temporalio" in problems
+    assert "runtime-neutral import loads fixture_app.adapters.temporal" in problems
+    monkeypatch.setattr(
+        boundaries, "RUNTIME_NEUTRAL_MODULES", ("adapters.agent.transitive",)
+    )
+    assert check_runtime_neutral(FIXTURE_ROOT, FIXTURE_PACKAGE) == [
+        "runtime-neutral import loads temporalio"
+    ]
 
 
 def test_source_check_rejects_invalid_fixture() -> None:

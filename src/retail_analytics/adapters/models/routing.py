@@ -51,6 +51,7 @@ from pydantic_ai.settings import ModelSettings
 from retail_analytics.adapters.models.budgeted import current_run_id
 from retail_analytics.adapters.models.deadlines import ModelResponseTimeout
 from retail_analytics.application.budgets import RetryDecision
+from retail_analytics.application.contracts.investigations import StopReason
 from retail_analytics.application.contracts.telemetry import (
     Label,
     Metric,
@@ -58,7 +59,7 @@ from retail_analytics.application.contracts.telemetry import (
     ReasonClass,
     Span,
 )
-from retail_analytics.application.investigation_runtime import RunStopped, StopReason
+from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.application.telemetry import (
     ATTRIBUTION_METADATA_KEY,
     Stopwatch,

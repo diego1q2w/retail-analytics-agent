@@ -1,4 +1,11 @@
-"""One adaptive agent, durable waits and cooperative cancellation per run."""
+"""One adaptive agent, durable waits and cooperative cancellation per run.
+
+The workflow executes; it does not decide. Every step's outcome goes to the
+application's lifecycle policy (``application.investigation_lifecycle``),
+and the workflow carries the decision out with Temporal primitives:
+activities, signals, durable timers and the durable agent. Policy calls are
+pure, so replay stays deterministic.
+"""
 
 from __future__ import annotations
 
@@ -15,38 +22,34 @@ from temporalio.exceptions import ActivityError
 with workflow.unsafe.imports_passed_through():
     from pydantic_ai.durable_exec.temporal import PydanticAIWorkflow
     from pydantic_ai.exceptions import AgentRunError
-    from pydantic_ai.usage import UsageLimits
 
+    from retail_analytics.adapters.agent.investigator import (
+        proposal,
+        run_investigation,
+    )
     from retail_analytics.adapters.temporal import activities
     from retail_analytics.adapters.temporal.agent import (
-        AnswerOutput,
-        InvestigationDeps,
+        UNBOUND,
+        interruption,
         investigation_agent,
-        is_context_changed,
-        is_run_stopped,
     )
-    from retail_analytics.application.investigation_runtime import (
+    from retail_analytics.application import investigation_lifecycle as lifecycle
+    from retail_analytics.application.contracts.investigations import (
         AnswerDraft,
         FinishRequest,
+        LifecycleAction,
+        LifecycleDecision,
         QuestionDraft,
-        StepResult,
         StopReason,
     )
-    from retail_analytics.application.telemetry import (
-        ATTRIBUTION_METADATA_KEY,
-        attribution_from_metadata,
-    )
-    from retail_analytics.domain.budgets import BudgetResource
-    from retail_analytics.domain.request_scope import AdmissionDecision
-    from retail_analytics.domain.runs import RunStatus
 
 _OPTIONS: dict[str, Any] = {
     "start_to_close_timeout": timedelta(seconds=30),
     "retry_policy": RetryPolicy(
-        maximum_attempts=5, non_retryable_error_types=["Unbound"]
+        maximum_attempts=5, non_retryable_error_types=[UNBOUND]
     ),
 }
-WAIT_LIMIT = timedelta(days=7)
+WAIT_LIMIT = lifecycle.WAIT_LIMIT
 
 
 @workflow.defn
@@ -76,73 +79,64 @@ class InvestigationWorkflow(PydanticAIWorkflow):
 
     @workflow.run
     async def run(self, run_id: str) -> str:
-        beginning = await workflow.execute_activity(
-            activities.begin, run_id, **_OPTIONS
+        admission = lifecycle.admit(
+            await workflow.execute_activity(activities.begin, run_id, **_OPTIONS)
         )
-        if beginning.status is None or beginning.status.is_terminal:
+        if admission.action is LifecycleAction.CLOSE:
             return "closed"
-        if beginning.status is RunStatus.CANCELLING:
+        if admission.cancelling:
             self._cancelled = True
-        if beginning.admission in (
-            AdmissionDecision.DECLINE,
-            AdmissionDecision.RESET_TOPIC,
-        ):
+        if admission.action is LifecycleAction.FINISH_MESSAGE:
             await workflow.execute_activity(
                 activities.finish_message,
-                activities.MessageRequest(
-                    run_id, beginning.message or "Start a new topic."
-                ),
+                activities.MessageRequest(run_id, admission.message or ""),
                 **_OPTIONS,
             )
             return "closed"
-        waiting = beginning.status is RunStatus.WAITING_FOR_INPUT
+        waiting = admission.action is LifecycleAction.AWAIT_INPUT
         sequence = 0
-        if beginning.admission is AdmissionDecision.CLARIFY:
-            outcome = await workflow.execute_activity(
+        if admission.action is LifecycleAction.ASK:
+            asked = await workflow.execute_activity(
                 activities.ask,
-                QuestionDraft(
-                    run_id,
-                    sequence,
-                    beginning.message or "What would you like to analyze?",
-                ),
+                QuestionDraft(run_id, sequence, admission.message or ""),
                 **_OPTIONS,
             )
-            waiting = outcome.result is StepResult.ASKED
+            waiting = (
+                lifecycle.after_admission_question(asked).action
+                is LifecycleAction.AWAIT_INPUT
+            )
             sequence += 1
         while not self._is_cancelled():
             if waiting:
                 # Check persisted input before sleeping: notifications arriving
                 # during the preceding activity cannot be lost.
                 generation = self._input_generation
-                outcome = await workflow.execute_activity(
-                    activities.resume, run_id, **_OPTIONS
+                resumed = lifecycle.after_resume(
+                    await workflow.execute_activity(
+                        activities.resume, run_id, **_OPTIONS
+                    )
                 )
-                if outcome.result is StepResult.STOPPED:
+                if resumed.action is LifecycleAction.CANCEL:
                     self._cancelled = True
                     break
-                if outcome.result is StepResult.IDLE:
+                if resumed.action is LifecycleAction.WAIT:
                     try:
                         await workflow.wait_condition(
                             partial(self._input_changed, generation),
                             timeout=WAIT_LIMIT,
                         )
                     except TimeoutError:
-                        expiry = await workflow.execute_activity(
-                            activities.expire, run_id, **_OPTIONS
+                        expiry = lifecycle.after_wait_expired(
+                            await workflow.execute_activity(
+                                activities.expire, run_id, **_OPTIONS
+                            )
                         )
-                        if expiry.result is StepResult.SUPERSEDED:
+                        if expiry.action is LifecycleAction.AWAIT_INPUT:
                             continue
                         return "expired"
                     continue
                 waiting = False
-            task = asyncio.create_task(
-                investigation_agent.run(
-                    "Investigate the persisted request supplied by "
-                    "the activity context.",
-                    deps=InvestigationDeps(run_id=run_id),
-                    usage_limits=UsageLimits(request_limit=25, tool_calls_limit=100),
-                )
-            )
+            task = asyncio.create_task(run_investigation(investigation_agent, run_id))
             await workflow.wait_condition(partial(self._work_done, task))
             if self._is_cancelled():
                 task.cancel()
@@ -152,81 +146,59 @@ class InvestigationWorkflow(PydanticAIWorkflow):
             try:
                 result = await task
             except (ActivityError, AgentRunError) as error:
-                if is_context_changed(error):
-                    # Durable run budgets and tool effects survive this fresh
-                    # conversation; unsafe provider history does not.
+                failed = lifecycle.after_interruption(interruption(error))
+                if failed.action is LifecycleAction.INVESTIGATE:
                     continue
-                stopped = is_run_stopped(error)
-                if stopped and stopped[0] == StopReason.CANCELLED.value:
+                if failed.action is LifecycleAction.CANCEL:
                     self._cancelled = True
                     break
-                reason = (
-                    StopReason(stopped[0]) if stopped else StopReason.MODEL_UNAVAILABLE
-                )
-                resource = (
-                    BudgetResource(stopped[1]) if stopped and stopped[1] else None
-                )
-                await workflow.execute_activity(
-                    activities.finish,
-                    FinishRequest(run_id, reason, resource),
-                    **_OPTIONS,
-                )
-                return "stopped"
-            output = result.output
-            if isinstance(output, AnswerOutput):
+                return await self._stop(run_id, failed)
+            draft = proposal(run_id, sequence, result)
+            if isinstance(draft, AnswerDraft):
                 outcome = await workflow.execute_activity(
-                    activities.release_answer,
-                    AnswerDraft(
-                        run_id,
-                        sequence,
-                        output.text,
-                        tuple(output.cited_evidence),
-                        output.complete,
-                        attribution_from_metadata(
-                            (result.response.metadata or {}).get(
-                                ATTRIBUTION_METADATA_KEY
-                            )
-                        ),
-                    ),
-                    **_OPTIONS,
+                    activities.release_answer, draft, **_OPTIONS
                 )
             else:
                 outcome = await workflow.execute_activity(
-                    activities.ask,
-                    QuestionDraft(run_id, sequence, output.question),
-                    **_OPTIONS,
+                    activities.ask, draft, **_OPTIONS
                 )
             sequence += 1
-            if outcome.result is StepResult.RELEASED:
+            released = lifecycle.after_output(outcome)
+            if released.action is LifecycleAction.CLOSE:
                 return "closed"
-            if outcome.result is StepResult.STOPPED:
-                if outcome.stop_reason is StopReason.CANCELLED:
-                    self._cancelled = True
-                    break
-                await workflow.execute_activity(
-                    activities.finish,
-                    FinishRequest(
-                        run_id, outcome.stop_reason or StopReason.INTERRUPTED
-                    ),
-                    **_OPTIONS,
-                )
-                return "stopped"
-            waiting = outcome.result is StepResult.ASKED
+            if released.action is LifecycleAction.CANCEL:
+                self._cancelled = True
+                break
+            if released.action is LifecycleAction.STOP:
+                return await self._stop(run_id, released)
+            waiting = released.action is LifecycleAction.AWAIT_INPUT
             # A fresh agent run receives rebuilt context. Old model messages
             # cannot carry revoked evidence or superseded assumptions forward.
         progress = await workflow.execute_activity(
             activities.begin_cancel, run_id, **_OPTIONS
         )
-        for _ in range(60):
-            if progress.unsettled == 0:
+        for _ in range(lifecycle.CANCEL_SETTLE_CHECKS):
+            if lifecycle.cancellation_settled(progress):
                 break
-            await asyncio.sleep(2)
+            await asyncio.sleep(lifecycle.CANCEL_SETTLE_INTERVAL.total_seconds())
             progress = await workflow.execute_activity(
                 activities.reconcile_cancel, run_id, **_OPTIONS
             )
         await workflow.execute_activity(
             activities.finish_cancelled,
-            activities.CancelRequest(run_id, progress.unsettled == 0),
+            activities.CancelRequest(run_id, lifecycle.cancellation_settled(progress)),
             **_OPTIONS,
         )
         return "cancelled"
+
+    async def _stop(self, run_id: str, decision: LifecycleDecision) -> str:
+        await workflow.execute_activity(
+            activities.finish,
+            FinishRequest(
+                run_id,
+                decision.stop_reason or StopReason.INTERRUPTED,
+                decision.resource,
+            ),
+            **_OPTIONS,
+        )
+        return "stopped"

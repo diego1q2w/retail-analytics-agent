@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 
 from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.telemetry import ProviderAttribution
+from retail_analytics.domain.budgets import BudgetResource
+from retail_analytics.domain.request_scope import AdmissionDecision
 from retail_analytics.domain.runs import (
     Run,
     RunStatus,
@@ -35,3 +39,146 @@ class RunClosure:
     run: Run
     # False when pending input kept the run open (nothing changed).
     closed: bool
+
+
+class StopReason(StrEnum):
+    BUDGET = "budget"
+    CANCELLED = "cancelled"
+    ACCESS = "access"
+    # The model provider failed in a way retries could not recover.
+    MODEL_UNAVAILABLE = "model_unavailable"
+    INTERRUPTED = "interrupted"
+
+
+# Payloads exchanged between an execution runtime (the Temporal workflow) and
+# the investigation runtime use cases. Small; text only where unavoidable.
+# Their field names and enum values are serialized in durable runtime history:
+# changing them breaks replay of investigations already running.
+
+
+@dataclass(frozen=True, slots=True)
+class ModelStep:
+    """What one model request may see and use, built under current authority."""
+
+    instructions: str
+    tools: frozenset[str]
+    history_key: str
+    evidence_versions: tuple[tuple[str, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BeginOutcome:
+    status: RunStatus | None
+    # PROCEED: run the agent; DECLINE/RESET_TOPIC: finish with ``message``;
+    # CLARIFY: ask ``message``. None when the run is missing or ended.
+    admission: AdmissionDecision | None = None
+    message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerDraft:
+    run_id: str
+    # Distinct per release attempt within the run (idempotency of the message).
+    sequence: int
+    text: str
+    cited_evidence: tuple[str, ...] = ()
+    complete: bool = True
+    # Which provider produced the answer; for telemetry only, never shown.
+    served_by: ProviderAttribution | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionDraft:
+    run_id: str
+    sequence: int
+    question: str
+
+
+class StepResult(StrEnum):
+    RELEASED = "released"
+    # The output may not be released; regenerate (``message`` says why).
+    WITHHELD = "withheld"
+    # Newer user input arrived; continue the investigation with it.
+    SUPERSEDED = "superseded"
+    STOPPED = "stopped"
+    ASKED = "asked"
+    CONTINUE = "continue"
+    # Nothing to do yet (e.g. a wake-up without new input).
+    IDLE = "idle"
+
+
+@dataclass(frozen=True, slots=True)
+class StepOutcome:
+    result: StepResult
+    message: str | None = None
+    correctable: bool = False
+    question_id: str | None = None
+    status: RunStatus | None = None
+    stop_reason: StopReason | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CancelProgress:
+    # Operations whose cancellation is not yet confirmed.
+    unsettled: int
+
+
+@dataclass(frozen=True, slots=True)
+class FinishRequest:
+    run_id: str
+    reason: StopReason
+    resource: BudgetResource | None = None
+
+
+# Lifecycle decisions (``application.investigation_lifecycle``): what an
+# execution runtime does next. Runtimes interpret them with their own
+# primitives (activities, durable timers, signals); they are never persisted.
+
+
+class InterruptionKind(StrEnum):
+    # The conversation's source context became invalid; restart the agent loop.
+    CONTEXT_CHANGED = "context_changed"
+    # The runtime refused further work (``RunStopped``): budget, access, ...
+    STOPPED = "stopped"
+    # The agent loop failed for any other reason (provider, usage limit).
+    FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class AgentInterruption:
+    """Why an agent run ended without an answer or a question."""
+
+    kind: InterruptionKind
+    reason: StopReason | None = None
+    resource: BudgetResource | None = None
+
+
+class LifecycleAction(StrEnum):
+    # Run the agent with context rebuilt under current authority.
+    INVESTIGATE = "investigate"
+    # Check persisted input; wait for a notification if there is none.
+    AWAIT_INPUT = "await_input"
+    # Nothing to do until new input is notified (bounded by ``WAIT_LIMIT``).
+    WAIT = "wait"
+    # Publish ``message`` and close the run without a model call.
+    FINISH_MESSAGE = "finish_message"
+    # Ask ``message`` as the run's clarification question.
+    ASK = "ask"
+    # The run is done (answered, missing or already ended).
+    CLOSE = "close"
+    # End with partial findings for ``stop_reason`` (and budget ``resource``).
+    STOP = "stop"
+    # Cooperative cancellation: stop new work, reconcile in-flight effects.
+    CANCEL = "cancel"
+    # The clarification wait expired.
+    EXPIRE = "expire"
+
+
+@dataclass(frozen=True, slots=True)
+class LifecycleDecision:
+    action: LifecycleAction
+    message: str | None = None
+    stop_reason: StopReason | None = None
+    resource: BudgetResource | None = None
+    # Set by admission when the run is already being cancelled.
+    cancelling: bool = False

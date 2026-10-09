@@ -1,4 +1,9 @@
-"""Composition of guarded investigation services and the durable agent."""
+"""Composition of guarded investigation services and the shared agent's services.
+
+Runtime-neutral: nothing here connects to, registers with or binds an
+execution runtime. ``bootstrap.temporal`` assembles the Temporal worker from
+the services built here.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +13,13 @@ from typing import Any
 
 from pydantic_ai.models import Model
 
+from retail_analytics.adapters.agent.investigator import AgentServices
 from retail_analytics.adapters.models.budgeted import BudgetedModel
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.investigations import (
     PostgresInvestigationInputs,
     PostgresRunPrincipals,
 )
-from retail_analytics.adapters.temporal.activities import bind_runtime
-from retail_analytics.adapters.temporal.agent import AgentServices, bind_agent_services
 from retail_analytics.application.budgets import RunBudgets
 from retail_analytics.application.discovery import DiscoveryService
 from retail_analytics.application.evidence import EvidenceService
@@ -77,6 +81,9 @@ class InvestigationServices:
     inputs: PostgresInvestigationInputs
     principals: PostgresRunPrincipals
     tools: ToolRunner
+    # What the shared agent uses: runtime steps, the tool path and the
+    # budgeted provider model. A runtime binds or passes it to its agent.
+    agent: AgentServices
 
 
 def build_capability_registry(
@@ -173,7 +180,9 @@ def build_investigations(
     retriever: GoldenRetriever | None = None,
     exchange_rates: ExchangeRateProvider | None = None,
 ) -> InvestigationServices:
-    """Wire the runtime and its permission-filtered tool catalog.
+    """Wire the runtime, its permission-filtered tool catalog and the agent's
+    services. Binds nothing: the caller hands ``agent`` to its runtime
+    (``bootstrap.temporal.bind_worker``).
 
     Registered when their services are supplied: discovery (``discovery``),
     guarded queries (``queries``), Golden methods (``retriever``) and saved
@@ -249,11 +258,17 @@ def build_investigations(
         scheduler=scheduler,
         launcher=launcher,
     )
-    bind_runtime(runtime)
     # A plain model is budgeted as a whole; a factory (``bootstrap.models``)
     # budgets every provider attempt inside its retry/fallback chain.
     provider = (
         BudgetedModel(model, budgets) if isinstance(model, Model) else model(budgets)
     )
-    bind_agent_services(AgentServices(runtime, tools, provider))
-    return InvestigationServices(control, launcher, runtime, inputs, principals, tools)
+    return InvestigationServices(
+        control,
+        launcher,
+        runtime,
+        inputs,
+        principals,
+        tools,
+        AgentServices(runtime, tools, provider),
+    )

@@ -1,4 +1,8 @@
-"""Activity boundary for durable investigation state changes."""
+"""Activity boundary for durable investigation state changes.
+
+Each activity is one ``InvestigationRuntime`` step; activity names and
+payload shapes are recorded in workflow histories and must stay stable.
+"""
 
 from __future__ import annotations
 
@@ -8,20 +12,21 @@ from typing import Any
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from retail_analytics.application.investigation_runtime import (
+from retail_analytics.application.contracts.investigations import (
     AnswerDraft,
     BeginOutcome,
     CancelProgress,
     FinishRequest,
-    InvestigationRuntime,
     QuestionDraft,
     StepOutcome,
 )
+from retail_analytics.application.investigation_runtime import InvestigationRuntime
 
 _runtime: InvestigationRuntime | None = None
 
 
 def bind_runtime(runtime: InvestigationRuntime) -> None:
+    """Called once by a worker's composition root before it starts polling."""
     global _runtime
     _runtime = runtime
 

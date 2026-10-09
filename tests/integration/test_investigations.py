@@ -28,15 +28,15 @@ from retail_analytics.adapters.postgres.investigation_recovery import (
 from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
 from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
 from retail_analytics.application.contracts.authorization import Principal
-from retail_analytics.application.contracts.persistence import OperationRequest
-from retail_analytics.application.investigation_recovery import InvestigationRecovery
-from retail_analytics.application.investigation_runtime import (
+from retail_analytics.application.contracts.investigations import (
     AnswerDraft,
     QuestionDraft,
-    RunStopped,
     StepResult,
     StopReason,
 )
+from retail_analytics.application.contracts.persistence import OperationRequest
+from retail_analytics.application.investigation_recovery import InvestigationRecovery
+from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.application.investigations import RunNotActive
 from retail_analytics.application.query_execution import QueryCancelled
 from retail_analytics.application.tools import ToolFailed

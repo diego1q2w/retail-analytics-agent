@@ -45,10 +45,8 @@ from pathlib import Path
 from typing import Any, Final, TypeVar
 
 from pydantic import SecretStr
-from pydantic_ai.durable_exec.temporal import PydanticAIPlugin
 from pydantic_ai.models import Model
 from temporalio.client import Client
-from temporalio.worker import Worker
 
 from retail_analytics.adapters.embedding.hashing import HashingEmbedder
 from retail_analytics.adapters.evaluation.fixture_warehouse import (
@@ -58,9 +56,6 @@ from retail_analytics.adapters.evaluation.fixture_warehouse import (
 )
 from retail_analytics.adapters.exchange_rates.fixture import FixtureRateProvider
 from retail_analytics.adapters.models.scripted import scripted_model
-from retail_analytics.adapters.temporal.activities import REGISTERED
-from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
-from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
 from retail_analytics.application.authentication import (
     AuthenticationFailed,
     AuthFailure,
@@ -112,6 +107,13 @@ from retail_analytics.bootstrap.preferences import build_preferences
 from retail_analytics.bootstrap.query import build_query_execution
 from retail_analytics.bootstrap.reports import build_reports
 from retail_analytics.bootstrap.retrieval import build_retrieval
+from retail_analytics.bootstrap.temporal import (
+    connect,
+    investigation_worker,
+)
+from retail_analytics.bootstrap.temporal import (
+    scheduler as temporal_scheduler,
+)
 from retail_analytics.domain.access import Role, permissions_for
 from retail_analytics.domain.conversation import MessageRole
 from retail_analytics.domain.evidence import scope_digest
@@ -319,17 +321,15 @@ class AgentRuntimeTarget:
         if settings.database_url is None or settings.temporal_address is None:
             raise TargetUnavailable
         try:
-            client = await Client.connect(
-                settings.temporal_address,
-                namespace=settings.temporal_namespace,
-                plugins=[PydanticAIPlugin()],
+            client = await connect(
+                settings.temporal_address, settings.temporal_namespace
             )
             persistence = persistence_from_settings(settings)
         except Exception:
             raise TargetUnavailable from None
         access = build_access(persistence, _NoTokens())
         queue = "eval-" + uuid.uuid4().hex
-        scheduler = TemporalInvestigationScheduler(client, queue)
+        scheduler = temporal_scheduler(client, queue)
         # The evaluation warehouse needs no BigQuery project; references use
         # a key that exists only for this process.
         local = settings.model_copy(
@@ -373,12 +373,7 @@ class AgentRuntimeTarget:
         reports = build_reports(
             persistence, artifacts.service, evidence, context.gate, access.resolver
         )
-        worker = Worker(
-            client,
-            task_queue=queue,
-            workflows=[InvestigationWorkflow],
-            activities=REGISTERED,
-        )
+        worker = investigation_worker(client, queue, services)
         task = asyncio.get_running_loop().create_task(worker.run())
         self._harness = _Harness(
             persistence, access, services, reports, evidence, task, client

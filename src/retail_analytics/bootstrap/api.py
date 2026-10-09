@@ -3,7 +3,8 @@
 The API needs PostgreSQL, Temporal (to schedule investigations; connected
 lazily, so the API can start first) and the token signing key, in every mode:
 no route skips authentication. Investigations themselves run in
-``retail-analytics-worker``.
+``retail-analytics-worker``. ``build_http_services`` takes any
+``InvestigationScheduler``; only ``build_app`` chooses Temporal's.
 """
 
 from __future__ import annotations
@@ -14,8 +15,6 @@ from contextlib import asynccontextmanager
 import click
 import uvicorn
 from fastapi import FastAPI
-from pydantic_ai.durable_exec.temporal import PydanticAIPlugin
-from temporalio.client import Client
 
 from retail_analytics import __version__
 from retail_analytics.adapters.postgres.conversations import PostgresConversationReader
@@ -24,7 +23,6 @@ from retail_analytics.adapters.postgres.investigations import (
     PostgresInvestigationInputs,
     PostgresRunPrincipals,
 )
-from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
 from retail_analytics.application.conversations import ConversationService
 from retail_analytics.application.investigations import (
     InvestigationControl,
@@ -49,6 +47,12 @@ from retail_analytics.bootstrap.preferences import build_preferences
 from retail_analytics.bootstrap.report_deletion import build_report_deletion
 from retail_analytics.bootstrap.reports import build_reports
 from retail_analytics.bootstrap.telemetry import install_from_settings
+from retail_analytics.bootstrap.temporal import (
+    connect,
+)
+from retail_analytics.bootstrap.temporal import (
+    scheduler as temporal_scheduler,
+)
 from retail_analytics.interfaces.http.app import create_app
 from retail_analytics.interfaces.http.services import HttpServices, StreamSettings
 
@@ -127,17 +131,12 @@ def build_app(
     @asynccontextmanager
     async def services() -> AsyncIterator[HttpServices]:
         require_api_settings(settings)
-        client = await Client.connect(
-            settings.temporal_address or "",
-            namespace=settings.temporal_namespace,
-            plugins=[PydanticAIPlugin()],
-            lazy=True,
+        client = await connect(
+            settings.temporal_address or "", settings.temporal_namespace, lazy=True
         )
         persistence = persistence_from_settings(settings)
         try:
-            scheduler = TemporalInvestigationScheduler(
-                client, settings.temporal_task_queue
-            )
+            scheduler = temporal_scheduler(client, settings.temporal_task_queue)
             yield build_http_services(settings, persistence, scheduler)
         finally:
             persistence.close()

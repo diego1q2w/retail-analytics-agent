@@ -1,8 +1,9 @@
-"""Activity-side use cases of the durable investigation runtime.
+"""Step use cases of the investigation runtime.
 
-The workflow (an adapter) decides *when* things happen; this module decides
-*whether* they may and makes every step safe to repeat. Each method runs
-inside a retryable activity and therefore:
+An execution runtime (the Temporal workflow, an adapter) runs these steps and
+``investigation_lifecycle`` decides which step follows; this module decides
+*whether* a step may happen and makes every step safe to repeat. Each method
+may run inside a retryable activity and therefore:
 
 - re-reads the run, its recorded principal and the executive's current
   authority (``AccessResolver.context_for_run``) instead of trusting anything
@@ -35,7 +36,6 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import StrEnum
 
 from retail_analytics.application.authorization import (
     AccessDenied,
@@ -45,7 +45,18 @@ from retail_analytics.application.budgets import RunBudgets, budget_message
 from retail_analytics.application.context import ContextBuilder, ModelContext
 from retail_analytics.application.contracts import Correlation
 from retail_analytics.application.contracts.authorization import Principal
-from retail_analytics.application.contracts.investigations import AssistantOutput
+from retail_analytics.application.contracts.investigations import (
+    AnswerDraft,
+    AssistantOutput,
+    BeginOutcome,
+    CancelProgress,
+    FinishRequest,
+    ModelStep,
+    QuestionDraft,
+    StepOutcome,
+    StepResult,
+    StopReason,
+)
 from retail_analytics.application.contracts.progress import (
     EventKind,
     InputRequest,
@@ -120,15 +131,6 @@ MAX_PARTIAL_EVIDENCE = 6
 MAX_PARTIAL_ROWS = 5
 
 
-class StopReason(StrEnum):
-    BUDGET = "budget"
-    CANCELLED = "cancelled"
-    ACCESS = "access"
-    # The model provider failed in a way retries could not recover.
-    MODEL_UNAVAILABLE = "model_unavailable"
-    INTERRUPTED = "interrupted"
-
-
 _STOP_MESSAGES = {
     StopReason.CANCELLED: "The investigation was cancelled.",
     StopReason.ACCESS: (
@@ -152,87 +154,22 @@ class RunStopped(Exception):
         super().__init__(f"run stopped: {reason.value}")
 
 
+class InvestigationContextChanged(Exception):
+    """The model conversation was built from context that is no longer valid.
+
+    Raised by the agent integration before a provider sees the stale history;
+    the investigation restarts the agent loop with rebuilt context (durable
+    budgets and tool effects survive, derived claims do not).
+    """
+
+    def __init__(self) -> None:
+        super().__init__("investigation context changed")
+
+
 def stop_message(reason: StopReason, resource: BudgetResource | None) -> str:
     if reason is StopReason.BUDGET and resource is not None:
         return budget_message(resource)
     return _STOP_MESSAGES.get(reason, _STOP_MESSAGES[StopReason.INTERRUPTED])
-
-
-# Payloads exchanged with the workflow (small; text only where unavoidable)
-
-
-@dataclass(frozen=True, slots=True)
-class ModelStep:
-    """What one model request may see and use, built under current authority."""
-
-    instructions: str
-    tools: frozenset[str]
-    history_key: str
-    evidence_versions: tuple[tuple[str, int], ...]
-
-
-@dataclass(frozen=True, slots=True)
-class BeginOutcome:
-    status: RunStatus | None
-    # PROCEED: run the agent; DECLINE/RESET_TOPIC: finish with ``message``;
-    # CLARIFY: ask ``message``. None when the run is missing or ended.
-    admission: AdmissionDecision | None = None
-    message: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class AnswerDraft:
-    run_id: str
-    # Distinct per release attempt within the run (idempotency of the message).
-    sequence: int
-    text: str
-    cited_evidence: tuple[str, ...] = ()
-    complete: bool = True
-    # Which provider produced the answer; for telemetry only, never shown.
-    served_by: ProviderAttribution | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class QuestionDraft:
-    run_id: str
-    sequence: int
-    question: str
-
-
-class StepResult(StrEnum):
-    RELEASED = "released"
-    # The output may not be released; regenerate (``message`` says why).
-    WITHHELD = "withheld"
-    # Newer user input arrived; continue the investigation with it.
-    SUPERSEDED = "superseded"
-    STOPPED = "stopped"
-    ASKED = "asked"
-    CONTINUE = "continue"
-    # Nothing to do yet (e.g. a wake-up without new input).
-    IDLE = "idle"
-
-
-@dataclass(frozen=True, slots=True)
-class StepOutcome:
-    result: StepResult
-    message: str | None = None
-    correctable: bool = False
-    question_id: str | None = None
-    status: RunStatus | None = None
-    stop_reason: StopReason | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class CancelProgress:
-    # Operations whose cancellation is not yet confirmed.
-    unsettled: int
-
-
-@dataclass(frozen=True, slots=True)
-class FinishRequest:
-    run_id: str
-    reason: StopReason
-    resource: BudgetResource | None = None
 
 
 def _utc_now() -> datetime:

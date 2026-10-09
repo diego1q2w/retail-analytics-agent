@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,11 +15,27 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestParameters
 from temporalio.exceptions import ApplicationError
 
+from retail_analytics.adapters.agent import investigator
 from retail_analytics.adapters.temporal import agent
-from retail_analytics.application.investigation_runtime import ModelStep
+from retail_analytics.application.contracts.investigations import ModelStep
 from tests.unit.test_investigation_models import MESSAGES
 
 pytestmark = pytest.mark.asyncio
+
+
+def _guarded(
+    monkeypatch: pytest.MonkeyPatch, steps: object, provider: object
+) -> investigator.GuardedModel:
+    """The Temporal path's guarded model over controlled steps and provider."""
+    monkeypatch.setattr(
+        investigator,
+        "current_deps",
+        lambda: investigator.InvestigationDeps(run_id="run"),
+    )
+    services = cast(
+        investigator.AgentServices, SimpleNamespace(steps=steps, model=provider)
+    )
+    return agent.TemporalGuardedModel(investigator.AgentBinding(services))
 
 
 @pytest.mark.parametrize("change", ["authority", "removed", "revised", "unknown"])
@@ -37,13 +54,8 @@ async def test_stale_history_never_reaches_provider(
             )
         )
     )
-    monkeypatch.setattr(
-        agent, "_bound", lambda: SimpleNamespace(steps=steps, model=provider)
-    )
-    monkeypatch.setattr(agent, "_deps", lambda: agent.InvestigationDeps(run_id="run"))
-    response = await agent.GuardedModel().request(
-        MESSAGES, None, ModelRequestParameters()
-    )
+    model = _guarded(monkeypatch, steps, provider)
+    response = await model.request(MESSAGES, None, ModelRequestParameters())
     # Temporal serializes these messages; validation must survive reconstruction.
     history = ModelMessagesTypeAdapter.validate_json(
         ModelMessagesTypeAdapter.dump_json([*MESSAGES, response])
@@ -60,11 +72,11 @@ async def test_stale_history_never_reaches_provider(
         assert isinstance(history[-1], ModelResponse)
         history[-1].metadata = None
     with pytest.raises(ApplicationError) as caught:
-        await agent.GuardedModel().request(history, None, ModelRequestParameters())
+        await model.request(history, None, ModelRequestParameters())
     assert agent.is_context_changed(caught.value)
     assert caught.value.non_retryable
     assert provider.request.await_count == 1
-    await agent.GuardedModel().request(MESSAGES, None, ModelRequestParameters())
+    await model.request(MESSAGES, None, ModelRequestParameters())
     assert provider.request.await_count == 2
     assert "restricted" not in str(provider.request.call_args.args[0])
 
@@ -77,17 +89,10 @@ async def test_new_evidence_preserves_valid_tool_conversation(
     provider = SimpleNamespace(
         request=AsyncMock(return_value=ModelResponse(parts=[TextPart("safe")]))
     )
-    monkeypatch.setattr(
-        agent, "_bound", lambda: SimpleNamespace(steps=steps, model=provider)
-    )
-    monkeypatch.setattr(agent, "_deps", lambda: agent.InvestigationDeps(run_id="run"))
-    response = await agent.GuardedModel().request(
-        MESSAGES, None, ModelRequestParameters()
-    )
+    model = _guarded(monkeypatch, steps, provider)
+    response = await model.request(MESSAGES, None, ModelRequestParameters())
     steps.prepare_model_step.return_value = replace(
         step, evidence_versions=(("e1", 1), ("e2", 1))
     )
-    await agent.GuardedModel().request(
-        [*MESSAGES, response], None, ModelRequestParameters()
-    )
+    await model.request([*MESSAGES, response], None, ModelRequestParameters())
     assert response in provider.request.call_args.args[0]

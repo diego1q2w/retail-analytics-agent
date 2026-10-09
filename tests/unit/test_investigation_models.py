@@ -20,7 +20,8 @@ from pydantic_ai.usage import RequestUsage
 
 from retail_analytics.adapters.models.budgeted import BudgetedModel
 from retail_analytics.application.budgets import RunBudgets
-from retail_analytics.application.investigation_runtime import RunStopped, StopReason
+from retail_analytics.application.contracts.investigations import StopReason
+from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.domain.budgets import BudgetResource, RunLimits
 from tests.unit.budgets.memory_store import MemoryRunBudgetStore
 

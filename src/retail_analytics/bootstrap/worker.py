@@ -5,18 +5,12 @@ from __future__ import annotations
 import asyncio
 
 import click
-from pydantic_ai.durable_exec.temporal import PydanticAIPlugin
-from temporalio.client import Client
-from temporalio.worker import Worker
 
 from retail_analytics.adapters.models.fixture import fixture_model
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.investigation_recovery import (
     PostgresRecoveryCandidates,
 )
-from retail_analytics.adapters.temporal.activities import REGISTERED
-from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
-from retail_analytics.adapters.temporal.workflow import InvestigationWorkflow
 from retail_analytics.application.investigation_recovery import InvestigationRecovery
 from retail_analytics.bootstrap.access import build_access, local_token_authority
 from retail_analytics.bootstrap.artifacts import build_artifacts
@@ -31,6 +25,13 @@ from retail_analytics.bootstrap.persistence import persistence_from_settings
 from retail_analytics.bootstrap.query import build_query_execution
 from retail_analytics.bootstrap.retrieval import build_retrieval
 from retail_analytics.bootstrap.telemetry import install_from_settings
+from retail_analytics.bootstrap.temporal import (
+    connect,
+    investigation_worker,
+)
+from retail_analytics.bootstrap.temporal import (
+    scheduler as temporal_scheduler,
+)
 
 
 async def run_worker(settings: BackendSettings) -> None:
@@ -39,15 +40,11 @@ async def run_worker(settings: BackendSettings) -> None:
     install_from_settings(settings, "worker")
     # Fail on configuration problems before connecting to anything.
     live_model = provider_chain(settings) if settings.mode is RuntimeMode.LIVE else None
-    client = await Client.connect(
-        settings.temporal_address,
-        namespace=settings.temporal_namespace,
-        plugins=[PydanticAIPlugin()],
-    )
+    client = await connect(settings.temporal_address, settings.temporal_namespace)
     persistence = persistence_from_settings(settings)
     try:
         access = build_access(persistence, local_token_authority(settings))
-        scheduler = TemporalInvestigationScheduler(client, settings.temporal_task_queue)
+        scheduler = temporal_scheduler(client, settings.temporal_task_queue)
         artifacts = build_artifacts(settings, persistence)
         retriever = build_retrieval(
             settings, build_knowledge(persistence, artifacts, access.resolver)
@@ -100,12 +97,7 @@ async def run_worker(settings: BackendSettings) -> None:
                     )
                 await asyncio.sleep(2)
 
-        async with Worker(
-            client,
-            task_queue=settings.temporal_task_queue,
-            workflows=[InvestigationWorkflow],
-            activities=REGISTERED,
-        ):
+        async with investigation_worker(client, settings.temporal_task_queue, services):
             click.echo("investigation worker ready", err=True)
             await dispatch()
     finally:

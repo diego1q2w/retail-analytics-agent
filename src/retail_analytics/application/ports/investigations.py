@@ -99,7 +99,7 @@ class InvestigationInputs(Protocol):
 
 
 class InvestigationScheduler(Protocol):
-    """Port to the durable runtime (a Temporal workflow per run).
+    """Port to the execution runtime (today a Temporal workflow per run).
 
     Notifications carry identifiers only; the runtime reads persisted input.
     ``start`` is idempotent per run.

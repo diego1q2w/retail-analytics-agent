@@ -10,6 +10,9 @@ than weakening a test. Two complementary checks use these rules:
   and reports forbidden packages that ended up loaded (directly or
   transitively) and side effects at import: network, subprocess, file opens
   and environment reads.
+- ``check_runtime_neutral`` imports the runtime-neutral modules (shared by
+  every execution runtime) in a fresh interpreter and reports any Temporal
+  module they load; ``check_sources`` rejects their direct Temporal imports.
 """
 
 from __future__ import annotations
@@ -93,6 +96,35 @@ FORBIDDEN_AT_IMPORT_TIME_BY_LAYER: dict[str, frozenset[str]] = {
     "capabilities": FORBIDDEN_AT_IMPORT_TIME,
 }
 
+# Runtime-neutral modules (dotted paths below the package): shared by every
+# execution runtime, so they never depend on Temporal - neither the SDK, nor
+# Pydantic AI's Temporal integration, nor the project's Temporal adapter -
+# directly (``check_sources``) or transitively (``check_runtime_neutral``).
+# Pydantic AI's engine-neutral ``pydantic_ai.durable_exec`` package is imported
+# by Pydantic AI itself and is not Temporal.
+RUNTIME_NEUTRAL_MODULES = (
+    "adapters.agent",
+    "adapters.models",
+    "bootstrap.investigations",
+)
+TEMPORAL_MODULES = ("temporalio", "pydantic_ai.durable_exec.temporal")
+TEMPORAL_ADAPTER = "adapters.temporal"
+
+
+def _within(module: str, prefix: str) -> bool:
+    return module == prefix or module.startswith(prefix + ".")
+
+
+def is_runtime_neutral(module: str, package: str) -> bool:
+    return any(_within(module, f"{package}.{m}") for m in RUNTIME_NEUTRAL_MODULES)
+
+
+def is_temporal(module: str, package: str) -> bool:
+    return any(
+        _within(module, m) for m in (*TEMPORAL_MODULES, f"{package}.{TEMPORAL_ADAPTER}")
+    )
+
+
 # Narrow, justified exceptions: {(module, subject): reason}. The subject is the
 # imported module for import rules and the class name for layout rules.
 EXCEPTIONS: dict[tuple[str, str], str] = {}
@@ -163,9 +195,16 @@ def check_sources(package_dir: Path, package: str) -> list[Violation]:
         source_layer = layer_of(module, package)
         is_package = path.name == "__init__.py"
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        neutral = is_runtime_neutral(module, package)
         for target, line in _imported_names(tree, module, is_package):
             if (module, target) in EXCEPTIONS:
                 continue
+            if neutral and is_temporal(target, package):
+                violations.add(
+                    Violation(
+                        module, line, f"runtime-neutral code must not import {target}"
+                    )
+                )
             top = target.split(".")[0]
             if top == "__future__":
                 continue
@@ -526,8 +565,35 @@ for name in modules:
     except Exception as exc:
         errors.append(name + ": " + type(exc).__name__)
 loaded = sorted({m.split(".")[0] for m in sys.modules})
-print(json.dumps({"loaded": loaded, "effects": effects, "errors": errors}))
+print(json.dumps({"loaded": loaded, "modules": sorted(sys.modules),
+                  "effects": effects, "errors": errors}))
 """
+
+
+def _probe(
+    package_root: Path, modules: list[str], allowed: frozenset[str] | None
+) -> dict[str, list[str]] | str:
+    """Import ``modules`` in a fresh interpreter; the probe report or an error."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            _IMPORT_PROBE,
+            str(package_root),
+            json.dumps(modules),
+            json.dumps(sorted(allowed or ())),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        return f"import probe failed: {result.stderr.strip()[-2000:]}"
+    report: dict[str, list[str]] = json.loads(result.stdout.strip().splitlines()[-1])
+    return report
 
 
 def check_import_time(package_root: Path, package: str, layer: str) -> list[str]:
@@ -541,25 +607,9 @@ def check_import_time(package_root: Path, package: str, layer: str) -> list[str]
             package_root / package / layer, f"{package}.{layer}"
         )
     ]
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-I",
-            "-B",
-            "-c",
-            _IMPORT_PROBE,
-            str(package_root),
-            json.dumps(modules),
-            json.dumps(sorted(ALLOWED_THIRD_PARTY[layer] or ())),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        return [f"import probe failed: {result.stderr.strip()[-2000:]}"]
-    report = json.loads(result.stdout.strip().splitlines()[-1])
+    report = _probe(package_root, modules, ALLOWED_THIRD_PARTY[layer])
+    if isinstance(report, str):
+        return [report]
     forbidden = FORBIDDEN_AT_IMPORT_TIME_BY_LAYER[layer]
     problems = [f"import error: {error}" for error in report["errors"]]
     problems += [
@@ -568,4 +618,31 @@ def check_import_time(package_root: Path, package: str, layer: str) -> list[str]
     problems += [
         f"{layer} import side effect: {effect}" for effect in report["effects"]
     ]
+    return problems
+
+
+def check_runtime_neutral(package_root: Path, package: str) -> list[str]:
+    """Import every runtime-neutral module in a fresh interpreter; report any
+    Temporal module that ended up loaded (directly or transitively)."""
+    modules = [
+        name
+        for name, _ in iter_modules(package_root / package, package)
+        if is_runtime_neutral(name, package)
+    ]
+    report = _probe(package_root, modules, None)
+    if isinstance(report, str):
+        return [report]
+    problems = [f"import error: {error}" for error in report["errors"]]
+    loaded = [m for m in report["modules"] if is_temporal(m, package)]
+    roots = sorted(
+        {
+            next(
+                m
+                for m in (*TEMPORAL_MODULES, f"{package}.{TEMPORAL_ADAPTER}")
+                if _within(name, m)
+            )
+            for name in loaded
+        }
+    )
+    problems += [f"runtime-neutral import loads {root}" for root in roots]
     return problems
