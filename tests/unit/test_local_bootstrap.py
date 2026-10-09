@@ -317,3 +317,95 @@ def test_declared_source_currency_defaults_to_usd_without_overwriting() -> None:
     assert fresh[key] == "USD"
     kept = local_env.reconcile(TEMPLATE, f"{key}=EUR\n")
     assert local_env.parse_values(kept.text)[key] == "EUR"
+
+
+# --- telemetry on by default (T30-F1) ---------------------------------------
+
+TELEMETRY_KEY = P + "TELEMETRY_ENABLED"
+
+
+def _env_only(env_file: Path, *extra: str) -> str:
+    result = CliRunner().invoke(
+        local_setup.main,
+        ["--env-file", str(env_file), "--env-only", "--project", "ra-unit", *extra],
+    )
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
+def test_telemetry_defaults_to_on_in_settings_and_template() -> None:
+    assert config.BackendSettings().telemetry_enabled is True
+    assert config.load_backend_settings(environ={}, env_file=None).telemetry_enabled
+    assert local_env.parse_values(TEMPLATE)[TELEMETRY_KEY] == "true"
+
+
+def test_env_only_adds_the_key_as_true_to_an_existing_file(tmp_path: Path) -> None:
+    env_file = tmp_path / "old.env"
+    env_file.write_text(f"{P}MODE=fixture\n", encoding="utf-8")
+    _env_only(env_file)
+    assert local_env.parse_values(env_file.read_text())[TELEMETRY_KEY] == "true"
+
+
+def test_env_only_never_overwrites_an_explicit_false(tmp_path: Path) -> None:
+    env_file = tmp_path / "old.env"
+    env_file.write_text(f"{TELEMETRY_KEY}=false\n", encoding="utf-8")
+    _env_only(env_file)
+    _env_only(env_file, "--telemetry")
+    assert local_env.parse_values(env_file.read_text())[TELEMETRY_KEY] == "false"
+
+
+def test_no_telemetry_writes_false_only_for_a_new_key(tmp_path: Path) -> None:
+    fresh = tmp_path / "fresh.env"
+    _env_only(fresh, "--no-telemetry")
+    assert local_env.parse_values(fresh.read_text())[TELEMETRY_KEY] == "false"
+    kept = tmp_path / "kept.env"
+    kept.write_text(f"{TELEMETRY_KEY}=true\n", encoding="utf-8")
+    _env_only(kept, "--no-telemetry")
+    assert local_env.parse_values(kept.read_text())[TELEMETRY_KEY] == "true"
+
+
+def test_telemetry_flag_is_an_accepted_no_op(tmp_path: Path) -> None:
+    plain, flagged = tmp_path / "a.env", tmp_path / "b.env"
+    _env_only(plain)
+    _env_only(flagged, "--telemetry")
+    assert local_env.parse_values(plain.read_text())[TELEMETRY_KEY] == "true"
+    assert local_env.parse_values(flagged.read_text())[TELEMETRY_KEY] == "true"
+
+
+def _tele_ctx(tmp_path: Path, env_text: str, telemetry: bool = True) -> SetupContext:
+    env_file = tmp_path / "t.env"
+    env_file.write_text(env_text, encoding="utf-8")
+    ctx = SetupContext(
+        root=local_setup.ROOT,
+        env_file=env_file,
+        project="ra-unit",
+        echo=lambda _line: None,
+        telemetry=telemetry,
+    )
+    ctx.refresh_values()
+    return ctx
+
+
+def test_the_telemetry_step_runs_by_default_and_skips_on_opt_out(
+    tmp_path: Path,
+) -> None:
+    step = next(s for s in local_setup.STEPS if s.name == "telemetry")
+    assert step.enabled(_tele_ctx(tmp_path, f"{TELEMETRY_KEY}=true\n"))
+    assert step.enabled(_tele_ctx(tmp_path, ""))
+    assert not step.enabled(_tele_ctx(tmp_path, "", telemetry=False))
+    assert not step.enabled(_tele_ctx(tmp_path, f"{TELEMETRY_KEY}=false\n"))
+    names = [s.name for s in local_setup.STEPS]
+    assert names.index("telemetry") == names.index("services") + 1
+
+
+def test_next_steps_print_the_grafana_and_mlflow_urls(tmp_path: Path) -> None:
+    text = "\n".join(local_setup.next_steps(_tele_ctx(tmp_path, "")))
+    assert "Grafana http://127.0.0.1:53000" in text
+    assert "MLflow http://127.0.0.1:55500" in text
+    custom = _tele_ctx(
+        tmp_path, "COMPOSE_GRAFANA_PORT=53111\nCOMPOSE_MLFLOW_PORT=55111\n"
+    )
+    shown = "\n".join(local_setup.next_steps(custom))
+    assert "127.0.0.1:53111" in shown and "127.0.0.1:55111" in shown
+    off = "\n".join(local_setup.next_steps(_tele_ctx(tmp_path, "", telemetry=False)))
+    assert "Grafana" not in off

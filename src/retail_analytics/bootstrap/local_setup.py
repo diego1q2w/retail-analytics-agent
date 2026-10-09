@@ -60,7 +60,7 @@ class SetupContext:
     root: Path
     env_file: Path
     project: str
-    telemetry: bool = False
+    telemetry: bool = True
     interactive: bool = False
     postgres_port: str | None = None
     temporal_port: str | None = None
@@ -188,9 +188,10 @@ def step_environment(ctx: SetupContext) -> StepResult:
         for k, v in (
             (local_env.POSTGRES_PORT_KEY, ctx.postgres_port),
             (local_env.TEMPORAL_PORT_KEY, ctx.temporal_port),
-            # A new environment file that asked for the telemetry stack also
-            # switches the application's exporters on.
-            (local_env.PREFIX + "TELEMETRY_ENABLED", "true" if ctx.telemetry else ""),
+            # Telemetry is on by default (.env.example says true). Opting out
+            # on a new or completed environment file writes false; an explicit
+            # value already in the file is never overwritten.
+            (local_env.PREFIX + "TELEMETRY_ENABLED", "" if ctx.telemetry else "false"),
         )
         if v
     }
@@ -240,6 +241,31 @@ def step_services(ctx: SetupContext) -> StepResult:
     ctx.compose("up", "-d", "--wait", "postgres", "temporal")
     ctx.compose("run", "--rm", "temporal-namespace")
     return StepResult("done", "postgres and temporal are healthy")
+
+
+GRAFANA_PORT_KEY = "COMPOSE_GRAFANA_PORT"
+MLFLOW_PORT_KEY = "COMPOSE_MLFLOW_PORT"
+
+
+def telemetry_urls(ctx: SetupContext) -> dict[str, str]:
+    """Where the local Grafana and MLflow listen (compose defaults, or the file's)."""
+
+    def port(key: str, default: str) -> str:
+        # Compose gives the shell environment precedence over the env file.
+        return os.environ.get(key) or ctx.values.get(key) or default
+
+    grafana = port(GRAFANA_PORT_KEY, "53000")
+    mlflow = port(MLFLOW_PORT_KEY, "55500")
+    return {
+        "Grafana": f"http://127.0.0.1:{grafana}",
+        "MLflow": f"http://127.0.0.1:{mlflow}",
+    }
+
+
+def telemetry_wanted(ctx: SetupContext) -> bool:
+    """Start the stack unless opted out or the environment file turns it off."""
+    explicit = ctx.values.get(local_env.PREFIX + "TELEMETRY_ENABLED", "").lower()
+    return ctx.telemetry and explicit not in {"false", "0", "no", "off"}
 
 
 def step_telemetry(ctx: SetupContext) -> StepResult:
@@ -302,9 +328,9 @@ STEPS: tuple[BootstrapStep, ...] = (
     BootstrapStep("services", "start postgres and temporal", step_services),
     BootstrapStep(
         "telemetry",
-        "start mlflow, prometheus and grafana (--telemetry)",
+        "start mlflow, prometheus and grafana (on by default; --no-telemetry skips)",
         step_telemetry,
-        enabled=lambda ctx: ctx.telemetry,
+        enabled=telemetry_wanted,
     ),
     BootstrapStep("migrate", "apply database migrations", step_migrate),
     BootstrapStep("executives", "provision the demo executives", step_executives),
@@ -357,6 +383,11 @@ def next_steps(ctx: SetupContext) -> list[str]:
     if custom:
         dev += f" --env-file {ctx.env_file}"
         issue_cmd = f"RETAIL_ANALYTICS_ENV_FILE={ctx.env_file} {issue_cmd}"
+    if telemetry_wanted(ctx):
+        lines += [
+            "Telemetry is on: "
+            + "  ".join(f"{name} {url}" for name, url in telemetry_urls(ctx).items())
+        ]
     lines += [
         "Next:",
         f"  {dev}",
@@ -386,7 +417,13 @@ def next_steps(ctx: SetupContext) -> list[str]:
 @click.option("--postgres-port", help="Host port for PostgreSQL (new env file only).")
 @click.option("--temporal-port", help="Host port for Temporal (new env file only).")
 @click.option(
-    "--telemetry", is_flag=True, help="Also start mlflow, prometheus, grafana."
+    "--telemetry/--no-telemetry",
+    default=True,
+    help=(
+        "Start mlflow, prometheus and grafana (the default; --telemetry is "
+        "accepted for compatibility). --no-telemetry skips them and writes "
+        "TELEMETRY_ENABLED=false to a new key."
+    ),
 )
 @click.option(
     "--interactive",

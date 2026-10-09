@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # One command for a working, seeded local environment on a new machine:
-#   ./scripts/bootstrap.sh [--interactive] [--telemetry] [--env-file FILE] ...
+#   ./scripts/bootstrap.sh [--interactive] [--no-telemetry] [--env-file FILE] ...
 # Step 0 (this file): make sure a Python 3.12 virtualenv with the pinned
 # dependencies exists. Everything else is the ordered step list in
 # src/retail_analytics/bootstrap/local_setup.py. Safe to rerun.

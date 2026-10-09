@@ -36,7 +36,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Metrics here carry **no identifiers**. To follow one run, take its `run_id` (shown in every progress event and API response) and run `python -m retail_analytics.bootstrap.trace_lookup <run_id>` for the MLflow trace link and id. In MLflow, all spans of a run share one trace: API acceptance, workflow steps, tool calls, query attempts (BigQuery job id), model attempts (provider, model, attempt, fallback) and the run root (answering provider). A fresh clone shows data only after runs with `RETAIL_ANALYTICS_TELEMETRY_ENABLED=true`."
+        "content": "Metrics here carry **no identifiers**. To follow one run, take its `run_id` (shown in every progress event and API response) and run `python -m retail_analytics.bootstrap.trace_lookup <run_id>` for the MLflow trace link and id. In MLflow, all spans of a run share one trace: API acceptance, workflow steps, tool calls, query attempts (BigQuery job id), model attempts (provider, model, attempt, fallback) and the run root (answering provider). A fresh clone shows data after the first runs with telemetry on (the default)."
       }
     },
     {

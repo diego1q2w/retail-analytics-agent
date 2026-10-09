@@ -91,8 +91,9 @@ class Setup:
     env_file: Path
     api_port: int
     values: dict[str, str]
+    telemetry_ports: dict[str, int] = field(default_factory=dict)
 
-    def start(self) -> Dev:
+    def start(self, *extra: str) -> Dev:
         return Dev(
             subprocess.Popen(
                 [
@@ -103,6 +104,7 @@ class Setup:
                     str(self.env_file),
                     "--project",
                     self.project,
+                    *extra,
                 ],
                 cwd=ROOT,
                 env=os.environ.copy(),
@@ -140,6 +142,11 @@ def setup(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Setup]:
     base = tmp_path_factory.mktemp("dev-up")
     project = "ra-test-" + uuid.uuid4().hex[:8]
     api_port = _free_port()
+    ports = {
+        "mlflow": _free_port(),
+        "prometheus": _free_port(),
+        "grafana": _free_port(),
+    }
     env_file = base / "dev.env"
     try:
         subprocess.run(
@@ -168,9 +175,18 @@ def setup(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Setup]:
             handle.write(
                 f"\nRETAIL_ANALYTICS_API_PORT={api_port}\n"
                 f"RETAIL_ANALYTICS_ARTIFACT_DIR={base / 'artifacts'}\n"
+                # Telemetry is on by default: keep this stack off the default
+                # host ports so a developer's own stack is never involved.
+                f"COMPOSE_MLFLOW_PORT={ports['mlflow']}\n"
+                f"COMPOSE_PROMETHEUS_PORT={ports['prometheus']}\n"
+                f"COMPOSE_GRAFANA_PORT={ports['grafana']}\n"
+                f"RETAIL_ANALYTICS_TELEMETRY_TRACES_ENDPOINT="
+                f"http://127.0.0.1:{ports['mlflow']}/v1/traces\n"
+                f"RETAIL_ANALYTICS_TELEMETRY_METRICS_ENDPOINT="
+                f"http://127.0.0.1:{ports['prometheus']}/api/v1/otlp/v1/metrics\n"
             )
         values = local_env.parse_values(env_file.read_text(encoding="utf-8"))
-        yield Setup(project, env_file, api_port, values)
+        yield Setup(project, env_file, api_port, values, ports)
     finally:
         subprocess.run(
             [  # noqa: S607
@@ -245,6 +261,17 @@ def test_one_command_runs_api_and_worker_then_ctrl_c_stops_both(setup: Setup) ->
         assert "[worker] investigation worker ready" in dev.text
         assert "[api] " in dev.text
         assert httpx.get(setup.base_url + "/healthz").json()["status"] == "ok"
+        # Telemetry stack starts by default and its URLs are printed.
+        mlflow, grafana = (
+            setup.telemetry_ports["mlflow"],
+            setup.telemetry_ports["grafana"],
+        )
+        assert f"[dev] MLflow: http://127.0.0.1:{mlflow}" in dev.text
+        assert f"[dev] Grafana: http://127.0.0.1:{grafana}" in dev.text
+        assert httpx.get(f"http://127.0.0.1:{mlflow}/health", timeout=10).is_success
+        assert httpx.get(
+            f"http://127.0.0.1:{grafana}/api/health", timeout=10
+        ).is_success
 
         setup.tool("retail_analytics.bootstrap.dev_access", "provision")
         token = setup.tool(
@@ -302,3 +329,66 @@ def test_a_busy_port_is_refused_before_anything_starts(setup: Setup) -> None:
         time.sleep(0.5)
         assert f"port {setup.api_port}" in dev.text
         assert "[worker]" not in dev.text
+
+
+def test_no_telemetry_skips_the_stack_and_runs_survive_the_default_on_outage(
+    setup: Setup,
+) -> None:
+    """Opt-out starts no telemetry service; with the services down and the
+    exporters still on (the default), runs complete unaffected."""
+    subprocess.run(
+        [  # noqa: S607
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE_FILE),
+            "-p",
+            setup.project,
+            "stop",
+            "mlflow",
+            "prometheus",
+            "grafana",
+        ],
+        env=os.environ.copy(),
+        capture_output=True,
+        check=True,
+        timeout=300,
+    )
+    assert setup.values["RETAIL_ANALYTICS_TELEMETRY_ENABLED"] == "true"
+    dev = setup.start("--no-telemetry")
+    try:
+        dev.wait_for("[dev] ready")
+        assert "Grafana" not in dev.text and "MLflow" not in dev.text
+        running = subprocess.run(
+            [  # noqa: S607
+                "docker",
+                "compose",
+                "-f",
+                str(COMPOSE_FILE),
+                "-p",
+                setup.project,
+                "ps",
+                "--services",
+                "--status",
+                "running",
+            ],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=120,
+        ).stdout.split()
+        assert not set(running) & {"mlflow", "prometheus", "grafana"}
+        token = setup.tool(
+            "retail_analytics.bootstrap.dev_access", "token", "demo-a"
+        ).stdout.strip()
+        started = time.monotonic()
+        view = run_one_question(setup, token)
+        assert view["status"] in {"completed", "partial"}, view
+        assert time.monotonic() - started < 60
+        dev.process.send_signal(signal.SIGINT)
+        assert dev.process.wait(timeout=60) == 0, dev.text[-2000:]
+    finally:
+        if dev.process.poll() is None:
+            dev.process.kill()
+            dev.process.wait()

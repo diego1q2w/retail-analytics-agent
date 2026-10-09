@@ -159,8 +159,10 @@ class BackendSettings(BaseModel):
     auth_signing_key: SecretStr | None = None
     # Telemetry (design section 20): MLflow traces over OTLP/HTTP protobuf and
     # Prometheus metrics through its OTLP receiver. Best effort: bounded
-    # queues and short timeouts; a backend outage drops telemetry only.
-    telemetry_enabled: bool = False
+    # queues and short timeouts; a backend outage drops telemetry only. On by
+    # default for local runs (the endpoints are the local compose services);
+    # tests and offline checks switch it off explicitly (tests/conftest.py).
+    telemetry_enabled: bool = True
     telemetry_traces_endpoint: str = "http://127.0.0.1:55500/v1/traces"
     telemetry_metrics_endpoint: str = "http://127.0.0.1:59090/api/v1/otlp/v1/metrics"
     telemetry_experiment_id: str = Field(default="0", pattern=r"^[0-9]{1,18}$")

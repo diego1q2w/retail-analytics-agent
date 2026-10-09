@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import os
+import signal
 import socket
 import sys
 import threading
@@ -204,3 +206,79 @@ def test_next_steps_recommend_the_one_command(tmp_path: Path) -> None:
     text = "\n".join(local_setup.next_steps(ctx))
     assert "./scripts/dev.sh --env-file " + str(tmp_path / "x.env") in text
     assert local_env.PREFIX + "ENV_FILE=" in text
+
+
+def test_dev_runs_the_telemetry_step_with_the_services_by_default() -> None:
+    assert dev_up.SERVICE_STEPS == ("docker", "services", "telemetry", "migrate")
+    from click.testing import CliRunner
+
+    help_text = CliRunner().invoke(dev_up.main, ["--help"]).output
+    assert "--telemetry" in help_text and "--no-telemetry" in help_text
+
+
+def test_dev_starts_the_services_and_prints_the_urls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default run: the telemetry step executes and the URLs print; no Docker."""
+    ran: list[str] = []
+    monkeypatch.setattr(dev_up, "check_port_free", lambda *_: None)
+    monkeypatch.setattr(dev_up, "healthz_ok", lambda _url: True)
+    env = tmp_path / "d.env"
+    env.write_text(
+        f"{local_env.PREFIX}DATABASE_URL=postgresql://u:p@127.0.0.1:1/db\n"
+        f"{local_env.PREFIX}TEMPORAL_ADDRESS=127.0.0.1:1\n"
+        f"{local_env.PREFIX}AUTH_SIGNING_KEY={'k' * 40}\n",
+        encoding="utf-8",
+    )
+
+    def recorder(name: str) -> local_setup.BootstrapStep:
+        original = next(s for s in local_setup.STEPS if s.name == name)
+
+        def run(_ctx: local_setup.SetupContext) -> local_setup.StepResult:
+            ran.append(name)
+            return local_setup.StepResult()
+
+        return local_setup.BootstrapStep(
+            name, original.summary, run, enabled=original.enabled
+        )
+
+    monkeypatch.setattr(
+        local_setup, "STEPS", tuple(recorder(s.name) for s in local_setup.STEPS)
+    )
+    child = py(
+        "import time; print('investigation worker ready', flush=True); time.sleep(60)"
+    )
+
+    def run_once(telemetry: bool) -> list[str]:
+        ran.clear()
+        lines: list[str] = []
+        ctx = local_setup.SetupContext(
+            root=local_setup.ROOT,
+            env_file=env,
+            project="ra-unit",
+            telemetry=telemetry,
+            echo=lines.append,
+        )
+        stopper = threading.Timer(2.5, lambda: os.kill(os.getpid(), signal.SIGTERM))
+        stopper.start()
+        try:
+            code = dev_up.run_dev(
+                ctx,
+                services=True,
+                ready_timeout=20,
+                specs=[ChildSpec("worker", child)],
+                supervisor_out=io.StringIO(),
+                stop_grace=2,
+            )
+        finally:
+            stopper.cancel()
+        assert code == 0
+        return lines
+
+    on = run_once(True)
+    assert ran == ["docker", "services", "telemetry", "migrate"]
+    assert any("Grafana: http://127.0.0.1:53000" in line for line in on)
+    assert any("MLflow: http://127.0.0.1:55500" in line for line in on)
+    off = run_once(False)
+    assert ran == ["docker", "services", "migrate"]
+    assert not any("Grafana" in line for line in off)

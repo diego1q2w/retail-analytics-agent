@@ -4,7 +4,7 @@ Local only (see the README for the Compose stack). Production hosting needs its 
 
 ## Switching it on
 
-`RETAIL_ANALYTICS_TELEMETRY_ENABLED=true` in the API and worker environment (default `false`; `./scripts/bootstrap.sh --telemetry` sets it in a new env file). Endpoints and timings:
+`RETAIL_ANALYTICS_TELEMETRY_ENABLED` is `true` by default (settings and `.env.example`); `./scripts/bootstrap.sh` and `./scripts/dev.sh` start MLflow, Prometheus and Grafana and print their URLs, unless `--no-telemetry` is given or the env file says `false` (an explicit `false` is never overwritten). Tests force it off, so `./scripts/check.sh` makes no network calls. With the services down, exports are dropped (bounded queue, short timeout, breaker) and runs are unaffected. Endpoints and timings:
 
 | Setting | Default |
 | --- | --- |

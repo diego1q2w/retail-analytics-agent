@@ -208,3 +208,30 @@ def test_a_telemetry_outage_neither_breaks_nor_slows_the_caller(backend: str) ->
         assert time.monotonic() - flushed < 8.0
         sink.shutdown(1.0)
         assert emit_many(telemetry, 50) < 2.0  # after shutdown: still harmless
+
+
+@pytest.mark.real_telemetry
+@pytest.mark.parametrize("backend", ["refused", "black_hole"])
+def test_the_default_on_configuration_survives_an_outage(backend: str) -> None:
+    """Settings left at their defaults (telemetry on) with the backends down.
+
+    Only the endpoints are pointed at dead local ports, so the check never
+    reaches a real local stack; every other setting is the shipped default.
+    """
+    from retail_analytics.bootstrap.config import BackendSettings
+    from retail_analytics.bootstrap.telemetry import build_telemetry
+
+    with black_hole() as hung:
+        base = hung if backend == "black_hole" else closed_port()
+        shipped = BackendSettings(
+            telemetry_traces_endpoint=f"{base}/v1/traces",
+            telemetry_metrics_endpoint=f"{base}/v1/metrics",
+        )
+        assert shipped.telemetry_enabled is True
+        telemetry = build_telemetry(shipped, "api")
+        assert telemetry.enabled
+        assert emit_many(telemetry, 600) < 2.0
+        started = time.monotonic()
+        telemetry.flush(shipped.telemetry_export_timeout_seconds)
+        assert time.monotonic() - started < 8.0
+        assert emit_many(telemetry, 50) < 2.0

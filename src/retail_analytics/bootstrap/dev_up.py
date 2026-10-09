@@ -11,7 +11,9 @@ What it does, in order:
 2. checks the API port is free (refuses with an actionable message otherwise);
 3. unless ``--no-services``, reuses the bootstrap steps to make sure Docker,
    PostgreSQL, Temporal and the migrations are in place (compose project from
-   ``--project``; unrelated containers are never touched);
+   ``--project``; unrelated containers are never touched). MLflow, Prometheus
+   and Grafana start too unless ``--no-telemetry`` (or the environment file
+   sets ``RETAIL_ANALYTICS_TELEMETRY_ENABLED=false``);
 4. starts ``retail_analytics.bootstrap.worker`` and ``...bootstrap.api`` as child
    processes, prefixes their output with ``[worker]`` / ``[api]`` and waits
    until the worker reports it is connected and ``/healthz`` answers;
@@ -54,7 +56,7 @@ from retail_analytics.bootstrap.config import (
 # The line retail_analytics.bootstrap.worker prints once it is connected to
 # Temporal and polling its task queue (a unit test keeps this in sync).
 WORKER_READY_MARKER = "investigation worker ready"
-SERVICE_STEPS = ("docker", "services", "migrate")
+SERVICE_STEPS = ("docker", "services", "telemetry", "migrate")
 READY_TIMEOUT_SECONDS = 90.0
 STOP_GRACE_SECONDS = 10.0
 POLL_SECONDS = 0.2
@@ -398,6 +400,9 @@ def run_dev(
             code = 1
         elif outcome is None:
             echo(f"[dev] ready: API {base_url}  (mode: {settings.mode.value})")
+            if local_setup.telemetry_wanted(ctx) and services:
+                for name, url in local_setup.telemetry_urls(ctx).items():
+                    echo(f"[dev] {name}: {url}")
             echo(f"[dev] dev token (printed to stdout only): {token_hint(ctx)}")
             echo("[dev] Ctrl-C stops both")
             gone = supervisor.run_until_event()
@@ -445,6 +450,14 @@ def _report_exit(echo: Echo, gone: tuple[str, int]) -> int:
     help="Do not touch Docker; only check PostgreSQL and Temporal are reachable.",
 )
 @click.option(
+    "--telemetry/--no-telemetry",
+    default=True,
+    help=(
+        "Start mlflow, prometheus and grafana with the other services (the "
+        "default; --telemetry is accepted for compatibility)."
+    ),
+)
+@click.option(
     "--ready-timeout",
     type=click.FloatRange(min=1),
     default=READY_TIMEOUT_SECONDS,
@@ -452,11 +465,16 @@ def _report_exit(echo: Echo, gone: tuple[str, int]) -> int:
     help="Seconds to wait for the worker and the API to become ready.",
 )
 def main(
-    env_file: Path | None, project: str | None, no_services: bool, ready_timeout: float
+    env_file: Path | None,
+    project: str | None,
+    no_services: bool,
+    telemetry: bool,
+    ready_timeout: float,
 ) -> None:
     """Run the worker and the API together for local development.
 
-    Starts postgres and temporal (unless --no-services), applies migrations,
+    Starts postgres, temporal and the telemetry stack (unless --no-services
+    or --no-telemetry), applies migrations,
     then runs retail-analytics-worker and retail-analytics-api with prefixed
     logs. Ctrl-C stops both. Not for production: there the two are separate
     services.
@@ -467,6 +485,7 @@ def main(
         project=project
         or os.environ.get("COMPOSE_PROJECT_NAME")
         or local_setup.DEFAULT_PROJECT,
+        telemetry=telemetry,
     )
     try:
         code = run_dev(ctx, services=not no_services, ready_timeout=ready_timeout)

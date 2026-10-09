@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Run the worker and the API together for local development (not production):
-#   ./scripts/dev.sh [--env-file FILE] [--project NAME] [--no-services]
+#   ./scripts/dev.sh [--env-file FILE] [--project NAME] [--no-services] [--no-telemetry]
 # Needs the environment created by ./scripts/bootstrap.sh. Ctrl-C stops both.
 set -eu
 cd "$(dirname "$0")/.."

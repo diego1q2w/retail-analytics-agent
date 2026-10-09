@@ -159,12 +159,13 @@ def test_trace_ids_are_deterministic_per_run() -> None:
     assert len(trace_id_for("run_1")) == 32
 
 
-def test_telemetry_is_off_by_default_and_built_only_when_enabled() -> None:
+@pytest.mark.real_telemetry
+def test_telemetry_is_on_by_default_and_built_only_when_enabled() -> None:
     from retail_analytics.bootstrap.config import BackendSettings
     from retail_analytics.bootstrap.telemetry import build_telemetry
 
-    assert BackendSettings().telemetry_enabled is False
-    assert not build_telemetry(BackendSettings(), "api").enabled
+    assert BackendSettings().telemetry_enabled is True
+    assert not build_telemetry(BackendSettings(telemetry_enabled=False), "api").enabled
     enabled = build_telemetry(
         BackendSettings(
             telemetry_enabled=True,
@@ -177,3 +178,15 @@ def test_telemetry_is_off_by_default_and_built_only_when_enabled() -> None:
         assert enabled.enabled
     finally:
         enabled.flush(0.5)
+
+
+def test_the_test_suite_never_builds_a_real_sink_from_default_settings() -> None:
+    """Default settings are telemetry-on; conftest keeps tests offline."""
+    import os
+
+    from retail_analytics.bootstrap.config import BackendSettings
+    from retail_analytics.bootstrap.telemetry import build_telemetry
+
+    assert os.environ["RETAIL_ANALYTICS_TELEMETRY_ENABLED"] == "false"
+    assert BackendSettings().telemetry_enabled is True
+    assert not build_telemetry(BackendSettings(), "api").enabled

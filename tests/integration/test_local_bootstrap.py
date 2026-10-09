@@ -36,7 +36,7 @@ class Run:
     env_file: Path
     env: dict[str, str]
 
-    def bootstrap(self) -> subprocess.CompletedProcess[str]:
+    def bootstrap(self, *extra: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 sys.executable,
@@ -50,6 +50,7 @@ class Run:
                 self.env["TEST_PG_PORT"],
                 "--temporal-port",
                 self.env["TEST_TEMPORAL_PORT"],
+                *extra,
             ],
             cwd=ROOT,
             env=self.env,
@@ -69,6 +70,9 @@ def run(tmp_path: Path) -> Iterator[Run]:
         "RETAIL_ANALYTICS_ARTIFACT_DIR": str(tmp_path / "artifacts"),
         "TEST_PG_PORT": str(_free_port()),
         "TEST_TEMPORAL_PORT": str(_free_port()),
+        "COMPOSE_MLFLOW_PORT": str(_free_port()),
+        "COMPOSE_PROMETHEUS_PORT": str(_free_port()),
+        "COMPOSE_GRAFANA_PORT": str(_free_port()),
     }
     try:
         yield Run(project, tmp_path / "bootstrap.env", env)
@@ -89,6 +93,28 @@ def run(tmp_path: Path) -> Iterator[Run]:
             check=False,
             timeout=300,
         )
+
+
+def _running_services(project: str) -> set[str]:
+    listed = subprocess.run(
+        [  # noqa: S607
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE_FILE),
+            "-p",
+            project,
+            "ps",
+            "--services",
+            "--status",
+            "running",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    return set(listed.stdout.split())
 
 
 def _counts(env_file: Path) -> tuple[int, int, int]:
@@ -122,6 +148,12 @@ def test_one_command_builds_a_seeded_stack_and_rerun_is_a_noop(run: Run) -> None
     assert "skipped" in output  # credential check, fixture mode
     assert "exec-demo-a" in output
 
+    # Telemetry is on by default: the key is true, the stack is up, URLs printed.
+    assert values[local_env.PREFIX + "TELEMETRY_ENABLED"] == "true"
+    assert f"Grafana http://127.0.0.1:{run.env['COMPOSE_GRAFANA_PORT']}" in output
+    assert f"MLflow http://127.0.0.1:{run.env['COMPOSE_MLFLOW_PORT']}" in output
+    assert _running_services(run.project) >= {"mlflow", "prometheus", "grafana"}
+
     executives, entitlements, golden = _counts(run.env_file)
     assert executives == 2 and entitlements > 0 and golden >= 10
 
@@ -133,3 +165,14 @@ def test_one_command_builds_a_seeded_stack_and_rerun_is_a_noop(run: Run) -> None
     assert "<generated>" not in again
     assert all(value not in again for value in secrets_)
     assert _counts(run.env_file) == (executives, entitlements, golden)
+
+
+def test_no_telemetry_skips_the_stack_and_records_false(run: Run) -> None:
+    result = run.bootstrap("--no-telemetry")
+    assert result.returncode == 0, result.stdout + result.stderr
+    values = local_env.parse_values(run.env_file.read_text())
+    assert values[local_env.PREFIX + "TELEMETRY_ENABLED"] == "false"
+    running = _running_services(run.project)
+    assert {"postgres", "temporal"} <= running
+    assert not running & {"mlflow", "prometheus", "grafana"}
+    assert "Grafana" not in result.stdout

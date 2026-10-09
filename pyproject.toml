@@ -94,5 +94,6 @@ asyncio_default_fixture_loop_scope = "function"
 addopts = "-ra --strict-markers -m \"not docker\""
 markers = [
     "docker: needs a local Docker daemon (Compose stack); excluded by default, run with -m docker",
+    "real_telemetry: builds the real telemetry sink (tests/conftest.py otherwise forces a no-op)",
     "live: needs real external credentials (BigQuery, model providers); skipped when absent",
 ]
