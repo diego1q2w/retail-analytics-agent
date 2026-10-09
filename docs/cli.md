@@ -37,6 +37,7 @@ Working on it.
 The assistant needs an answer to continue:
   Which sales period should I use?
 answer> the last full calendar quarter
+Answer sent; the investigation continues.
 Revenue ...
 == DISCLOSURES ==
   ...
@@ -53,6 +54,13 @@ show or re-attach to progress. Other commands: `/sessions`, `/new`,
 `/export <id> [file]`, `/confirm <proposal>`, `/decline <proposal>`,
 `/help`, `/quit`. Malformed or unknown commands and any backend error print
 one error line and the chat continues.
+
+Every message is acknowledged as soon as the server accepts it, before any
+progress arrives: `Working on it.` (a new request has started),
+`Queued: it will run after the current investigation.`, `Sent as steering
+for the active run.`, or `Answer sent; the investigation continues.`. The
+start is shown once. A queued question is shown when its run starts, or
+replayed with its answer if it already finished.
 
 On a terminal the chat keeps one input line at the bottom: progress is
 printed above it, and the prompt (`you>` idle, `steer>` while a run works,

@@ -42,6 +42,7 @@ from retail_analytics.interfaces.cli.follow import (
 )
 from retail_analytics.interfaces.cli.render import (
     EventFormatter,
+    format_acknowledgement,
     format_definition_notices,
     format_deletion_preview,
     format_error,
@@ -117,6 +118,11 @@ class Chat:
         self.last_event_id: str | None = None
         self.queued = 0
         self._offered: set[str] = set()
+        # Runs whose start this chat already acknowledged from the server's
+        # receipt (their run.started is then not shown again), and runs it
+        # has followed (to find a queued request's run once it exists).
+        self._acknowledged: set[str] = set()
+        self._followed: set[str] = set()
         self._eof = False
         self._line: str | None = None
         self._have_line = False
@@ -279,12 +285,13 @@ class Chat:
         if item.kind == "event":
             event: JsonObject = item.payload
             self.last_event_id = str(event.get("event_id") or self.last_event_id)
-            # A proposal is shown in full below, from the server's own record.
-            text = (
-                None
-                if event.get("kind") == "deletion.proposed"
-                else self._format_event(event)
-            )
+            text = self._format_event(event)
+            if event.get("kind") == "deletion.proposed" or (
+                event.get("kind") == "run.started" and self.run_id in self._acknowledged
+            ):
+                # A proposal is shown in full below, from the server's own
+                # record; a start was already acknowledged when accepted.
+                text = None
             if text:
                 self.out(text)
             if event.get("kind") == "deletion.proposed":
@@ -363,13 +370,28 @@ class Chat:
         )
 
     def _start_queued(self, finished: str) -> None:
+        """Follow the run the server started for a queued request: the oldest
+        run newer than ``finished`` this chat has not followed yet. It may
+        already have ended (a quick run); its events are then replayed."""
         for _ in range(20):
             session = self.api.get_session(self.session_id)
-            runs = session.get("runs") or []
-            if runs and runs[0].get("active") and runs[0].get("run_id") != finished:
+            runs = [str(r.get("run_id")) for r in session.get("runs") or []]
+            newer = runs[: runs.index(finished)] if finished in runs else []
+            fresh = [r for r in newer if r not in self._followed]
+            if fresh:
+                run_id = fresh[-1]  # runs are listed newest first
                 self.queued -= 1
-                self.out("Your queued question is starting.")
-                self._follow(str(runs[0]["run_id"]), None)
+                active = next(
+                    r.get("active")
+                    for r in session["runs"]
+                    if str(r.get("run_id")) == run_id
+                )
+                self.out(
+                    "Your queued question is starting."
+                    if active
+                    else "Your queued question already ran:"
+                )
+                self._follow(run_id, None)
                 return
             self._sleep(0.5)
         self.queued = 0
@@ -383,6 +405,7 @@ class Chat:
         self.run_id = run_id
         self.running = True
         self.following = True
+        self._followed.add(run_id)
         if after is None:
             self.last_event_id = None
 
@@ -453,25 +476,41 @@ class Chat:
 
     def _say(self, text: str) -> None:
         if self.question and self.run_id:
-            self.api.answer(
+            receipt = self.api.answer(
                 self.run_id, self.question.question_id, text, new_submission_key()
             )
+            self.out(format_acknowledgement({**receipt, "kind": "answer"}))
             self.question = None
             self._ensure_following_after()
             return
         if self.running and self.run_id:
             try:
-                self.api.steer(self.run_id, text, new_submission_key())
+                receipt = self.api.steer(self.run_id, text, new_submission_key())
             except ApiError as error:
                 if error.code != "run_not_active":
                     raise
+                # Show how the finished run ended before the new request.
+                self._await_end()
                 self.out("That run just finished; starting a new request.")
                 self._submit(text, "steer")
                 return
-            self.out("Sent as steering for the active run.")
+            self.out(format_acknowledgement({**receipt, "kind": "steering"}))
             self._ensure_following()
             return
         self._submit(text, "steer")
+
+    def _await_end(self, seconds: float = 10.0) -> None:
+        """Handle the followed run's remaining events and its end (briefly
+        bounded), so that following another run drops none of them."""
+        run_id = self.run_id
+        deadline = time.monotonic() + seconds
+        while (
+            self.run_id == run_id
+            and self.running
+            and self.following
+            and time.monotonic() < deadline
+        ):
+            self._pump_once(0.2)
 
     def _ensure_following_after(self) -> None:
         if not self.following and self.run_id:
@@ -481,13 +520,16 @@ class Chat:
         receipt = self.api.send_message(
             self.session_id, text, new_submission_key(), mode=mode
         )
-        run_id = receipt.get("run_id")
-        if run_id is None:
+        # Acknowledged at once from the receipt, before any progress event.
+        self.out(format_acknowledgement(receipt))
+        if receipt.get("run_id") is None:
             self.queued += 1
-            self.out("Queued: it will run after the current investigation.")
             return
+        run_id = str(receipt["run_id"])
+        if receipt.get("kind") != "steering":
+            self._acknowledged.add(run_id)
         if run_id != self.run_id or not self.running:
-            self._follow(str(run_id), None)
+            self._follow(run_id, None)
         else:
             self._ensure_following()
 

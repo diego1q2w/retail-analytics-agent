@@ -476,3 +476,80 @@ async def test_terminal_session_steers_then_ctrl_c_detaches_without_cancelling(
     done = await asyncio.to_thread(cli.run, "follow", run_id)
     assert done.returncode == 0, done.stdout
     assert "complete" in done.stdout
+
+
+async def test_terminal_acknowledges_first_queued_and_follow_up_messages(
+    alice: tuple[Cli, Principal, str],
+) -> None:
+    """Each new message shows "Working on it." once, when it is accepted. A
+    queued request that finished before the chat looked for its run (quick
+    in local mode) is still shown with its answer."""
+    import pty
+
+    cli, _principal, _ = alice
+    master, slave = pty.openpty()
+    process = subprocess.Popen(  # noqa: ASYNC220
+        [sys.executable, "-m", "retail_analytics.bootstrap.cli", "chat"],
+        env=cli.env,
+        cwd=ROOT,
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        close_fds=True,
+    )
+    os.close(slave)
+    screen = _Screen(master)
+    try:
+        await asyncio.to_thread(screen.wait_for, "Session ")
+        os.write(master, b"Analyze sales: slow case.\r")
+        await asyncio.to_thread(screen.wait_for, "Working on it.")
+        os.write(master, b"/queue Analyze sales for the follow-up.\r")
+        await asyncio.to_thread(screen.wait_for, PLAIN, 2)
+        os.write(master, b"Analyze sales for the next one.\r")
+        await asyncio.to_thread(screen.wait_for, PLAIN, 3)
+        os.write(master, b"/quit\r")
+        await asyncio.to_thread(screen.wait_exit, process)
+    finally:
+        process.kill()
+        os.close(master)
+    seen = screen.seen
+    assert "did not start" not in seen
+    assert "Queued: it will run after the current investigation." in seen
+    assert "Your queued question" in seen
+    assert seen.count("Working on it.") == 3, seen
+
+
+class _Screen:
+    """Everything a pseudo-terminal printed so far."""
+
+    def __init__(self, fd: int) -> None:
+        self.fd = fd
+        self.seen = ""
+
+    def wait_for(self, needle: str, count: int = 1, seconds: float = 60) -> None:
+        import select
+
+        deadline = time.monotonic() + seconds
+        while self.seen.count(needle) < count:
+            assert time.monotonic() < deadline, f"no {needle!r} x{count}: {self.seen}"
+            ready, _, _ = select.select([self.fd], [], [], 0.5)
+            if ready:
+                try:
+                    self.seen += os.read(self.fd, 4096).decode(errors="replace")
+                except OSError:
+                    return
+
+    def wait_exit(self, process: subprocess.Popen[bytes], seconds: float = 30) -> None:
+        """Keep reading (a full terminal buffer would block the chat) until
+        the process exits."""
+        import select
+
+        deadline = time.monotonic() + seconds
+        while process.poll() is None:
+            assert time.monotonic() < deadline, f"the chat did not exit: {self.seen}"
+            ready, _, _ = select.select([self.fd], [], [], 0.2)
+            if ready:
+                try:
+                    self.seen += os.read(self.fd, 4096).decode(errors="replace")
+                except OSError:
+                    return

@@ -23,6 +23,7 @@ from tests.integration.test_cli import (  # noqa: F401  (fixtures reused)
     test_deletion_needs_typed_phrase_and_declined_confirmation_deletes_nothing,
     test_new_cli_process_attaches_to_in_progress_run_and_disconnect_keeps_it,
     test_scripted_chat_session_ask_follow_up_report_and_delete,
+    test_terminal_acknowledges_first_queued_and_follow_up_messages,
     test_terminal_session_steers_then_ctrl_c_detaches_without_cancelling,
 )
 from tests.integration.test_http_api import api, world  # noqa: F401

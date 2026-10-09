@@ -45,6 +45,10 @@ _ADJUSTABLE = frozenset(
 )
 QUERY_NEEDS_ADJUSTMENT = "That query needs adjustment; the investigation is continuing."
 QUERY_ADJUSTING = "Adjusting the query to a supported form."
+WORKING = "Working on it."
+QUEUED = "Queued: it will run after the current investigation."
+STEERED = "Sent as steering for the active run."
+ANSWERED = "Answer sent; the investigation continues."
 
 
 def _needs_adjustment(kind: str, tool: JsonObject) -> bool:
@@ -89,7 +93,7 @@ def format_event(event: JsonObject) -> str | None:
     summary = one_line(event.get("summary", ""))
     tool = event.get("tool") or {}
     if kind == "run.started":
-        return click.style("Working on it.", dim=True)
+        return click.style(WORKING, dim=True)
     if kind == "analysis.progress":
         return click.style(f"  ... {summary}", dim=True)
     if kind == "tool.started":
@@ -124,6 +128,20 @@ def format_event(event: JsonObject) -> str | None:
     if kind == "run.cancelled":
         return click.style(f"Cancelled: {summary}", fg="yellow")
     return click.style(f"  {kind}: {summary}", dim=True)
+
+
+def format_acknowledgement(receipt: JsonObject) -> str:
+    """What the server accepted, from its receipt, before any progress event:
+    a request that is starting, one queued behind the active run, steering
+    for the active run, or the answer to its clarification question."""
+    kind = receipt.get("kind")
+    if kind == "answer":
+        return ANSWERED
+    if kind == "steering":
+        return STEERED
+    if receipt.get("run_id") is None:
+        return QUEUED
+    return click.style(WORKING, dim=True)
 
 
 def format_question(question: str, question_id: str | None = None) -> str:
