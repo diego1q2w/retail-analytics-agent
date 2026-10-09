@@ -96,6 +96,10 @@ class BackendSettings(BaseModel):
     schema_refresh_seconds: int = Field(default=3600, ge=60, le=86400)
     # Automatic reuse of evidence for current-data questions (design section 32).
     evidence_current_freshness_seconds: int = Field(default=900, ge=60, le=86400)
+    # Mandatory audit events are deleted after this many days (design section 40).
+    audit_retention_days: int = Field(default=90, ge=1, le=3650)
+    # Most reports and expired investigations one cleanup run handles.
+    cleanup_batch_size: int = Field(default=100, ge=1, le=10000)
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-3-flash-preview"
     openai_api_key: SecretStr | None = None

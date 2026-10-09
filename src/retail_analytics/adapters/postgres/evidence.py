@@ -343,18 +343,25 @@ class PostgresEvidenceStore:
             if missing:
                 raise AccessDenied("evidence", sorted(missing)[0])
             now = self._db.clock()
-            connection.execute(
-                pg_insert(evidence_pins).on_conflict_do_nothing(),
-                [
-                    {
-                        "evidence_id": evidence_id,
-                        "holder_kind": holder.kind,
-                        "holder_id": holder.holder_id,
-                        "pinned_at": now,
-                    }
-                    for evidence_id in sorted(wanted)
-                ],
-            )
+            try:
+                # A savepoint, so a lost race leaves the transaction usable.
+                with connection.begin_nested():
+                    connection.execute(
+                        pg_insert(evidence_pins).on_conflict_do_nothing(),
+                        [
+                            {
+                                "evidence_id": evidence_id,
+                                "holder_kind": holder.kind,
+                                "holder_id": holder.holder_id,
+                                "pinned_at": now,
+                            }
+                            for evidence_id in sorted(wanted)
+                        ],
+                    )
+            except exc.IntegrityError:
+                # The evidence expired and was cleaned up between the check
+                # above and this insert: it is no longer available to pin.
+                raise AccessDenied("evidence", sorted(wanted)[0]) from None
 
         if wanted:
             await self._db.transaction(work)

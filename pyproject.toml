@@ -46,6 +46,7 @@ retail-analytics-dev-access = "retail_analytics.bootstrap.dev_access:main"
 retail-analytics-eval = "retail_analytics.bootstrap.evaluate:main"
 retail-analytics-api = "retail_analytics.bootstrap.api:main"
 retail-analytics-worker = "retail_analytics.bootstrap.worker:main"
+retail-analytics-maintenance = "retail_analytics.bootstrap.maintenance:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/retail_analytics"]
