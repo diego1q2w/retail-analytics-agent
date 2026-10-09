@@ -80,7 +80,7 @@ Architecture checks alone: `python -m pytest tests/architecture`. Tests run offl
 | `analytics` | `retail_analytics.bootstrap.cli` | CLI client; talks to the backend over HTTP only (`analytics status`) |
 | `retail-analytics-api` | `retail_analytics.bootstrap.api` | HTTP backend (`GET /healthz`) |
 | `retail-analytics-check-credentials` | `retail_analytics.bootstrap.check_credentials` | Verify BigQuery and Gemini access without printing secrets; see [Google access setup](docs/google-access.md) |
-| `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal worker (no workflows registered yet) |
+| `retail-analytics-worker` | `retail_analytics.bootstrap.worker` | Temporal investigation worker (fixture model, or the live Gemini/GPT chain) |
 | `retail-analytics-dev-access` | `retail_analytics.bootstrap.dev_access` | Development only: provision the two synthetic executives and issue local tokens; see [Authentication and entitlements](#authentication-and-entitlements) |
 
 Backend entry points accept `--check-config`: validate settings, print them with secrets shown only as `<set>`/`<unset>`, and exit. Invalid configuration exits with status 2.
@@ -91,6 +91,7 @@ Backend entry points accept `--check-config`: validate settings, print them with
 
 - `RETAIL_ANALYTICS_MODE=fixture` (default) runs offline with no credentials.
 - `RETAIL_ANALYTICS_GEMINI_MODEL` is the default model name used by the credential check.
+- The investigation agent uses `RETAIL_ANALYTICS_AGENT_GEMINI_MODEL` (default `gemini-3.8-flash`, Gemini Interactions API) as primary and `RETAIL_ANALYTICS_AGENT_OPENAI_MODEL` (default `gpt-5-mini`, OpenAI Responses API) as backup when `RETAIL_ANALYTICS_OPENAI_API_KEY` is set. First-token (60 s), streaming-stall (30 s) and per-request (180 s) limits, retries, fallback and per-attempt budget accounting are described in [docs/model-providers.md](docs/model-providers.md).
 - `RETAIL_ANALYTICS_MODE=live` requires the database URL, Temporal address, BigQuery project and Gemini API key; all missing settings are reported together.
 - `RETAIL_ANALYTICS_REFERENCE_KEY` (at least 32 bytes) is the master key for opaque customer, order and item references. It is optional: when it is unset, queries that need references fail closed. Never commit or log it.
 

@@ -99,6 +99,21 @@ class BackendSettings(BaseModel):
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-3-flash-preview"
     openai_api_key: SecretStr | None = None
+    # Investigation agent models (live mode). Gemini is primary and is called
+    # through the Interactions API; the OpenAI model (Responses API) is the
+    # backup, enabled when RETAIL_ANALYTICS_OPENAI_API_KEY is set.
+    agent_gemini_model: str = Field(default="gemini-3.8-flash", min_length=1)
+    agent_openai_model: str = Field(default="gpt-5-mini", min_length=1)
+    # Provider response limits: no first streamed token within this time
+    # fails the request; afterwards only a stall between streamed events or
+    # the per-request total does (a progressing response is not cut off).
+    model_first_token_seconds: int = Field(default=60, ge=5, le=600)
+    model_stream_stall_seconds: int = Field(default=30, ge=5, le=600)
+    model_request_max_seconds: int = Field(default=180, ge=30, le=1800)
+    # After the primary fails (attempts spent, long retry hint, rejected key
+    # or model), requests skip it for this long and use the backup.
+    model_primary_cooldown_seconds: int = Field(default=60, ge=0, le=3600)
+    model_max_output_tokens: int = Field(default=8192, ge=256, le=65536)
     # Golden retrieval: "hashing" is the offline deterministic embedder.
     embedding_provider: Literal["hashing", "gemini"] = "hashing"
     embedding_model: str = "gemini-embedding-2"
@@ -165,6 +180,11 @@ class BackendSettings(BaseModel):
             raise ValueError(
                 "RETAIL_ANALYTICS_QUERY_MAX_BYTES must not exceed "
                 "RETAIL_ANALYTICS_RUN_MAX_BYTES"
+            )
+        if self.model_first_token_seconds > self.model_request_max_seconds:
+            raise ValueError(
+                "RETAIL_ANALYTICS_MODEL_FIRST_TOKEN_SECONDS must not exceed "
+                "RETAIL_ANALYTICS_MODEL_REQUEST_MAX_SECONDS"
             )
         if self.retry_base_seconds > self.retry_max_seconds:
             raise ValueError(

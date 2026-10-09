@@ -14,10 +14,11 @@ retail-analytics-worker
 
 The worker requires `RETAIL_ANALYTICS_DATABASE_URL`,
 `RETAIL_ANALYTICS_TEMPORAL_ADDRESS` and the local authentication signing key.
-Namespace and task queue use the existing backend settings. This release's
-entry point uses an explicitly offline fixture model and returns a partial
-answer without warehouse findings. Live model/provider wiring is a separate
-integration; live mode refuses to silently run the fixture.
+Namespace and task queue use the existing backend settings. In fixture mode
+the worker uses an offline model and returns a partial answer without
+warehouse findings. In live mode (`RETAIL_ANALYTICS_MODE=live`) it runs the
+Gemini primary / GPT backup chain with discovery and guarded query execution;
+see [model providers](model-providers.md).
 
 `bootstrap.investigations.build_investigations` composes the application
 services. An integration can supply discovery, guarded query execution and a
@@ -82,10 +83,13 @@ that reservation, while uncertain usage retains its estimate. Limits remain
 pinned to the run across worker replacement.
 
 Temporal activities use bounded retries and heartbeat timeouts. Model
-activities have a five-minute attempt timeout and a 30-second heartbeat;
-tools have a ten-minute attempt timeout and a 15-second heartbeat. The run's
-persistent active-time and query deadlines are additional limits. Provider
-first-token and streaming policy belong to the provider integration.
+activities have a 15-minute attempt timeout (a backstop: provider retries and
+fallback run inside one activity, each request has its own first-token,
+stall and total limits, and the active-time budget refuses new attempts) and
+a 30-second heartbeat; tools have a ten-minute attempt timeout and a 15-second
+heartbeat. The run's persistent active-time and query deadlines are additional
+limits. When every configured provider has failed, the model activity stops
+the run as "model unavailable" instead of being retried.
 
 ## Validation
 

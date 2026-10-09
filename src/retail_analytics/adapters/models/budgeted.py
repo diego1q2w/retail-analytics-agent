@@ -7,20 +7,28 @@ against the run's shared budget *before* it is sent and settled with the
 reported token usage afterwards. A reservation refused by the budget stops
 the run (``RunStopped``) instead of sending the request.
 
-The request key is stable for one attempt of one model activity and differs
-for every new attempt, so a retried activity (which may have sent its request
-before the worker died) is charged again: provider attempts are never
-undercounted.
+The request key combines the model activity attempt with a per-request
+sequence number, so a retried activity (which may have sent its request
+before the worker died), an in-activity retry and a fallback attempt are each
+charged again: provider attempts are never undercounted.
+
+Settlement records actual usage only when the provider reported it. A
+response without usage, a lost response or a timeout keeps the reservation
+estimate (the outcome is ambiguous); a definite client-side rejection
+(HTTP 4xx, for example 429) settles at zero tokens but still counts as a
+request.
 """
 
 from __future__ import annotations
 
+import itertools
 import uuid
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
 from pydantic_ai._run_context import get_current_run_context
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models import (
     Model,
@@ -30,6 +38,7 @@ from pydantic_ai.models import (
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import RunContext
+from pydantic_ai.usage import RequestUsage
 from pydantic_core import to_json
 from temporalio import activity
 
@@ -60,6 +69,23 @@ def activity_request_key(model_name: str) -> str:
     return f"local/{uuid.uuid4().hex}/{model_name}"[:200]
 
 
+def reported_usage(usage: RequestUsage) -> ProviderUsage:
+    """What the provider reported; unknown when it reported nothing.
+
+    Every real request has input tokens, so zero input means the usage was
+    not reported (for example a stream cut off before its final event).
+    """
+    if usage.input_tokens <= 0:
+        return ProviderUsage()
+    return ProviderUsage(usage.input_tokens, usage.output_tokens)
+
+
+def failure_usage(error: BaseException) -> ProviderUsage:
+    if isinstance(error, ModelHTTPError) and 400 <= error.status_code < 500:
+        return ProviderUsage(0, 0)
+    return ProviderUsage()
+
+
 def estimate_input_tokens(messages: list[ModelMessage]) -> int:
     return max(len(to_json(messages)) // CHARS_PER_TOKEN, 1)
 
@@ -77,10 +103,11 @@ class BudgetedModel(WrapperModel):
         self._budget = budget
         self._run_id = run_id
         self._request_key = request_key
+        self._sequence = itertools.count()
 
     async def _reserve(self, messages: list[ModelMessage]) -> tuple[str, str]:
         run_id = self._run_id()
-        key = self._request_key(self.model_name)
+        key = f"{self._request_key(self.model_name)}/{next(self._sequence)}"
         try:
             await self._budget.reserve_provider_request(
                 run_id, key, estimated_input_tokens=estimate_input_tokens(messages)
@@ -100,14 +127,13 @@ class BudgetedModel(WrapperModel):
             response = await self.wrapped.request(
                 messages, model_settings, model_request_parameters
             )
-        except BaseException:
-            # Sent (or maybe sent) without reported usage: the estimate stands.
-            await self._budget.record_provider_usage(run_id, key, ProviderUsage())
+        except BaseException as error:
+            # Sent (or maybe sent) without reported usage: the estimate stands
+            # unless the provider definitely rejected the request.
+            await self._budget.record_provider_usage(run_id, key, failure_usage(error))
             raise
         await self._budget.record_provider_usage(
-            run_id,
-            key,
-            ProviderUsage(response.usage.input_tokens, response.usage.output_tokens),
+            run_id, key, reported_usage(response.usage)
         )
         return response
 
@@ -126,8 +152,6 @@ class BudgetedModel(WrapperModel):
                 messages, model_settings, model_request_parameters, run_context
             ) as stream:
                 yield stream
-                usage = ProviderUsage(
-                    stream.usage.input_tokens, stream.usage.output_tokens
-                )
+                usage = reported_usage(stream.usage)
         finally:
             await self._budget.record_provider_usage(run_id, key, usage)

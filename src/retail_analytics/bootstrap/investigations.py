@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,7 @@ from retail_analytics.adapters.postgres.investigations import (
 )
 from retail_analytics.adapters.temporal.activities import bind_runtime
 from retail_analytics.adapters.temporal.agent import AgentServices, bind_agent_services
+from retail_analytics.application.budgets import RunBudgets
 from retail_analytics.application.discovery import DiscoveryService
 from retail_analytics.application.investigation_runtime import InvestigationRuntime
 from retail_analytics.application.investigations import (
@@ -51,7 +53,7 @@ def build_investigations(
     persistence: Persistence,
     access: AccessServices,
     scheduler: InvestigationScheduler,
-    model: Model,
+    model: Model | Callable[[RunBudgets], Model],
     *,
     discovery: DiscoveryService | None = None,
     queries: QueryExecutionService | None = None,
@@ -123,5 +125,10 @@ def build_investigations(
         launcher=launcher,
     )
     bind_runtime(runtime)
-    bind_agent_services(AgentServices(runtime, tools, BudgetedModel(model, budgets)))
+    # A plain model is budgeted as a whole; a factory (``bootstrap.models``)
+    # budgets every provider attempt inside its retry/fallback chain.
+    provider = (
+        BudgetedModel(model, budgets) if isinstance(model, Model) else model(budgets)
+    )
+    bind_agent_services(AgentServices(runtime, tools, provider))
     return InvestigationServices(control, launcher, runtime, inputs, principals, tools)

@@ -70,7 +70,10 @@ MAX_ANSWER_CHARS = 20_000
 # Activity limits. A worker that dies is detected by the heartbeat timeout and
 # the activity is retried on another worker; retries are bounded and every
 # retry re-checks authority and budgets, and reconciles external effects.
-MODEL_ACTIVITY_TIMEOUT = timedelta(minutes=5)
+# A model activity covers provider retries and the fallback chain; each
+# request has its own response deadlines and the run's active-time budget
+# refuses new attempts, so this is only a backstop for a stuck worker.
+MODEL_ACTIVITY_TIMEOUT = timedelta(minutes=15)
 MODEL_HEARTBEAT_TIMEOUT = timedelta(seconds=30)
 TOOL_ACTIVITY_TIMEOUT = timedelta(minutes=10)
 TOOL_HEARTBEAT_TIMEOUT = timedelta(seconds=15)

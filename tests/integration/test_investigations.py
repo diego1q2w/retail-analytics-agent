@@ -113,7 +113,9 @@ class TestEnv(Env):
         env.principal, env.session_id = await env.executive({"1"})
         return env
 
-    def worker(self, stack: Stack, *, hold: bool = False) -> subprocess.Popen[str]:
+    def worker(
+        self, stack: Stack, *, hold: bool = False, providers: str = "scripted"
+    ) -> subprocess.Popen[str]:
         return subprocess.Popen(
             [sys.executable, "-m", "tests.integration.investigation_worker"],
             cwd=ROOT,
@@ -124,6 +126,7 @@ class TestEnv(Env):
                 "T13_TEMPORAL_ADDRESS": f"127.0.0.1:{stack.temporal_port}",
                 "T13_TASK_QUEUE": self.queue,
                 "T13_CRASH_HOLD": "1" if hold else "0",
+                "T14_PROVIDERS": providers,
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -236,6 +239,29 @@ async def test_worker_kill_after_committed_effect_resumes_once_and_replays(
             env.stop(process)
         if replacement is not None:
             env.stop(replacement)
+        env.db.close()
+
+
+async def test_primary_outage_falls_back_inside_the_durable_run(
+    stack: Stack,
+) -> None:
+    env = await TestEnv.create(stack)
+    process = env.worker(stack, providers="fallback")
+    try:
+        run_id = await env.start("Analyze sales: effect case.")
+        await env.wait_status(run_id, RunStatus.COMPLETED, 90)
+        with env.db.engine.connect() as connection:
+            effects = connection.execute(
+                sa.text("SELECT count(*) FROM t13_test_effects WHERE run_id=:run"),
+                {"run": run_id},
+            ).scalar_one()
+        assert effects == 1  # the tool effect ran once; fallback did not redo it
+        messages = await env.db.sessions.recent_messages(env.session_id, 100)
+        assert any("Backup continued after g-1." in m.content for m in messages)
+        # Gemini call + 3 overloaded Gemini attempts + GPT answer.
+        assert await env.model_requests(run_id) == 5
+    finally:
+        env.stop(process)
         env.db.close()
 
 

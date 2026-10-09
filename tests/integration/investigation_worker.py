@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any
 
 import sqlalchemy as sa
 from pydantic import SecretStr
@@ -36,6 +37,7 @@ from retail_analytics.application.tools import (
 from retail_analytics.bootstrap.access import build_access, local_token_authority
 from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.investigations import build_investigations
+from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import Persistence, build_persistence
 from retail_analytics.domain.executions import ToolExecutionStatus
 from retail_analytics.domain.operations import RecoveryMode, SideEffect
@@ -155,6 +157,43 @@ async def scripted_model(
     )
 
 
+def fallback_chain(settings: BackendSettings) -> Any:
+    """Real Gemini/OpenAI adapters over HTTP stubs: Gemini calls the effect
+    tool, then is overloaded (503); GPT must continue from that tool result."""
+    from tests.unit.models import stubs
+
+    def gemini(request: dict[str, Any]) -> stubs.Reply:
+        if any(step["type"] == "function_result" for step in request["input"]):
+            return stubs.error(503, "unavailable")
+        return stubs.Reply(
+            events=stubs.gemini_call(
+                "checkpoint_effect", {"purpose": "controlled test"}, call_id="g-1"
+            )
+        )
+
+    def gpt(request: dict[str, Any]) -> stubs.Reply:
+        answer = next(t["name"] for t in request["tools"] if "Answer" in t["name"])
+        seen = [
+            item["call_id"]
+            for item in request["input"]
+            if item.get("type") == "function_call_output"
+        ]
+        text = f"Backup continued after {','.join(seen) or 'nothing'}."
+        return stubs.Reply(
+            events=stubs.openai_call(
+                answer, {"text": text, "cited_evidence": [], "complete": True}
+            )
+        )
+
+    return provider_chain(
+        settings,
+        providers=[
+            stubs.gemini(stubs.Recorder([], script=gemini)),
+            stubs.openai(stubs.Recorder([], script=gpt)),
+        ],
+    )
+
+
 async def main() -> None:
     settings = BackendSettings(
         database_url=SecretStr(os.environ["T13_DATABASE_URL"]),
@@ -169,12 +208,15 @@ async def main() -> None:
     )
     scheduler = TemporalInvestigationScheduler(client, settings.temporal_task_queue)
     access = build_access(db, local_token_authority(settings))
+    model: Any = FunctionModel(scripted_model, model_name="scripted")
+    if os.environ.get("T14_PROVIDERS") == "fallback":
+        model = fallback_chain(settings)
     build_investigations(
         settings,
         db,
         access,
         scheduler,
-        FunctionModel(scripted_model, model_name="scripted"),
+        model,
         registry=effect_registry(db),
     )
     try:
