@@ -438,3 +438,41 @@ report_evidence = sa.Table(
     sa.Column("evidence_id", sa.Text, primary_key=True),
     sa.Column("ordinal", sa.Integer, nullable=False),
 )
+
+deletion_proposals = sa.Table(
+    "deletion_proposals",
+    metadata,
+    sa.Column("proposal_id", sa.Text, primary_key=True),
+    sa.Column("owner_id", sa.Text, nullable=False),
+    sa.Column("session_id", sa.Text),
+    sa.Column("run_id", sa.Text),
+    sa.Column("idempotency_key", sa.Text, nullable=False),
+    sa.Column("request_digest", sa.String(64), nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    _ts("created_at"),
+    _ts("expires_at"),
+    _ts("resolved_at", nullable=True),
+)
+
+deletion_proposal_items = sa.Table(
+    "deletion_proposal_items",
+    metadata,
+    sa.Column("proposal_id", sa.Text, primary_key=True),
+    sa.Column("report_id", sa.Text, primary_key=True),
+    sa.Column("version", sa.Integer, nullable=False),
+    sa.Column("ordinal", sa.Integer, nullable=False),
+)
+
+audit_events = sa.Table(
+    "audit_events",
+    metadata,
+    sa.Column("audit_id", sa.Text, primary_key=True),
+    _ts("occurred_at"),
+    sa.Column("actor_id", sa.Text, nullable=False),
+    sa.Column("action", sa.Text, nullable=False),
+    sa.Column("subject_type", sa.Text, nullable=False),
+    sa.Column("subject_id", sa.Text, nullable=False),
+    sa.Column("session_id", sa.Text),
+    sa.Column("run_id", sa.Text),
+    sa.Column("details", JSONB, nullable=False),
+)
