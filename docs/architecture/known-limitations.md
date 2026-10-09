@@ -38,9 +38,21 @@ is claimed for them until their results are published in the repository.
   [production deployment](production-deployment.md#local-mode-limits-implemented-accepted-for-the-local-demo).
 - **Privacy.**
   - The policy pseudonymizes; it does not anonymize.
-  - Names in free text are found by cues and by exact terms, not by a
-    general detector.
-  - Derived figures from withheld evidence cannot be recognized.
+  - Query results never contain person names or contact details: the
+    catalog marks them `DIRECT_IDENTIFIER_COLUMNS` with no permitted
+    derivation, the SQL compiler refuses them
+    (`adapters/sql_compiler/bindings.py`) and the result privacy boundary
+    re-checks (`application/result_privacy.py`). No data can be looked up or
+    linked by a person's name; a name reaches an answer or report only if
+    someone typed it (or the model invents one).
+  - The name detector is a cue-based second line of defence for text people
+    supply (chat messages, Golden examples), not a general detector. A name
+    typed without a cue ("How much did customer Maria Lopez spend?") is not
+    recorded as a protected term, so a model echo of that typed name is not
+    masked.
+  - Derived figures from withheld evidence cannot be recognized by the
+    figure check; instead, nothing generated for a run is released while any
+    evidence linked to that run is withheld.
   - BigQuery job metadata holds query parameters.
 - **Golden retrieval.**
   - Small corpus.

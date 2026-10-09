@@ -8,7 +8,9 @@ sessions and reads what a client may see.
 Every piece of generated text leaving through here is released by the output
 privacy gate under a policy built *after* the text was read, so a revoked or
 narrowed authority applies to replayed events, open questions and answers
-alike. A section the gate refuses is replaced by its safe explanation rather
+alike. Once evidence linked to a run is withheld from the caller, nothing
+generated for that run is shown again (answer, question or summary). A
+section the gate refuses is replaced by its safe explanation rather
 than dropped, so event sequences stay gap-free.
 """
 

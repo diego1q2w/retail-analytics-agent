@@ -110,15 +110,6 @@ async def test_g2_release_recheck_blocks_cited_and_recognisable_figures() -> Non
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RELEASE BLOCKER G-1: the release gate checks only cited evidence and "
-        "recognisable figures, not the run's own evidence links, so uncited "
-        "percentages, small integers and conclusions from evidence revoked "
-        "mid-generation are released."
-    ),
-)
 @pytest.mark.asyncio
 async def test_g2_uncited_conclusion_from_revoked_run_evidence_is_withheld() -> None:
     w = World()

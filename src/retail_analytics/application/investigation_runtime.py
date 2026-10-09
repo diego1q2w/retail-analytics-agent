@@ -75,6 +75,7 @@ from retail_analytics.application.investigation_policy import (
 )
 from retail_analytics.application.investigations import InvestigationLauncher
 from retail_analytics.application.output_privacy import (
+    ACCESS_CHANGED,
     OutputDestination,
     OutputPrivacyGate,
     OutputSection,
@@ -165,6 +166,18 @@ class InvestigationContextChanged(Exception):
 
     def __init__(self) -> None:
         super().__init__("investigation context changed")
+
+
+def _withheld(withheld: OutputWithheld) -> StepOutcome:
+    if withheld.reason == ACCESS_CHANGED:
+        # Evidence the run rests on is no longer readable: stop with the
+        # access notice instead of asking the model to rephrase.
+        return StepOutcome(StepResult.STOPPED, stop_reason=StopReason.ACCESS)
+    return StepOutcome(
+        StepResult.WITHHELD,
+        message=withheld.message,
+        correctable=withheld.correctable,
+    )
 
 
 def stop_message(reason: StopReason, resource: BudgetResource | None) -> str:
@@ -375,11 +388,7 @@ class InvestigationRuntime:
         except AccessDenied:
             return StepOutcome(StepResult.STOPPED, stop_reason=StopReason.ACCESS)
         except OutputWithheld as withheld:
-            return StepOutcome(
-                StepResult.WITHHELD,
-                message=withheld.message,
-                correctable=withheld.correctable,
-            )
+            return _withheld(withheld)
         await self._evidence.link_to_run(context, released.cited_evidence)
         cited = await self._cited(context, draft.run_id, released.cited_evidence)
         if status is RunStatus.COMPLETED and any(
@@ -440,11 +449,7 @@ class InvestigationRuntime:
         except AccessDenied:
             return StepOutcome(StepResult.STOPPED, stop_reason=StopReason.ACCESS)
         except OutputWithheld as withheld:
-            return StepOutcome(
-                StepResult.WITHHELD,
-                message=withheld.message,
-                correctable=withheld.correctable,
-            )
+            return _withheld(withheld)
         if not recovering:
             waiting = await self._inputs.wait_for_input(
                 ClarificationQuestion(

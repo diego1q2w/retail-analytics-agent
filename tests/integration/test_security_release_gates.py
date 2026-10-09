@@ -16,14 +16,19 @@ import pytest
 import pytest_asyncio
 from pydantic_ai.models.function import FunctionModel
 
+from retail_analytics.adapters.postgres.conversations import PostgresConversationReader
 from retail_analytics.adapters.postgres.database import Database
-from retail_analytics.adapters.postgres.investigations import PostgresRunPrincipals
+from retail_analytics.adapters.postgres.investigations import (
+    PostgresInvestigationInputs,
+    PostgresRunPrincipals,
+)
 from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.contracts.investigations import (
     AnswerDraft,
     StepResult,
 )
 from retail_analytics.application.contracts.persistence import RunRequest
+from retail_analytics.application.conversations import ConversationService
 from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.local_investigations import (
     LocalInvestigations,
@@ -119,14 +124,6 @@ async def test_cited_answer_is_withheld_after_mid_generation_revocation(
     assert not any(DERIVED in t for t in await env.assistant_texts())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RELEASE BLOCKER G-1: an uncited conclusion resting on run evidence "
-        "revoked mid-generation is released (only cited ids and recognisable "
-        "figures are rechecked)."
-    ),
-)
 async def test_uncited_answer_is_withheld_after_mid_generation_revocation(
     env: ReleaseEnv,
 ) -> None:
@@ -136,3 +133,31 @@ async def test_uncited_answer_is_withheld_after_mid_generation_revocation(
     await env.db.access_admin.replace_products(env.principal.executive_id, {"2"})
     result = await env.answer(run_id, DERIVED)
     assert result in {StepResult.WITHHELD, StepResult.STOPPED}
+    assert not any(DERIVED in t for t in await env.assistant_texts())
+
+
+async def test_released_answer_is_withheld_on_redisplay_after_revocation(
+    env: ReleaseEnv,
+) -> None:
+    await _fresh_session(env)
+    run_id = await env.run(env.principal, env.session_id, "Revenue for my products")
+    await env.query(env.principal, run_id)
+    assert await env.answer(run_id, DERIVED) is StepResult.RELEASED
+    db = Database(env.db.engine)
+    conversations = ConversationService(
+        resolver=env.access.resolver,
+        guard=env.access.guard,
+        sessions=env.db.sessions,
+        runs=env.db.runs,
+        inputs=PostgresInvestigationInputs(db),
+        events=env.db.run_events,
+        reader=PostgresConversationReader(db),
+        gate=env.context.gate,
+    )
+    shown = await conversations.run_view(env.principal, run_id)
+    assert shown.answer is not None and DERIVED in shown.answer.text
+
+    await env.db.access_admin.replace_products(env.principal.executive_id, {"2"})
+    again = await conversations.run_view(env.principal, run_id)
+    assert again.answer is not None and again.answer.withheld
+    assert "12%" not in again.answer.text and "strongest" not in again.answer.text

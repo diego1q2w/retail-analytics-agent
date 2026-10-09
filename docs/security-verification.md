@@ -15,17 +15,17 @@ are reported one by one. They are never averaged into a quality score.
 
 | Run | Backend | Result |
 | --- | --- | --- |
-| Unit selection (in-memory fakes, DuckDB privacy oracle) | none (backend-neutral application code) | 891 passed, 1 xfailed (open blocker G-1) |
-| Docker selection, PostgreSQL only | local (default) | 44 passed, 1 xfailed (open blocker G-1) |
+| Unit selection (in-memory fakes, DuckDB privacy oracle) | none (backend-neutral application code) | 896 passed |
+| Docker selection, PostgreSQL only | local (default) | 46 passed |
 | Docker selection, PostgreSQL + Temporal | temporal | 5 passed |
 
 There were no skips. An `xfail(strict=True)` case is an open release blocker,
 not a pass. When the fix lands, the case starts passing, and strict mode then
 fails the run until the marker is removed.
 
-**One release gate is not met** (see [Open findings](#open-findings)):
-G-1 (release-time recheck of uncited conclusions). G-2 (names in Golden
-knowledge text) is fixed.
+**All four release gates are met.** G-1 (release-time recheck of uncited
+conclusions) and G-2 (names in Golden knowledge text) are fixed (see
+[Open findings](#open-findings)).
 
 ## Commands
 
@@ -105,24 +105,26 @@ Case IDs are test node IDs. Paths are relative to `tests/`.
 | Gate | Cases | Positive control | Status |
 | --- | --- | --- | --- |
 | 1. Revoked evidence leaves history by provenance | `unit/security/test_release_gates.py::test_g1_withdrawn_conclusions_leave_history_by_provenance` (a percentage, a small integer and a qualitative ranking); `::test_g1_generated_text_without_provenance_fails_closed`; `unit/context/test_context_builder.py::test_scope_narrowed_mid_session_removes_facts_from_evidence_and_history`; `unit/test_guarded_model_history.py::test_stale_history_never_reaches_provider`; `integration/test_report_reuse_withdrawal.py::test_deletion_withdraws_links_and_excludes_dependent_answers` | the same message is kept before narrowing; a linked answer is kept with no access change | met |
-| 2. Authority rechecked at release | `unit/security/test_release_gates.py::test_g2_release_recheck_blocks_cited_and_recognisable_figures`; `integration/test_security_release_gates.py::test_cited_answer_is_withheld_after_mid_generation_revocation` (local); `integration/test_investigations.py::test_release_masks_email_and_withholds_revoked_evidence`, `::test_fresh_authority_at_model_tool_and_release_boundaries` (temporal); `unit/http/test_conversations.py::test_authority_is_rechecked_on_every_batch`; `unit/http/test_api.py::test_sse_stops_when_authority_is_revoked_mid_stream` | `integration/test_security_release_gates.py::test_answer_released_under_unchanged_access` | **not met: G-1** |
+| 2. Authority rechecked at release | `unit/security/test_release_gates.py::test_g2_release_recheck_blocks_cited_and_recognisable_figures`; `integration/test_security_release_gates.py::test_cited_answer_is_withheld_after_mid_generation_revocation` (local); `integration/test_investigations.py::test_release_masks_email_and_withholds_revoked_evidence`, `::test_fresh_authority_at_model_tool_and_release_boundaries` (temporal); `unit/http/test_conversations.py::test_authority_is_rechecked_on_every_batch`; `unit/http/test_api.py::test_sse_stops_when_authority_is_revoked_mid_stream`; uncited conclusions (G-1, fixed): `unit/security/test_release_gates.py::test_g2_uncited_conclusion_from_revoked_run_evidence_is_withheld`, `unit/privacy/test_run_evidence_release.py` (release on every destination, re-display of answer and question, unloadable linked evidence), `integration/test_security_release_gates.py::test_uncited_answer_is_withheld_after_mid_generation_revocation`, `::test_released_answer_is_withheld_on_redisplay_after_revocation` (local) | `integration/test_security_release_gates.py::test_answer_released_under_unchanged_access`; `unit/privacy/test_run_evidence_release.py::test_rule_is_scoped_to_the_run_being_released` | met |
 | 3. Names in user, retrieved and generated text | `unit/security/test_release_gates.py::test_g3_cued_names_are_masked_and_brands_or_places_are_not`; `unit/context/test_output_gate.py::test_names_the_user_typed_cannot_be_echoed_later`; Golden: `unit/security/test_release_gates.py::test_g3_golden_text_naming_a_customer_is_refused`, `unit/test_sensitive_content.py::test_cued_person_names_are_flagged`, `unit/test_retrieval.py::test_named_person_example_is_refused_at_draft`, `::test_retrieved_examples_pass_the_context_screen` | brand and place names are released unmasked (report destination); `::test_g3_golden_screen_positive_control`; `unit/test_sensitive_content.py::test_brands_places_and_method_text_are_not_names`; the unnamed example still publishes and is retrieved unchanged | met (cue-based; residual risk below) |
 | 4. Analysis-only scope is not the authorization boundary | `unit/security/test_release_gates.py::test_g4_mixed_requests_with_an_off_topic_task_are_declined`, `::test_g4_admitted_injection_still_cannot_cross_the_product_boundary`; `unit/context/test_request_scope.py` | `unit/context/test_request_scope.py::test_analysis_and_administration_proceed` | met (classifier is coarse; see limits) |
 
 ## Open findings
 
-- **G-1, release blocker, needs a product fix.** At release, the output gate
-  checks cited evidence IDs and figures it can recognise as withdrawn
-  (numbers of 1,000 and above). It does not check the run's own evidence
-  links. Suppose the executive's products are narrowed after the model
-  finishes but before release. An answer that cites nothing and states only
-  a percentage, a small integer or a qualitative conclusion ("your strongest
-  product is up 12% on 7 orders") is then released. The same rule applies
-  when a stored answer is shown again later. Cases:
-  `unit/security/test_release_gates.py::test_g2_uncited_conclusion_from_revoked_run_evidence_is_withheld`
-  and
-  `integration/test_security_release_gates.py::test_uncited_answer_is_withheld_after_mid_generation_revocation`
-  (local backend, through `InvestigationRuntime.release_answer`).
+- **G-1, fixed.** Release used to recheck only cited evidence IDs and
+  figures it could recognise as withdrawn (numbers of 1,000 and above), so
+  an uncited answer stating only a percentage, a small integer or a
+  qualitative conclusion ("your strongest product is up 12% on 7 orders")
+  was released after the executive's products were narrowed. The output
+  gate now also checks every evidence record linked to the run (its trusted
+  run links, produced or reused, cited or not). If any of them is withheld
+  by authority now, or can no longer be loaded, nothing generated for that
+  run is released, on every destination. At release the runtime stops the
+  run with the access-changed notice (shared by the local and Temporal
+  backends); on re-display (`run_view`, event replay) the answer and open
+  question are replaced by the withheld notice. Evidence that is only
+  superseded (changed definitions, same authority) does not trigger it.
+  Cases: see gate 2 above.
 - **G-2, fixed.** The Golden knowledge screen now uses the same cue-based
   name detector as the context and output screens, so an example naming a
   person ("revenue from the customer named …") is refused when it is
@@ -135,15 +137,28 @@ Case IDs are test node IDs. Paths are relative to `tests/`.
 
 ## Coverage limits
 
+- **Where names can and cannot come from.** Query results never contain
+  person names or contact details. The catalog lists them in
+  `DIRECT_IDENTIFIER_COLUMNS` (first and last name, email, street address,
+  postal code, city, coordinates) with no permitted derivation, so no field
+  can be built on them; the SQL compiler refuses any field sourced from them
+  (`adapters/sql_compiler/bindings.py`); and the result privacy boundary
+  re-checks every output's lineage before rows leave
+  (`application/result_privacy.py`). No data can therefore be looked up,
+  filtered or linked by a person's name. The cue-based name detector is a
+  second line of defence for text people supply (chat messages, Golden
+  examples): a name reaches an answer or report only if someone typed it
+  (or the model invents one).
 - **Name detection is contextual, not comprehensive.** Names are detected
-  after a cue such as "customer named", "Mr." or "client called", and when
-  the user typed them earlier with such a cue. The detector also uses an
-  optional known-name list, which is empty by default. A bare name in
-  generated prose or in Golden knowledge ("Maria Lopez bought the most") is
-  not detected. Released
-  query results never contain customer names (the name columns are
-  forbidden), so the remaining exposure is names the user supplies or the
-  model invents.
+  after a cue such as "customer named", "Mr." or "client called", and a
+  name the user typed with such a cue is remembered as a protected term and
+  masked if it is echoed later. The detector also uses an optional
+  known-name list, which is empty by default. A name without a cue is not
+  detected: in "How much did customer Maria Lopez spend?" the name is not
+  recorded as a protected term, so a model answer that repeats "Maria
+  Lopez" is not masked (no data about her can be returned; only the typed
+  name is echoed). The same holds for a bare name in generated prose or in
+  Golden knowledge ("Maria Lopez bought the most").
 - **User-typed quotes.** After narrowing, the user's own earlier messages are
   kept with every figure removed, but their qualitative wording (for example
   "Beta is strongest") stays. This is by design: the user's own words are

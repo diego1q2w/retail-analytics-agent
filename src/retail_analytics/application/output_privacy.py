@@ -8,6 +8,10 @@ streamed, saved or promoted. The gate judges the text against a
 fails closed:
 
 - citations must name evidence the caller may use now;
+- nothing generated for a run is released while any evidence that run
+  produced or reused (its trusted run links, cited or not) is withheld from
+  the caller by authority, so an uncited percentage, small count or
+  qualitative conclusion cannot outlive a revocation;
 - opaque references must occur in evidence the caller may use now (no
   fabricated, stale or other executives' references), and never enter
   cross-executive memory or telemetry;
@@ -59,6 +63,8 @@ from retail_analytics.domain.disclosure import (
 from retail_analytics.domain.operations import ToolErrorCode
 
 OUTPUT_POLICY_VERSION = 1
+# ``OutputWithheld.reason`` when evidence linked to the run is withheld now.
+ACCESS_CHANGED = "access_changed"
 _USER_HISTORY_SCAN = 60
 
 
@@ -115,6 +121,9 @@ class OutputWithheld(Exception):
 
     _MESSAGES: ClassVar[dict[str, str]] = {
         "unavailable_evidence": "It cites findings that are no longer available",
+        ACCESS_CHANGED: (
+            "Your access changed since it was produced, so it can no longer be shown"
+        ),
         "unknown_reference": "It refers to records outside your current access",
         "out_of_scope_figure": "It contains figures outside your current access",
         "internal_secret": "It could not be released safely",
@@ -152,6 +161,9 @@ class DisclosurePolicy:
     allowed_figures: frozenset[Decimal]
     withheld_figures: frozenset[Decimal]
     protected_terms: tuple[ProtectedTerm, ...] = ()
+    # Some evidence linked to ``run_id`` is withheld by authority now (or
+    # could not be loaded): nothing generated for the run may leave.
+    run_evidence_withdrawn: bool = False
 
     @classmethod
     def from_standings(
@@ -163,9 +175,13 @@ class DisclosurePolicy:
         authorization_version: int,
         standings: Iterable[EvidenceStanding],
         protected_terms: Iterable[ProtectedTerm] = (),
+        run_evidence: Iterable[str] = (),
     ) -> DisclosurePolicy:
+        """``run_evidence``: the trusted links of ``run_id`` (produced or
+        reused). A linked ID without a standing counts as withheld."""
         usable: set[str] = set()
         withdrawn: set[str] = set()
+        superseded: set[str] = set()
         refs: set[str] = set()
         allowed: set[Decimal] = set()
         withheld: set[Decimal] = set()
@@ -176,6 +192,8 @@ class DisclosurePolicy:
                 usable.add(evidence.evidence_id)
             else:
                 withdrawn.add(evidence.evidence_id)
+                if standing.superseded:
+                    superseded.add(evidence.evidence_id)
             for row in table.rows:
                 for cell, column in zip(row, table.columns, strict=True):
                     if standing.usable and column.role == "reference":
@@ -200,6 +218,11 @@ class DisclosurePolicy:
             allowed_figures=frozenset(allowed),
             withheld_figures=frozenset(withheld),
             protected_terms=tuple(protected_terms),
+            # A superseded record (changed meaning, same authority) does not
+            # make the run's text unreadable; access withdrawal does.
+            run_evidence_withdrawn=any(
+                e not in usable and e not in superseded for e in run_evidence
+            ),
         )
 
     def __repr__(self) -> str:
@@ -207,7 +230,8 @@ class DisclosurePolicy:
             f"DisclosurePolicy(run={self.run_id!r}, "
             f"version={self.authorization_version}, "
             f"usable={len(self.usable_evidence)}, "
-            f"withdrawn={len(self.withdrawn_evidence)})"
+            f"withdrawn={len(self.withdrawn_evidence)}, "
+            f"run_evidence_withdrawn={self.run_evidence_withdrawn})"
         )
 
 
@@ -253,6 +277,7 @@ class OutputPrivacyGate:
             authorization_version=ctx.product_scope.entitlement_version,
             standings=session.standings,
             protected_terms=terms,
+            run_evidence=session.run_links.get(run_id, frozenset()),
         )
 
     def release(
@@ -287,6 +312,11 @@ class OutputPrivacyGate:
     ) -> tuple[ReleasedSection, ...]:
         """Fresh policy, then all sections or nothing (first withheld raises)."""
         policy = await self.policy_for_run(principal, run_id, trace_id=trace_id)
+        for section in sections:
+            # A withdrawn citation is reported first: it is the specific,
+            # correctable cause even when the run-wide rule also applies.
+            if not policy.usable_evidence.issuperset(section.cited_evidence):
+                self.release(policy, section, destination)
         return tuple(self.release(policy, s, destination) for s in sections)
 
 
@@ -306,6 +336,14 @@ def _release(
     for evidence_id in section.cited_evidence:
         if evidence_id not in policy.usable_evidence:
             raise withhold("unavailable_evidence", ToolErrorCode.ACCESS_DENIED)
+    if policy.run_evidence_withdrawn:
+        # Regenerating cannot help: the run's own findings are withheld.
+        raise OutputWithheld(
+            ACCESS_CHANGED,
+            section=section.name,
+            code=ToolErrorCode.ACCESS_DENIED,
+            correctable=False,
+        )
     text = normalize(section.text)
     detections = list(scan(text, policy.protected_terms))
     if any(d.kind is DisclosureKind.INTERNAL_SECRET for d in detections):
