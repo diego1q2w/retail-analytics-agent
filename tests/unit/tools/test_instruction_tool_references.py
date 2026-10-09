@@ -9,6 +9,7 @@ guesswork, so this fails on any such reference.
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import json
 import re
@@ -27,7 +28,13 @@ from retail_analytics.application.investigation_policy import (
     catalog_fingerprint,
     render_investigation_policy,
 )
-from retail_analytics.application.tools import CapabilityRegistry
+from retail_analytics.application.tools import (
+    CapabilityRegistry,
+    OperationContext,
+    ToolCall,
+    ToolFailed,
+)
+from retail_analytics.application.tools.gateway import invoke
 from retail_analytics.bootstrap.access import AccessServices
 from retail_analytics.bootstrap.budgets import build_run_budgets
 from retail_analytics.bootstrap.config import BackendSettings
@@ -43,6 +50,7 @@ from retail_analytics.domain.access import (
     permissions_for,
 )
 from retail_analytics.domain.disclosure import DisclosureKind
+from retail_analytics.domain.operations import ToolErrorCode
 from retail_analytics.domain.request_scope import (
     Admission,
     AdmissionDecision,
@@ -207,7 +215,9 @@ def test_missing_capabilities_are_described_as_unavailable() -> None:
     )
     assert "You cannot delete reports for this user" in policy
     assert "propose_report_deletion" not in policy
-    assert "save_report" in policy
+    # Saving needs analysis:read AND reports:read_own (T18-F4).
+    assert "You cannot save reports for this user." in policy
+    assert "save_report" not in policy
 
     _, none_policy, _ = _principal_text(registry, frozenset())
     assert "No analysis tools are available" in none_policy
@@ -236,3 +246,46 @@ def test_policy_is_deterministic_per_catalog_fingerprint() -> None:
     # Different catalogs yield different instructions.
     assert len(set(seen.values())) == len(seen)
     assert len(seen) >= 3
+
+
+def test_saving_needs_both_analysis_and_own_report_read() -> None:
+    registry = _registry()
+    analysis = Permission.ANALYSIS_READ.value
+    own = Permission.REPORTS_READ_OWN.value
+    both, _, _ = _principal_text(registry, frozenset({analysis, own}))
+    assert "save_report" in both
+    for name, permissions in (
+        ("analysis-only", frozenset({analysis})),
+        ("reports-only", frozenset({own})),
+    ):
+        catalog, policy, text = _principal_text(registry, permissions)
+        assert "save_report" not in catalog, name
+        assert "save_report" not in text, name
+        assert "You cannot save reports for this user." in policy, name
+    # Analysis-only users still get answers.
+    analysis_catalog, _, _ = _principal_text(registry, frozenset({analysis}))
+    assert "execute_analysis" in analysis_catalog
+
+    executive = permissions_for(frozenset({Role.EXECUTIVE}))
+    executive_catalog, executive_policy, _ = _principal_text(
+        registry, frozenset(p.value for p in executive)
+    )
+    assert "save_report" in executive_catalog
+    assert "You cannot save reports" not in executive_policy
+
+
+def test_analysis_only_tool_call_to_save_report_is_refused() -> None:
+    from tests.unit.tools.fakes import RecordingSink
+
+    registry = _registry()
+    ctx = _execution(frozenset({Permission.ANALYSIS_READ.value}))
+    result = asyncio.run(
+        invoke(
+            registry,
+            ToolCall(call_id="c1", name="save_report", arguments={}),
+            OperationContext(ctx, "op-1"),
+            RecordingSink(),
+        )
+    )
+    assert isinstance(result.outcome, ToolFailed)
+    assert result.outcome.code is not ToolErrorCode.INVALID_INPUT

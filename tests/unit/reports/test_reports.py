@@ -304,3 +304,24 @@ async def test_reading_requires_the_read_permission(w: ReportWorld) -> None:
     limited = Principal(EXEC_A, frozenset({Permission.ANALYSIS_READ.value}))
     with pytest.raises(AccessDenied):
         await w.reports.read(limited, result.version.report_id)
+
+
+async def test_saving_requires_the_own_report_read_permission(w: ReportWorld) -> None:
+    run = w.new_run()
+    evidence = await w.product_evidence(run)
+    analysis_only = Principal(EXEC_A, frozenset({Permission.ANALYSIS_READ.value}))
+    with pytest.raises(AccessDenied):
+        await w.reports.create(
+            analysis_only, run, draft(evidence.evidence_id), operation_id=w.op()
+        )
+    assert w.repository.rows == [] and w.repository.keys == {}
+    assert w.catalog.rows == []
+
+    both = Principal(
+        EXEC_A,
+        frozenset({Permission.ANALYSIS_READ.value, Permission.REPORTS_READ_OWN.value}),
+    )
+    result = await w.reports.create(
+        both, run, draft(evidence.evidence_id), operation_id=w.op()
+    )
+    assert result.version.version == 1

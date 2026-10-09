@@ -472,7 +472,12 @@ def report_capabilities(
             output_model=SaveReportOutput,
             handler=save_report,
             authorization=AuthorizationSpec(
-                required_permissions=frozenset({Permission.ANALYSIS_READ.value}),
+                required_permissions=frozenset(
+                    {
+                        Permission.ANALYSIS_READ.value,
+                        Permission.REPORTS_READ_OWN.value,
+                    }
+                ),
                 requires_product_scope=True,
             ),
             # Keyed by the operation ID: a repeat returns the saved version.

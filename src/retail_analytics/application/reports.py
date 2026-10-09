@@ -233,7 +233,8 @@ class ReportService:
         """Save a new report, or a new version of ``report_id``.
 
         ``operation_id`` is the idempotency key. Raises ``AccessDenied`` (not
-        owned, no analysis permission or product scope, unknown evidence),
+        owned, no analysis or own-report-read permission, no product scope,
+        unknown evidence),
         ``OutputWithheld`` (the output check failed under current authority)
         or ``ReportError``.
         """
@@ -243,6 +244,9 @@ class ReportService:
             or ctx.product_scope.is_empty
         ):
             raise AccessDenied("permission", Permission.ANALYSIS_READ.value)
+        # A report the user could not reopen must not be saved.
+        if Permission.REPORTS_READ_OWN.value not in ctx.permissions:
+            raise AccessDenied("permission", Permission.REPORTS_READ_OWN.value)
         owner = ctx.executive_id
         digest = draft.digest(report_id, base_version)
 
