@@ -657,3 +657,26 @@ def test_google_cloud_rename_preserves_existing_values() -> None:
         == "GOOGLE_CLOUD_PROJECT=my-query-project\nGOOGLE_CLOUD_LOCATION=US\n"
     )
     assert not local_env.migrate_legacy(result.text).changed
+
+
+def test_embedding_module_has_a_working_entrypoint() -> None:
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, "-m", "retail_analytics.bootstrap.warm_embeddings", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "Store embeddings for every published Golden example" in result.stdout
+
+
+def test_embedding_step_rejects_a_silent_noop(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import Mock
+
+    ctx = Mock(spec=SetupContext)
+    ctx.python.return_value = ""
+    with pytest.raises(StepFailed, match="did not confirm"):
+        local_setup.step_golden_embeddings(ctx)
+    assert next(s for s in local_setup.STEPS if s.name == "golden-embeddings").required

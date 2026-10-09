@@ -416,7 +416,9 @@ def step_golden_seeds(ctx: SetupContext) -> StepResult:
 
 
 def step_golden_embeddings(ctx: SetupContext) -> StepResult:
-    ctx.python("-m", "retail_analytics.bootstrap.warm_embeddings", show=True)
+    output = ctx.python("-m", "retail_analytics.bootstrap.warm_embeddings", show=True)
+    if not output.startswith("embeddings ready:"):
+        raise StepFailed("Embedding warm-up did not confirm stored embeddings")
     return StepResult("done", "Golden embeddings stored")
 
 
@@ -489,7 +491,6 @@ STEPS: tuple[BootstrapStep, ...] = (
         "golden-embeddings",
         "store Golden embeddings in postgres",
         step_golden_embeddings,
-        required=False,
     ),
     BootstrapStep("check-config", "validate the configuration", step_check_config),
     BootstrapStep(
