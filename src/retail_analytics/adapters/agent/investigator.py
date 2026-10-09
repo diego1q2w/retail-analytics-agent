@@ -98,7 +98,12 @@ class AnswerOutput(BaseModel):
     text: str = Field(
         min_length=1,
         max_length=MAX_ANSWER_CHARS,
-        description="The answer: findings, limitations and suggested actions.",
+        description=(
+            "The answer, shaped like the request: for a figure question the "
+            "figure with its period, definition and evidence id in a few "
+            "sentences; findings, limitations and suggested actions only for "
+            "investigations and reports."
+        ),
     )
     cited_evidence: list[str] = Field(
         default_factory=list,

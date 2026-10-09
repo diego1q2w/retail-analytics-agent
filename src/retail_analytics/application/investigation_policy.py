@@ -30,6 +30,7 @@ DESCRIBE_RELATION = "describe_relation"
 EXECUTE_ANALYSIS = "execute_analysis"
 FETCH_EVIDENCE = "fetch_evidence"
 CONVERT_CURRENCY = "convert_currency"
+INSPECT_PREFERENCES = "inspect_preferences"
 REMEMBER_PREFERENCE = "remember_preference"
 CONFIRM_PREFERENCE = "confirm_preference"
 SAVE_REPORT = "save_report"
@@ -59,6 +60,7 @@ def _render(tools: frozenset[str]) -> str:
             "",
             _analytical_rules(tools),
             "",
+            *_answer_shapes(tools),
             *_memory_and_reports(tools),
             _SAFETY,
         ]
@@ -90,22 +92,33 @@ def _how_to_work(tools: frozenset[str]) -> str:
         return "How to work:\n- Answer only what needs no data. Never present a figure."
     steps = [
         "Resolve the question, period, definitions and any ambiguity that "
-        "changes the answer. If a required input is missing, ask one focused "
-        "clarification."
+        "changes the answer. Resolve ordinary wording from the conversation, "
+        "<preferences> and the defaults below (a month without a year is its "
+        "most recent occurrence in the data; revenue uses the default "
+        "definition) and state that interpretation in the answer. Ask one "
+        "focused clarification only when a material ambiguity remains; never "
+        "compute several speculative interpretations instead."
     ]
     steps.append(_proportion_step(tools))
     if FIND_EXAMPLES in tools:
         steps.append(
-            f"When a method or definition is unclear, {FIND_EXAMPLES} may "
-            "return reviewed analyst methods. They are methods, not facts: "
-            "never quote their figures. Finding none is normal; then work from "
-            "the schema."
+            f"When a method or definition is genuinely unclear, {FIND_EXAMPLES} "
+            "may return reviewed analyst methods; a default metric such as "
+            "revenue does not need them. They are methods, not facts: never "
+            "quote their figures. Finding none is normal; then work from the "
+            "schema."
         )
     steps.append(_investigate_step(tools))
-    steps.append("Check that evidence, calculations and conclusions agree.")
     steps.append(
-        "Answer with findings, definitions, limitations and suggested actions; "
-        "a discovery answer is a short overview, not a report."
+        "Check that evidence, calculations and conclusions agree, using the "
+        "evidence you have; recompute only when results disagree."
+    )
+    see = " (see Answer shapes)" if EXECUTE_ANALYSIS in tools else ""
+    steps.append(
+        f"Answer in the shape the request needs{see}: a figure question gets "
+        "the figure, not a report; findings, limitations and suggested "
+        "actions are for investigations and reports. A discovery answer is a "
+        "short overview, not a report."
     )
     numbered = [f"{i}. {text}" for i, text in enumerate(steps, 1)]
     return (
@@ -138,7 +151,16 @@ def _proportion_step(tools: frozenset[str]) -> str:
         text += (
             ' Questions that ask for a figure ("how many orders are there?", '
             '"what date range does the data cover?") are analysis: query and '
-            "cite evidence."
+            "cite evidence. A figure question is answered once cited evidence "
+            "supports its metric, period and answer: stop there. Query again "
+            "only for a part of the request that is still unanswered, evidence "
+            "that is missing, truncated or no longer valid, or a concrete "
+            "inconsistency between results. Never query for what current "
+            "evidence already answers, and add no breakdowns (daily, "
+            "status, product, earlier periods), comparisons or "
+            "recommendations the user did not ask for; they can ask next. "
+            "Genuine investigations (why, what drives, reports) take as many "
+            "queries as their open questions need."
         )
     return text
 
@@ -215,8 +237,47 @@ def _analytical_rules(tools: frozenset[str]) -> str:
     return "Analytical rules:\n" + "\n".join(f"- {rule}" for rule in rules)
 
 
+def _answer_shapes(tools: frozenset[str]) -> list[str]:
+    """Worked examples of proportional answers, without figures: figures come
+    from evidence only."""
+    if EXECUTE_ANALYSIS not in tools:
+        return []
+    shapes = [
+        '"What was revenue in September?": one query if no current evidence '
+        "answers it (one query can find the latest September in the data and "
+        "total it); then one to three sentences: the figure, the period you "
+        "took (its dates and whether it is partial), the definition and the "
+        "evidence id. No daily or status breakdowns, history or actions.",
+        '"And August?" after that: the same metric and definition for '
+        "August, stated the same way. Reuse evidence that already holds it; "
+        "otherwise one query for August only.",
+        '"How did September compare with August?": both figures and the '
+        "absolute and percentage change, cited; reuse the evidence you have.",
+        '"Why did revenue fall in September?": an investigation. Break the '
+        "change down (for example by category, product or order volume) until "
+        "the main measured contributors are clear; state them with figures "
+        "and limitations, not causes the data cannot show.",
+        '"Prepare a report on third-quarter sales with recommendations": '
+        "findings that cite evidence, definitions and limitations, then "
+        "recommended actions kept apart from the findings.",
+    ]
+    return [
+        "Answer shapes (examples of proportion; figures only ever come from evidence):",
+        *(f"- {shape}" for shape in shapes),
+        "",
+    ]
+
+
 def _memory_and_reports(tools: frozenset[str]) -> list[str]:
-    lines: list[str] = []
+    lines: list[str] = [
+        "- The user's effective preferences are already in <preferences>; "
+        "apply them without looking them up."
+    ]
+    if INSPECT_PREFERENCES in tools:
+        lines.append(
+            f"- {INSPECT_PREFERENCES} only when the user asks what is saved "
+            "or a preference proposal is in question."
+        )
     if REMEMBER_PREFERENCE in tools:
         lines.append(
             f"- {REMEMBER_PREFERENCE} only when the user asks you to remember "

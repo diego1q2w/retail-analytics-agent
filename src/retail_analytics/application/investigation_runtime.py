@@ -1105,16 +1105,48 @@ def _check_budget(snapshot: BudgetSnapshot | None) -> None:
 
 
 def _budget_line(snapshot: BudgetSnapshot | None) -> str:
+    """What is left of the run's budget, read from accounting (never an
+    estimate of its own), and when to conclude.
+
+    Shown before the next request is reserved: that request and its reply are
+    charged against what is shown here. The figures are limits, not targets;
+    enforcement stays with the budget accounting.
+    """
     if snapshot is None:
         return "<budget>unknown</budget>"
     left = snapshot.remaining()
-    return (
-        "<budget>"
-        f"model requests left: {int(left[BudgetResource.PROVIDER_REQUESTS])}; "
-        f"queries left: {int(left[BudgetResource.QUERIES])}; "
-        f"active seconds left: {int(left[BudgetResource.ACTIVE_TIME])}"
-        "</budget>"
+    limits, usage = snapshot.limits, snapshot.usage
+    requests = int(left[BudgetResource.PROVIDER_REQUESTS])
+    tokens = int(left[BudgetResource.TOKENS])
+    per_request = (
+        usage.tokens // usage.provider_requests if usage.provider_requests else 0
     )
+    lines = [
+        f"model requests left: {requests} of {limits.provider_requests}",
+        f"tokens left: {tokens} of {limits.tokens}"
+        + (
+            f" (about {per_request} per model request so far; each request "
+            "re-sends this context)"
+            if per_request
+            else ""
+        ),
+        f"queries left: {int(left[BudgetResource.QUERIES])} of {limits.queries}",
+        f"active seconds left: {int(left[BudgetResource.ACTIVE_TIME])}",
+    ]
+    guidance = (
+        "These are limits, not targets: answer as soon as the evidence "
+        "supports the answer."
+    )
+    if requests <= _LOW_REQUESTS or (per_request and tokens < 2 * per_request):
+        guidance = (
+            "Budget is nearly spent: answer now from the evidence you have, "
+            "mark the answer incomplete and say what is still open."
+        )
+    return "<budget>\n" + "\n".join([*lines, guidance]) + "\n</budget>"
+
+
+# At or below this many model requests left, the line asks for a conclusion.
+_LOW_REQUESTS = 2
 
 
 def _source_notes(cited: Sequence[EvidenceStanding]) -> str:

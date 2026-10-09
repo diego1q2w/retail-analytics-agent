@@ -203,6 +203,41 @@ conversation answered without tools (1 request each turn, about 5,500 input
 tokens). One run per variant: observations, not promises. The discovery
 tools stay available for deeper exploration.
 
+## Proportion walkthrough (before/after, T26-F4)
+
+`proportion_walkthrough.py` checks that the work matches the request: a
+figure question ("What's the latest revenue of September?"), the follow-up
+"And August?", a repeat ("What was September's revenue again?"), and a
+separate report request ("Write a short report comparing August and September
+revenue, with recommended actions."). Same harness as above (local backend,
+offline DuckDB over the frozen extract, men's product scope, fresh sessions on
+a throwaway PostgreSQL), one run each on 2026-10-09. "Before" is `32da67c`;
+"after" is `ff6fcde` (which adds reusable schema context) plus this change.
+Gemini `gemini-3.8-flash` answered every request in both; no fallback.
+Reference revenue (completed item sales by order month, computed by the
+script straight from the extract files): August 2025 33,665.86, September
+2025 27,051.80.
+
+| request | before | after |
+| --- | --- | --- |
+| September | 4 queries (month by year, data range, last 5 days, status mix), 9 requests, 55,764 tokens, 52.8 s; answer gave the month and the last day, a status breakdown, gross sales and suggested actions | 1 query (latest September found and totalled in one statement, status `Complete`), 3 requests, 23,053 tokens, 25.7 s; one sentence: 27,051.80, interpretation, period, definition, evidence id |
+| "And August?" | 3 queries (month, status mix, daily), 6 requests, 46,327 tokens, 39.3 s; added last-day, status and comparison sections | 1 query, 2 requests, 14,616 tokens, 14.8 s; 33,665.86 stated the same way |
+| September again | 0 queries, 3 requests (2 `fetch_evidence`), 27,177 tokens, 20.2 s; repeated the full breakdown | 0 queries, 1 request, 7,120 tokens, 6.0 s; the cited figure only |
+| Report request | stopped on the token budget after 6 queries, 11 requests, 85,054 tokens, 53.9 s; no figure released | completed: 3 queries, 5 requests, 63,205 tokens, 97.1 s; saved report with cited findings (overall, categories), limitations and recommended actions |
+
+The same change measured on `32da67c` alone (before the schema context) gave
+1, 1 and 0 queries for the three scalar turns (5, 4 and 1 requests; 32,027,
+24,892 and 6,385 tokens) and a completed report (4 queries, 74,895 tokens).
+
+The monthly revenue figures in every answer and in the report match the
+references; the report's other figures (categories, orders, statuses) were not
+independently checked. One run per request on one day:
+observations, not promises; the repeatable efficiency evaluation is separate.
+Reproduce from the repository root (same requirements as the discovery
+walkthrough): `python evaluation/real-model/proportion_walkthrough.py
+[--only scalar report] [--show-answers]`. It prints each query's executed SQL
+from the sanitized `query.compile` span content.
+
 ## Limitations
 
 - Ten conversations, one run each, one day: no variance estimate, and no
