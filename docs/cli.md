@@ -43,6 +43,7 @@ Revenue ...
   ...
 == NEXT STEPS ==
   [ ] ...
+
 you> /reports
 ```
 
@@ -68,7 +69,9 @@ quoting it, so a finished answer never pretends to include it.
 On a terminal the chat keeps one input line at the bottom: progress is
 printed above it, and the prompt (`you>` idle, `steer>` while a run works,
 `answer>` while it waits for your answer) is redrawn with whatever you have
-typed so far. Editing keys: Backspace, Ctrl-U (clear line), Ctrl-W (delete
+typed so far. On a terminal the prompt label is bold and one blank line
+separates a finished response from the next input; piped output has neither
+styling nor control sequences. Editing keys: Backspace, Ctrl-U (clear line), Ctrl-W (delete
 word), Enter; arrow keys are ignored. Ctrl-D on an empty line leaves.
 
 When stdin is not a terminal (scripts, tests) each line is sent only after

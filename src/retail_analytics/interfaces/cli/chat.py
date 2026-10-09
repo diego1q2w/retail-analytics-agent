@@ -99,7 +99,9 @@ class Chat:
         self._format_event = EventFormatter()
         self.out = self._print
         self._terminal = terminal
-        self._editor = None if terminal is None else LineEditor(terminal.write)
+        self._editor = (
+            None if terminal is None else LineEditor(terminal.write, bold_prompt=True)
+        )
         self._keys = ""
         self._fixed_prompt: str | None = None
         self._stdin = stdin
@@ -176,6 +178,14 @@ class Chat:
         return "you> "
 
     # --- input ---
+
+    def _turn_gap(self) -> None:
+        """One blank line between a finished response and the next input.
+
+        Interactive only (piped transcripts keep their exact text); printed
+        once per finished run, never per progress event or redraw."""
+        if self._interactive:
+            self.out("")
 
     def _print(self, text: str) -> None:
         if self._editor is None:
@@ -332,6 +342,7 @@ class Chat:
             return
         run = self.api.get_run(finished)
         self.out(format_run_result(run))
+        self._turn_gap()
         self._offer_pending_deletions()
         if self.queued > 0:
             self._start_queued(finished)

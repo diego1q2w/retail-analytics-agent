@@ -7,7 +7,8 @@ mode, no echo; signals such as Ctrl-C keep working) and owns the input line:
 
 - ``LineEditor`` keeps the prompt and the typed text; printing "above" it
   clears the input line, prints, and draws the one active prompt again with
-  the text typed so far. It writes plain ANSI erase/cursor-up sequences only.
+  the text typed so far. It writes plain ANSI erase/cursor-up sequences, and
+  bolds the prompt label (via ``click.style``) when asked.
 - ``RawTerminal`` switches the terminal mode, reads keys on a thread and
   restores the mode on exit.
 
@@ -29,6 +30,8 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import IO, Any, Self
 
+import click
+
 _CLEAR = "\r\x1b[J"
 _BACKSPACES = frozenset({"\x7f", "\x08"})
 
@@ -41,8 +44,10 @@ class LineEditor:
         write: Callable[[str], None],
         *,
         columns: Callable[[], int] = lambda: shutil.get_terminal_size().columns,
+        bold_prompt: bool = False,
     ) -> None:
         self._write = write
+        self._bold_prompt = bold_prompt
         self._columns = columns
         self.prompt: str | None = None
         self._buffer: list[str] = []
@@ -60,7 +65,7 @@ class LineEditor:
         """Show ``prompt`` and start a new line (typed-ahead keys follow)."""
         self.prompt = prompt
         self._buffer = []
-        self._write(prompt)
+        self._write(self._styled(prompt))
 
     def set_prompt(self, prompt: str) -> None:
         """Switch the active prompt (e.g. ``steer>`` to ``answer>``), keeping
@@ -129,7 +134,14 @@ class LineEditor:
         self._draw()
 
     def _draw(self) -> None:
-        self._write(f"{self.prompt or ''}{self.text}")
+        self._write(f"{self._styled(self.prompt or '')}{self.text}")
+
+    def _styled(self, prompt: str) -> str:
+        # Bold covers only the label; the typed text stays plain. The escape
+        # codes are zero-width, so erase/wrap arithmetic uses the bare prompt.
+        if self._bold_prompt and prompt:
+            return click.style(prompt, bold=True)
+        return prompt
 
     def _erase(self) -> None:
         # The input may have wrapped: go up to its first row, then erase down.

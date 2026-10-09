@@ -108,6 +108,23 @@ def test_prompt_switches_keep_the_typed_text() -> None:
     assert screen.visible() == ["answer> last"]
 
 
+def test_prompt_label_is_bold_but_typed_text_and_layout_are_not() -> None:
+    screen = Screen()
+    line_editor = LineEditor(screen.feed, columns=lambda: 200, bold_prompt=True)
+    line_editor.begin("you> ")
+    type_text(line_editor, "orders")
+    line_editor.print_above(lambda: screen.feed("progress\n"))
+    assert "\x1b[1myou> \x1b[0morders" in screen.raw
+    assert screen.visible() == ["progress", "you> orders"]
+    assert line_editor.text == "orders"
+
+
+def test_plain_editor_writes_no_styling() -> None:
+    line_editor, screen = editor()
+    line_editor.begin("you> ")
+    assert "\x1b[1m" not in screen.raw
+
+
 def test_editing_keys_and_escape_sequences() -> None:
     line_editor, screen = editor()
     line_editor.begin("you> ")
@@ -243,6 +260,9 @@ def test_chat_on_a_terminal_keeps_one_prompt_and_the_typed_text() -> None:
         lines = term.screen.visible()
         assert "  > Checking the evidence." in lines
         assert lines[-1] == "you>"  # back to idle, one prompt
+        # One blank line (not more) separates the finished response from it.
+        assert lines[-2] == ""
+        assert lines[-3] != ""
         assert prompts(lines) == [
             "you> How much revenue?",
             "answer> last month",
@@ -267,4 +287,6 @@ def test_chat_on_a_terminal_keeps_one_prompt_and_the_typed_text() -> None:
     finally:
         code = term.close()
     assert code == 0
+    for label in ("you> ", "steer> ", "answer> "):
+        assert f"\x1b[1m{label}\x1b[0m" in term.screen.raw
     assert "TERMINAL-RESTORED=True" in term.screen.raw

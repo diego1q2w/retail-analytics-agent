@@ -328,3 +328,11 @@ def test_non_interactive_output_has_no_terminal_control_sequences() -> None:
     assert "\x1b" not in result.output and "\r" not in result.output
     # Prompts are only drawn on a terminal.
     assert "steer>" not in result.output and "you>" not in result.output
+
+
+def test_piped_chat_has_no_terminal_sequences() -> None:
+    backend = base()
+    backend.streams = [finishing_stream()]
+    result = chat(backend, "How much revenue?\n")
+    assert "\x1b" not in result.output
+    assert "Working on it." in result.output
