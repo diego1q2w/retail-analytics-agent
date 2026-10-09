@@ -439,6 +439,22 @@ report_evidence = sa.Table(
     sa.Column("ordinal", sa.Integer, nullable=False),
 )
 
+product_scope_snapshots = sa.Table(
+    "product_scope_snapshots",
+    metadata,
+    sa.Column("scope_digest", sa.String(64), primary_key=True),
+    sa.Column("product_ids", ARRAY(sa.Text), nullable=False),
+    _ts("recorded_at"),
+)
+
+report_required_scopes = sa.Table(
+    "report_required_scopes",
+    metadata,
+    sa.Column("report_id", sa.Text, primary_key=True),
+    sa.Column("version", sa.Integer, primary_key=True),
+    sa.Column("scope_digest", sa.String(64), nullable=False),
+)
+
 deletion_proposals = sa.Table(
     "deletion_proposals",
     metadata,

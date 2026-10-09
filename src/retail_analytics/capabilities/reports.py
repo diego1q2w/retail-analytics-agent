@@ -1,7 +1,8 @@
 """Saved-report tools: save, read, list, search and export the user's reports.
 
 All of them call ``ReportService`` with the run's recorded principal, so
-ownership and the owner's *current* product set are judged on every call.
+ownership and whether the owner's *current* products cover each report's
+required scope are judged on every call.
 Saving renders the structured draft, passes every section through the output
 privacy gate (destination REPORT) under authority resolved immediately before
 the first write, and records the operation ID as the idempotency key. The

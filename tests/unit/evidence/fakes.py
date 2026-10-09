@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
@@ -14,7 +14,13 @@ from retail_analytics.application.contracts.evidence import (
     StoredEvidence,
 )
 from retail_analytics.application.contracts.persistence import IdempotencyConflict
-from retail_analytics.domain.evidence import Evidence, EvidenceUse, PinHolder
+from retail_analytics.domain.access import ProductScope
+from retail_analytics.domain.evidence import (
+    Evidence,
+    EvidenceUse,
+    PinHolder,
+    product_set_digest,
+)
 
 
 @dataclass
@@ -45,6 +51,8 @@ class FakeEvidenceStore:
     invalidated: set[str] = field(default_factory=set)
     links: list[RunEvidenceLink] = field(default_factory=list)
     pins: set[tuple[str, PinHolder]] = field(default_factory=set)
+    # ProductScopeSnapshots: exact sets by digest, written with each record.
+    snapshots: dict[str, frozenset[str]] = field(default_factory=dict)
 
     async def record(self, new: NewEvidence) -> Evidence:
         for existing in self.records.values():
@@ -84,9 +92,30 @@ class FakeEvidenceStore:
             computed_at=new.computed_at,
             content_digest=new.content_digest,
         )
+        digest = product_set_digest(new.scope_products)
+        assert digest == new.authority.scope_digest
+        self.snapshots[digest] = frozenset(new.scope_products)
         self.records[record.evidence_id] = record
         await self.link_run(new.run_id, record.evidence_id, EvidenceUse.PRODUCED)
         return record
+
+    async def combine(self, digests: Collection[str]) -> str | None:
+        wanted = set(digests)
+        if not wanted or not wanted <= self.snapshots.keys():
+            return None
+        union = frozenset().union(*(self.snapshots[d] for d in wanted))
+        digest = product_set_digest(union)
+        self.snapshots[digest] = union
+        return digest
+
+    async def covered(
+        self, digests: Collection[str], scope: ProductScope
+    ) -> frozenset[str]:
+        return frozenset(
+            d
+            for d in digests
+            if d in self.snapshots and self.snapshots[d] <= scope.product_ids
+        )
 
     def _stored(self, record: Evidence) -> StoredEvidence:
         return StoredEvidence(record, record.evidence_id in self.invalidated)

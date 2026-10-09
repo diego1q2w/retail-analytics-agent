@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.schema import report_evidence as re_
+from retail_analytics.adapters.postgres.schema import report_required_scopes as rq
 from retail_analytics.adapters.postgres.schema import report_versions as rv
 from retail_analytics.adapters.postgres.schema import reports as rp
 from retail_analytics.application.authorization import AccessDenied
@@ -21,7 +22,7 @@ from retail_analytics.domain.reports import (
 )
 
 
-def _columns() -> list[sa.Column[Any]]:
+def _columns() -> list[sa.ColumnElement[Any]]:
     return [
         rv.c.report_id,
         rv.c.version,
@@ -34,6 +35,7 @@ def _columns() -> list[sa.Column[Any]]:
         rv.c.authorization_version,
         rv.c.created_at,
         rp.c.session_id,
+        rq.c.scope_digest.label("required_scope_digest"),
     ]
 
 
@@ -51,12 +53,15 @@ def _version(m: Mapping[Any, Any], evidence: Sequence[str]) -> ReportVersion:
         authorization_version=m["authorization_version"],
         draft_digest=m["draft_digest"],
         created_at=m["created_at"],
+        required_scope_digest=m["required_scope_digest"],
     )
 
 
 def _join() -> sa.Join:
     return rv.join(
         rp, sa.and_(rp.c.report_id == rv.c.report_id, rp.c.owner_id == rv.c.owner_id)
+    ).outerjoin(
+        rq, sa.and_(rq.c.report_id == rv.c.report_id, rq.c.version == rv.c.version)
     )
 
 
@@ -184,6 +189,14 @@ class PostgresReportRepository:
                 created_at=now,
             )
         )
+        if new.required_scope_digest is not None:
+            connection.execute(
+                insert(rq).values(
+                    report_id=new.report_id,
+                    version=latest + 1,
+                    scope_digest=new.required_scope_digest,
+                )
+            )
         connection.execute(
             insert(re_),
             [

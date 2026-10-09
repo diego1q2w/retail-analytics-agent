@@ -59,8 +59,10 @@ class ProposalItem:
     version: int
     title: str
     created_at: datetime
-    # Product-set digest of that version, to judge whether the title may be shown.
+    # Access digests of that version (``ReportVersion``), to judge whether the
+    # title may be shown.
     scope_digest: str
+    required_scope_digest: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -32,6 +32,11 @@ class NewEvidence:
     content: EvidenceContent
     computed_at: datetime
     content_digest: str
+    # The exact product set behind ``authority.scope_digest``, from the trusted
+    # execution context. The store keeps it apart from the record (a scope
+    # snapshot keyed by digest) for report access checks; it is never part of
+    # the evidence returned to callers or shown to the model.
+    scope_products: frozenset[str]
     # Earlier evidence this one refreshes: same lineage, next version.
     refreshes: str | None = None
 

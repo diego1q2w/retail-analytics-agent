@@ -13,19 +13,27 @@ original version; the same ID with different content is a conflict.
 Supporting evidence is pinned for the report (``EvidenceService.pin_for``) so
 it outlives the investigation. Pinning only retains data.
 
-Reading a pinned snapshot (decision)
-------------------------------------
-A pin never authorizes reading. A report and its evidence are readable only by
-the report's owner and only while the owner's *current* product set equals the
-set the evidence was computed under (compared by digest, the same data
-boundary evidence reuse enforces). If entitlements were narrowed, or changed in
-any way, the content, titles and snippets of that report are withheld
+Reading a pinned snapshot (decision, T18-F1)
+---------------------------------------------
+A pin never authorizes reading. A report version and its evidence are readable
+only by the report's owner and only while the owner's *current* products cover
+the version's **required scope**: the union of the exact product sets its cited
+evidence was computed under. Those sets are stamped by trusted code when the
+evidence is recorded (the execution context's ``ProductScope``, kept as a scope
+snapshot keyed by the evidence's product-set digest) and combined when the
+version is saved. They never come from the model or from the products that
+happen to appear in result rows. Widening access keeps old reports readable,
+removing a product the version does not require changes nothing, and removing
+any required product withholds the content, title and snippets
 (``ACCESS_CHANGED``; listings show the report without its title) until the
-owner saves a new version from a fresh analysis. Authority is judged on every
-read, list and search, and again for each evidence record on read and export;
-there is no cached grant, and the report row never stores access rights. A
-version-only change of the entitlement counter with the same product set does
-not revoke, because the data covered is identical.
+owner saves a new version from a fresh analysis. A version saved before
+required scopes were recorded, whose set could not be recovered exactly from
+trusted data, keeps the strict rule: readable only while the owner's current
+product set equals the one recorded at save time (by digest). Authority is
+judged on every read, list and search, and again for each evidence record on
+read and export; there is no cached grant, and the report row never stores
+access rights. The subset check runs in the snapshot store, so product IDs are
+never loaded into reports, tool results or model context.
 
 Search
 ------
@@ -38,6 +46,7 @@ to the deletion flow).
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
 
 from retail_analytics.application.artifacts import ArtifactError, ArtifactService
@@ -60,6 +69,7 @@ from retail_analytics.application.output_privacy import (
     OutputPrivacyGate,
     OutputSection,
 )
+from retail_analytics.application.ports.evidence import ProductScopeSnapshots
 from retail_analytics.application.ports.reports import ReportRepository
 from retail_analytics.domain.access import Permission, ProductScope
 from retail_analytics.domain.artifacts import MARKDOWN
@@ -84,6 +94,10 @@ from retail_analytics.domain.reports import (
     ReportVersion,
 )
 
+_ACCESS_CHANGED = (
+    "Your product access no longer covers what this report was based on, so it "
+    "cannot be shown. Re-run the analysis to save a new version."
+)
 LIST_LIMIT = 100
 SEARCH_SCAN_LIMIT = 200
 SEARCH_RESULT_LIMIT = 25
@@ -116,6 +130,49 @@ def _normalize(text: str) -> str:
     return " ".join(text.casefold().split())
 
 
+class ReportAccessRule:
+    """Whether the owner's current products cover a saved version.
+
+    ``required`` is the version's required-scope digest (None for a legacy
+    version without a recoverable exact set) and ``legacy`` the digest of the
+    owner's product set when it was saved. Ownership is checked by the caller.
+    """
+
+    def __init__(self, scopes: ProductScopeSnapshots) -> None:
+        self._scopes = scopes
+
+    async def readable(
+        self, scope: ProductScope, versions: Sequence[tuple[str | None, str]]
+    ) -> tuple[bool, ...]:
+        if scope.is_empty:
+            return tuple(False for _ in versions)
+        current = scope_digest(scope)
+        covered = await self._covered(
+            scope, {r for r, _ in versions if r is not None}, current
+        )
+        return tuple(
+            legacy == current if required is None else required in covered
+            for required, legacy in versions
+        )
+
+    async def covered_stamps(
+        self, scope: ProductScope, digests: Iterable[str]
+    ) -> frozenset[str]:
+        """The evidence authority digests whose product set the scope covers."""
+        if scope.is_empty:
+            return frozenset()
+        return await self._covered(scope, set(digests), scope_digest(scope))
+
+    async def _covered(
+        self, scope: ProductScope, digests: set[str], current: str
+    ) -> frozenset[str]:
+        # The current set trivially covers itself (also for a set never
+        # snapshotted); everything else is a subset check in the store.
+        others = digests - {current}
+        found = await self._scopes.covered(others, scope) if others else frozenset()
+        return found | (digests & {current})
+
+
 class ReportService:
     def __init__(
         self,
@@ -125,6 +182,7 @@ class ReportService:
         gate: OutputPrivacyGate,
         resolver: AccessResolver,
         metrics: MetricCatalog,
+        scopes: ProductScopeSnapshots,
     ) -> None:
         self._repository = repository
         self._artifacts = artifacts
@@ -132,6 +190,8 @@ class ReportService:
         self._gate = gate
         self._resolver = resolver
         self._describe = metric_describer(metrics)
+        self._scopes = scopes
+        self._rule = ReportAccessRule(scopes)
 
     # --- create ---------------------------------------------------------------
 
@@ -192,6 +252,11 @@ class ReportService:
         texts = {section.name: section.text for section in released}
         checked = _apply_texts(draft, texts)
         markdown = render_report(checked, records, self._describe)
+        # Required scope: the trusted stamps of the cited evidence records
+        # (never the draft, never the products in their rows).
+        required = await self._scopes.combine(
+            {record.authority.scope_digest for record in records}
+        )
 
         artifact = await self._artifacts.save(
             owner,
@@ -216,6 +281,7 @@ class ReportService:
                 draft_digest=digest,
                 idempotency_key=operation_id,
                 expected_latest=expected_latest,
+                required_scope_digest=required,
             )
         )
         return SavedReport(version, duplicate=not created)
@@ -238,7 +304,7 @@ class ReportService:
             limit=_clamp(limit, 1, LIST_LIMIT),
             offset=max(offset, 0),
         )
-        return tuple(_listing(row, scope) for row in rows)
+        return await self._listings(rows, scope)
 
     async def versions(
         self, principal: Principal, report_id: str
@@ -247,7 +313,7 @@ class ReportService:
         rows = await self._repository.versions(principal.executive_id, report_id)
         if not rows:
             raise AccessDenied("report", report_id)
-        return tuple(_listing(row, scope) for row in rows)
+        return await self._listings(rows, scope)
 
     # --- read / export -------------------------------------------------------
 
@@ -296,10 +362,11 @@ class ReportService:
         )
         scan_limited = len(rows) > SEARCH_SCAN_LIMIT
         rows = rows[:SEARCH_SCAN_LIMIT]
+        readable = await self._rule.readable(scope, [_digests(r) for r in rows])
         matches: list[ReportMatch] = []
         withheld = 0
-        for row in rows:
-            if not _scope_matches(row, scope):
+        for row, available in zip(rows, readable, strict=True):
+            if not available:
                 withheld += 1
                 continue
             try:
@@ -315,7 +382,7 @@ class ReportService:
                 continue
             matches.append(
                 ReportMatch(
-                    _listing(row, scope),
+                    _listing(row, available=True),
                     "title" if title_hit else "content",
                     _snippet(text, terms[0]) if body_hit else "",
                 )
@@ -329,6 +396,14 @@ class ReportService:
         )
 
     # --- internals -----------------------------------------------------------
+
+    async def _listings(
+        self, rows: Sequence[ReportVersion], scope: ProductScope
+    ) -> tuple[ReportListing, ...]:
+        readable = await self._rule.readable(scope, [_digests(r) for r in rows])
+        return tuple(
+            _listing(row, available=ok) for row, ok in zip(rows, readable, strict=True)
+        )
 
     async def _read_scope(self, principal: Principal) -> ProductScope:
         access = await self._resolver.require_permission(
@@ -344,12 +419,9 @@ class ReportService:
         record = await self._repository.get(owner, report_id, version)
         if record is None:
             raise AccessDenied("report", report_id)
-        if not _scope_matches(record, scope):
-            raise ReportError(
-                ReportErrorCode.ACCESS_CHANGED,
-                "Your product access changed since this report was saved, so it "
-                "cannot be shown. Re-run the analysis to save a new version.",
-            )
+        (readable,) = await self._rule.readable(scope, [_digests(record)])
+        if not readable:
+            raise ReportError(ReportErrorCode.ACCESS_CHANGED, _ACCESS_CHANGED)
         try:
             evidence = await self._evidence.owned_records(owner, record.evidence_ids)
         except AccessDenied:
@@ -357,8 +429,11 @@ class ReportService:
                 ReportErrorCode.EVIDENCE_UNAVAILABLE,
                 "The evidence this report cites is no longer available.",
             ) from None
+        covered = await self._rule.covered_stamps(
+            scope, {item.authority.scope_digest for item in evidence}
+        )
         for item in evidence:
-            if not item.is_intact or not _stamp_matches(item, scope):
+            if not item.is_intact or item.authority.scope_digest not in covered:
                 raise ReportError(
                     ReportErrorCode.ACCESS_CHANGED
                     if item.is_intact
@@ -375,16 +450,11 @@ def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
 
 
-def _scope_matches(record: ReportVersion, scope: ProductScope) -> bool:
-    return not scope.is_empty and record.scope_digest == scope_digest(scope)
+def _digests(record: ReportVersion) -> tuple[str | None, str]:
+    return record.required_scope_digest, record.scope_digest
 
 
-def _stamp_matches(evidence: Evidence, scope: ProductScope) -> bool:
-    return not scope.is_empty and evidence.authority.scope_digest == scope_digest(scope)
-
-
-def _listing(record: ReportVersion, scope: ProductScope) -> ReportListing:
-    available = _scope_matches(record, scope)
+def _listing(record: ReportVersion, *, available: bool) -> ReportListing:
     return ReportListing(
         report_id=record.report_id,
         version=record.version,

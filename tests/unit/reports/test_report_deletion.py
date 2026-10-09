@@ -46,6 +46,7 @@ class Env:
         self.service = ReportDeletionService(
             self.repo,
             self.w.resolver,
+            self.w.store,
             clock=self.w.clock,
             new_id=self._id,
         )

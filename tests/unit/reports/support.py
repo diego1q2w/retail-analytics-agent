@@ -57,6 +57,7 @@ class ReportWorld(World):
             self.gate,
             self.resolver,
             default_catalog(),
+            self.store,
         )
         self._counter = 0
 

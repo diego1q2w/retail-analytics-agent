@@ -38,9 +38,10 @@ from retail_analytics.application.contracts.report_deletion import (
     PreviewItem,
 )
 from retail_analytics.application.contracts.tools import OperationContext
+from retail_analytics.application.ports.evidence import ProductScopeSnapshots
 from retail_analytics.application.ports.report_deletion import ReportDeletionRepository
+from retail_analytics.application.reports import ReportAccessRule
 from retail_analytics.domain.access import Permission, ProductScope
-from retail_analytics.domain.evidence import scope_digest
 from retail_analytics.domain.report_deletion import (
     PROPOSAL_TTL,
     RECOVERY_PERIOD,
@@ -76,12 +77,14 @@ class ReportDeletionService:
         self,
         repository: ReportDeletionRepository,
         resolver: AccessResolver,
+        scopes: ProductScopeSnapshots,
         *,
         clock: Clock = _utc_now,
         new_id: IdFactory = _new_id,
     ) -> None:
         self._repository = repository
         self._resolver = resolver
+        self._rule = ReportAccessRule(scopes)
         self._clock = clock
         self._new_id = new_id
 
@@ -113,12 +116,14 @@ class ReportDeletionService:
                 expires_at=now + PROPOSAL_TTL,
             )
         )
-        return _preview(proposal, execution.product_scope, duplicate=not created)
+        return await self._preview(
+            proposal, execution.product_scope, duplicate=not created
+        )
 
     async def preview(self, principal: Principal, proposal_id: str) -> DeletionPreview:
         scope = await self._scope(principal)
         proposal = await self._repository.get(principal.executive_id, proposal_id)
-        return _preview(proposal, scope)
+        return await self._preview(proposal, scope)
 
     async def confirm(self, principal: Principal, proposal_id: str) -> DeletionResult:
         """Delete exactly the proposed reports, once.
@@ -153,7 +158,7 @@ class ReportDeletionService:
             at=self._clock(),
             audit_id=self._new_id(),
         )
-        return _preview(proposal, scope)
+        return await self._preview(proposal, scope)
 
     async def _scope(self, principal: Principal) -> ProductScope:
         access = await self._resolver.require_permission(
@@ -161,26 +166,34 @@ class ReportDeletionService:
         )
         return access.product_scope
 
-
-def _preview(
-    proposal: DeletionProposal, scope: ProductScope, *, duplicate: bool = False
-) -> DeletionPreview:
-    current = None if scope.is_empty else scope_digest(scope)
-    return DeletionPreview(
-        proposal_id=proposal.proposal_id,
-        status=proposal.status,
-        expires_at=proposal.expires_at,
-        items=tuple(
-            PreviewItem(
-                report_id=i.report_id,
-                version=i.version,
-                title=(display_title(i.title) if i.scope_digest == current else None),
-                created_at=i.created_at,
-            )
-            for i in proposal.items
-        ),
-        duplicate=duplicate,
-    )
+    async def _preview(
+        self,
+        proposal: DeletionProposal,
+        scope: ProductScope,
+        *,
+        duplicate: bool = False,
+    ) -> DeletionPreview:
+        """Titles only for versions the current products still cover (the
+        same rule as reading the report)."""
+        readable = await self._rule.readable(
+            scope,
+            [(i.required_scope_digest, i.scope_digest) for i in proposal.items],
+        )
+        return DeletionPreview(
+            proposal_id=proposal.proposal_id,
+            status=proposal.status,
+            expires_at=proposal.expires_at,
+            items=tuple(
+                PreviewItem(
+                    report_id=i.report_id,
+                    version=i.version,
+                    title=display_title(i.title) if ok else None,
+                    created_at=i.created_at,
+                )
+                for i, ok in zip(proposal.items, readable, strict=True)
+            ),
+            duplicate=duplicate,
+        )
 
 
 __all__ = [

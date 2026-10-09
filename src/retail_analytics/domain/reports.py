@@ -222,11 +222,17 @@ class ReportVersion:
     artifact_version: int
     title: str
     evidence_ids: tuple[str, ...]
-    # Product set the cited evidence was computed under (fresh at save time).
+    # The owner's product set when the version was saved (legacy access rule).
     scope_digest: str
     authorization_version: int
     draft_digest: str
     created_at: datetime
+    # Digest of the version's required product scope: the union of the exact
+    # product sets its cited evidence was computed under, recorded by trusted
+    # code at save time (the IDs live only in the scope snapshot store). None
+    # for a version saved before it was recorded whose set could not be
+    # recovered exactly: such a version keeps the strict equal-digest rule.
+    required_scope_digest: str | None = None
 
     def __post_init__(self) -> None:
         if self.version < 1 or self.artifact_version < 1:

@@ -19,7 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -74,10 +74,16 @@ class DefinitionRef:
         return f"{self.metric_id}@{self.version}"
 
 
+def product_set_digest(product_ids: Iterable[str]) -> str:
+    """Stable digest of an exact product set: SHA-256 of the sorted IDs joined
+    by newlines (PostgreSQL checks stored scope snapshots the same way)."""
+    joined = "\n".join(sorted(set(product_ids)))
+    return hashlib.sha256(joined.encode()).hexdigest()
+
+
 def scope_digest(scope: ProductScope) -> str:
     """Stable digest of the exact product set (the IDs themselves are not kept)."""
-    joined = "\n".join(sorted(scope.product_ids))
-    return hashlib.sha256(joined.encode()).hexdigest()
+    return product_set_digest(scope.product_ids)
 
 
 @dataclass(frozen=True, slots=True)

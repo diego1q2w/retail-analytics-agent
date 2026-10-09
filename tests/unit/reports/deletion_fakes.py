@@ -55,6 +55,7 @@ class FakeDeletionRepository:
                     latest.title,
                     latest.created_at,
                     latest.scope_digest,
+                    latest.required_scope_digest,
                 )
             )
         proposal = DeletionProposal(

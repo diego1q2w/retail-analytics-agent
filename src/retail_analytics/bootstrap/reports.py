@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from retail_analytics.adapters.postgres.database import Database
+from retail_analytics.adapters.postgres.product_scopes import (
+    PostgresProductScopeSnapshots,
+)
 from retail_analytics.adapters.postgres.reports import PostgresReportRepository
 from retail_analytics.application.artifacts import ArtifactService
 from retail_analytics.application.authorization import AccessResolver
@@ -24,11 +27,13 @@ def build_reports(
 ) -> ReportService:
     """``gate`` is ``build_context(...).gate``; ``artifacts`` is
     ``build_artifacts(...).service``."""
+    db = Database(persistence.engine)
     return ReportService(
-        PostgresReportRepository(Database(persistence.engine)),
+        PostgresReportRepository(db),
         artifacts,
         evidence,
         gate,
         resolver,
         metrics or default_catalog(),
+        PostgresProductScopeSnapshots(db),
     )

@@ -50,6 +50,7 @@ class FakeReportRepository:
             authorization_version=new.authorization_version,
             draft_digest=new.draft_digest,
             created_at=self.clock(),
+            required_scope_digest=new.required_scope_digest,
         )
         self.rows.append(row)
         self.keys[(new.owner_id, new.idempotency_key)] = row

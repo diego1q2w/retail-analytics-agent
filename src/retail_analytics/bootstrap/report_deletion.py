@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from retail_analytics.adapters.postgres.database import Database
+from retail_analytics.adapters.postgres.product_scopes import (
+    PostgresProductScopeSnapshots,
+)
 from retail_analytics.adapters.postgres.report_deletion import (
     PostgresReportDeletionRepository,
 )
@@ -23,7 +26,9 @@ def build_report_deletion(
     """The service holds ``propose`` for the model-facing capability
     (``capabilities.report_deletion.report_deletion_capability(service)``) and
     ``preview``/``confirm``/``cancel`` for the authenticated application layer."""
-    repository = PostgresReportDeletionRepository(Database(persistence.engine))
+    db = Database(persistence.engine)
+    repository = PostgresReportDeletionRepository(db)
+    scopes = PostgresProductScopeSnapshots(db)
     if clock is None:
-        return ReportDeletionService(repository, resolver)
-    return ReportDeletionService(repository, resolver, clock=clock)
+        return ReportDeletionService(repository, resolver, scopes)
+    return ReportDeletionService(repository, resolver, scopes, clock=clock)

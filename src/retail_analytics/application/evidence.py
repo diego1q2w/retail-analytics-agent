@@ -4,7 +4,9 @@ Query evidence is built only from a ``ReleasedResult`` (rows that already
 passed the result privacy boundary) and its ``CompiledQuery``; it keeps the
 model's analysis parameters but never the compiler's trusted or secret ones.
 The authority stamp (authorization version and product-set digest) always
-comes from the caller's freshly resolved ``ExecutionContext``.
+comes from the caller's freshly resolved ``ExecutionContext``; the exact
+product set behind the digest is handed to the store with it (kept as a scope
+snapshot for report access checks, never returned with the record).
 
 Reuse goes through ``find_reusable``: candidates are loaded for the caller's
 own session and every one is re-checked by ``ReusePolicy`` against the current
@@ -289,6 +291,7 @@ class EvidenceService:
                 run_id=execution.correlation.run_id,
                 operation_id=ctx.operation_id,
                 authority=AuthorityStamp.of(execution.product_scope),
+                scope_products=execution.product_scope.product_ids,
                 content=content,
                 computed_at=when,
                 content_digest=content_digest(content, when),

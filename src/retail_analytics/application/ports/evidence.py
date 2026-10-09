@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Protocol
 
 from retail_analytics.application.contracts.evidence import (
@@ -9,6 +9,7 @@ from retail_analytics.application.contracts.evidence import (
     RunEvidenceLink,
     StoredEvidence,
 )
+from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.evidence import (
     Evidence,
     EvidenceUse,
@@ -65,3 +66,24 @@ class EvidencePins(Protocol):
     async def holders(self, evidence_id: str) -> tuple[PinHolder, ...]: ...
 
     async def pinned(self, holder: PinHolder) -> tuple[str, ...]: ...
+
+
+class ProductScopeSnapshots(Protocol):
+    """Exact product sets behind evidence authority stamps, keyed by digest.
+
+    Written only by trusted code (with the evidence record, from the execution
+    context's ``ProductScope``). The product IDs never leave the store: callers
+    ask coverage questions and get digests back.
+    """
+
+    async def combine(self, digests: Collection[str]) -> str | None:
+        """Record the union of these recorded sets and return its digest, or
+        None when any of them is not on record (the exact set is unknown)."""
+        ...
+
+    async def covered(
+        self, digests: Collection[str], scope: ProductScope
+    ) -> frozenset[str]:
+        """The given digests whose recorded set is a subset of ``scope``'s
+        products. Unknown digests are never covered."""
+        ...

@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from retail_analytics.adapters.postgres.database import Database, violated_constraint
+from retail_analytics.adapters.postgres.product_scopes import record_snapshot
 from retail_analytics.adapters.postgres.schema import (
     evidence,
     evidence_dependencies,
@@ -36,6 +37,7 @@ from retail_analytics.domain.evidence import (
     AuthorityStamp,
     Evidence,
     EvidenceContent,
+    EvidenceError,
     EvidenceKind,
     EvidenceUse,
     PinHolder,
@@ -182,6 +184,12 @@ class PostgresEvidenceStore:
             version = max(versions, default=0) + 1
         content = new.content
         now = self._db.clock()
+        # The exact set behind the authority stamp, kept apart from the record
+        # for report access checks (never returned with the evidence).
+        if record_snapshot(connection, new.scope_products, now) != (
+            new.authority.scope_digest
+        ):
+            raise EvidenceError("scope products do not match the authority stamp")
         connection.execute(
             sa.insert(evidence).values(
                 evidence_id=new.evidence_id,

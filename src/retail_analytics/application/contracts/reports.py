@@ -9,7 +9,8 @@ from retail_analytics.domain.reports import ReportVersion
 
 class ReportAccess(StrEnum):
     AVAILABLE = "available"
-    # The product set changed since the report was saved: content is withheld.
+    # The owner's current products no longer cover the version's required
+    # scope (or, for a legacy version, differ from it): content is withheld.
     ACCESS_CHANGED = "access_changed"
 
 
@@ -29,6 +30,9 @@ class NewReportVersion:
     draft_digest: str
     idempotency_key: str
     expected_latest: int
+    # Digest of the recorded union of the cited evidence's product sets (see
+    # ``ReportVersion.required_scope_digest``); None keeps the strict rule.
+    required_scope_digest: str | None
 
 
 @dataclass(frozen=True, slots=True)

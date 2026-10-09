@@ -19,6 +19,7 @@ from retail_analytics.adapters.postgres.audit import append_audit
 from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.schema import deletion_proposal_items as di
 from retail_analytics.adapters.postgres.schema import deletion_proposals as dp
+from retail_analytics.adapters.postgres.schema import report_required_scopes as rq
 from retail_analytics.adapters.postgres.schema import report_versions as rv
 from retail_analytics.adapters.postgres.schema import reports as rp
 from retail_analytics.application.authorization import AccessDenied
@@ -59,18 +60,29 @@ def _items(connection: sa.Connection, proposal_id: str) -> tuple[ProposalItem, .
             rv.c.title,
             rv.c.created_at,
             rv.c.scope_digest,
+            rq.c.scope_digest.label("required_scope_digest"),
         )
         .select_from(
             di.join(
                 rv,
                 sa.and_(rv.c.report_id == di.c.report_id, rv.c.version == di.c.version),
+            ).outerjoin(
+                rq,
+                sa.and_(rq.c.report_id == di.c.report_id, rq.c.version == di.c.version),
             )
         )
         .where(di.c.proposal_id == proposal_id)
         .order_by(di.c.ordinal)
     )
     return tuple(
-        ProposalItem(r.report_id, r.version, r.title, r.created_at, r.scope_digest)
+        ProposalItem(
+            r.report_id,
+            r.version,
+            r.title,
+            r.created_at,
+            r.scope_digest,
+            r.required_scope_digest,
+        )
         for r in rows
     )
 
