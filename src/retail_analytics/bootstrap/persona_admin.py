@@ -11,8 +11,8 @@ the application checks that executive's current server-side roles
     retail-analytics-persona draft --as <id> --key <key> --file persona.txt
     retail-analytics-persona edit <draft-id> --as <id> --revision N --file p.txt
     retail-analytics-persona preview <draft-id> --as <id>
-    retail-analytics-persona publish <draft-id> --as <id> --expected-current <id>
-    retail-analytics-persona rollback <version-id> --as <id> --expected-current <id>
+    retail-analytics-persona publish <draft-id> --as <id>
+    retail-analytics-persona rollback <version-id> --as <id>
     retail-analytics-persona discard <draft-id> --as <id>
 """
 
@@ -82,10 +82,6 @@ def _text(file: Path | None, text: str | None) -> str:
     if (file is None) == (text is None):
         raise click.UsageError("give exactly one of --file or --text")
     return file.read_text(encoding="utf-8") if file is not None else text or ""
-
-
-def _expected(value: str) -> str | None:
-    return None if value == _NONE else value
 
 
 def _findings(findings: tuple[PersonaFinding, ...]) -> str:
@@ -224,18 +220,11 @@ def preview(draft_id: str, actor: str) -> None:
 @main.command()
 @click.argument("draft_id")
 @actor_option
-@click.option(
-    "--expected-current",
-    required=True,
-    help="The active version id you previewed against, or 'none'.",
-)
-def publish(draft_id: str, actor: str, expected_current: str) -> None:
+def publish(draft_id: str, actor: str) -> None:
     """Make the previewed draft the active persona (new runs only)."""
     result = _run(
         actor,
-        lambda s, p: s.publish(
-            p, draft_id, expected_current=_expected(expected_current)
-        ),
+        lambda s, p: s.publish(p, draft_id),
     )
     click.echo(
         f"published number={result.version_number} version={result.version_id} "
@@ -246,14 +235,11 @@ def publish(draft_id: str, actor: str, expected_current: str) -> None:
 @main.command()
 @click.argument("version_id")
 @actor_option
-@click.option("--expected-current", required=True, help="Active version id, or 'none'.")
-def rollback(version_id: str, actor: str, expected_current: str) -> None:
+def rollback(version_id: str, actor: str) -> None:
     """Make an earlier published version active again."""
     result = _run(
         actor,
-        lambda s, p: s.rollback(
-            p, version_id, expected_current=_expected(expected_current)
-        ),
+        lambda s, p: s.rollback(p, version_id),
     )
     click.echo(
         f"rolled back to number={result.version_number} version={result.version_id} "

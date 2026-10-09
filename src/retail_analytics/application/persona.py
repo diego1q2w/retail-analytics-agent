@@ -84,6 +84,13 @@ def _key(value: str) -> str:
     return value
 
 
+class _Active:
+    """Marker: use whichever version is active when the command runs."""
+
+
+ACTIVE_NOW = _Active()
+
+
 class PersonaService:
     def __init__(
         self,
@@ -225,16 +232,25 @@ class PersonaService:
         )
 
     async def publish(
-        self, principal: Principal, draft_id: str, *, expected_current: str | None
+        self,
+        principal: Principal,
+        draft_id: str,
+        *,
+        expected_current: str | _Active | None = ACTIVE_NOW,
     ) -> Publication:
         """Make the previewed draft the active persona, atomically.
 
         ``expected_current`` is the active version id the editor saw in the
-        preview (None when there was none). Raises ``PersonaError``.
+        preview (None when there was none). Omitted (``ACTIVE_NOW``), the
+        active version is read here; the draft must still be based on it, so a
+        draft started before another publication is refused as stale.
+        Raises ``PersonaError``.
         """
         await self._editor(principal)
         draft = await self._repository.get(draft_id)
-        request = self._request(principal, draft_id, expected_current)
+        request = self._request(
+            principal, draft_id, await self._expected(expected_current)
+        )
         try:
             if draft.state is VersionState.DRAFT:
                 check_publishable(screen_persona(draft.content))
@@ -244,16 +260,28 @@ class PersonaService:
             raise
 
     async def rollback(
-        self, principal: Principal, version_id: str, *, expected_current: str | None
+        self,
+        principal: Principal,
+        version_id: str,
+        *,
+        expected_current: str | _Active | None = ACTIVE_NOW,
     ) -> Publication:
         """Make an earlier published version active again, atomically."""
         await self._editor(principal)
-        request = self._request(principal, version_id, expected_current)
+        request = self._request(
+            principal, version_id, await self._expected(expected_current)
+        )
         try:
             return await self._repository.rollback(request)
         except PersonaError as error:
             await self._audit_rejection(request, ROLLBACK_REJECTED, error)
             raise
+
+    async def _expected(self, value: str | _Active | None) -> str | None:
+        if isinstance(value, _Active):
+            active = await self._repository.current()
+            return None if active is None else active.version_id
+        return value
 
     def _request(
         self, principal: Principal, version_id: str, expected_current: str | None

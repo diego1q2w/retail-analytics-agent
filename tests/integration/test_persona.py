@@ -537,9 +537,32 @@ async def test_local_admin_drafts_previews_and_publishes_with_the_cli(
         draft_id,
         "--as",
         admin,
-        "--expected-current",
-        "none",
     )
     assert f"version={draft_id}" in published
     history = await asyncio.to_thread(cli, persona_admin.main, "history", "--as", admin)
     assert f"version={draft_id}" in history and f"by={admin}" in history
+
+    async def replace(text: str) -> str:
+        made = await asyncio.to_thread(
+            cli, persona_admin.main, "draft", "--as", admin, "--key", _id("k"),
+            "--text", text,
+        )  # fmt: skip
+        new_id = made.split("version_id=")[1].split()[0]
+        await asyncio.to_thread(
+            cli, persona_admin.main, "preview", new_id, "--as", admin
+        )
+        out = await asyncio.to_thread(
+            cli, persona_admin.main, "publish", new_id, "--as", admin
+        )
+        assert f"version={new_id}" in out
+        return new_id
+
+    second = await replace(STYLE_B)
+    active = await asyncio.to_thread(cli, persona_admin.main, "show", "--as", admin)
+    assert f"version_id={second}" in active
+    back = await asyncio.to_thread(
+        cli, persona_admin.main, "rollback", draft_id, "--as", admin
+    )
+    assert f"version={draft_id}" in back
+    active = await asyncio.to_thread(cli, persona_admin.main, "show", "--as", admin)
+    assert f"version_id={draft_id}" in active

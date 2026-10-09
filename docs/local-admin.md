@@ -107,12 +107,13 @@ here either; the history records who published.
 ```sh
 retail-analytics-persona draft --as exec-local-admin --key style-1 --text "Lead with the headline number; keep it short."
 retail-analytics-persona preview <draft-id> --as exec-local-admin
-retail-analytics-persona publish <draft-id> --as exec-local-admin --expected-current none
+retail-analytics-persona publish <draft-id> --as exec-local-admin
 retail-analytics-persona history --as exec-local-admin
 ```
 
-Use the active version ID instead of `none` once a persona is published
-(`retail-analytics-persona show --as exec-local-admin`). New runs use the published version; see
+To go back to an earlier published version:
+`retail-analytics-persona rollback <version-id> --as exec-local-admin` (IDs are in `history`). If
+publish says the persona changed, run `preview` again. New runs use the published version; see
 README "Persona management".
 
 ## What stays human-only
