@@ -32,6 +32,7 @@ UNRESOLVED_FLAG_AFTER = timedelta(hours=24)
 
 RESTORED = "report.restored"
 PURGED = "report.purged"
+REUSE_REVALIDATED = "report.reuse_revalidated"
 UNRESOLVED_FLAGGED = "maintenance.unresolved_flagged"
 SYSTEM_ACTOR = "system:maintenance"
 

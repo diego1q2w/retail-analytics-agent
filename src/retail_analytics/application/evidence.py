@@ -31,12 +31,24 @@ everywhere (``session_standing``, ``usable_in_session``, ``find_reusable``,
 use, so losing a required product withholds them and the answers that cited
 them. They stay historical snapshots: never refreshed, and current-data
 reuse still applies the freshness limit.
+
+Soft-deleted reports (T18-F5)
+-----------------------------
+Deleting a report withdraws, in the deletion transaction, every link it gave
+another session. A record whose links are all withdrawn is withheld like any
+record current authority no longer allows (``REPORT_LINK_WITHDRAWN``): not in
+context, not citable, not fetchable, not reusable, and answers that used it
+leave model context. So is session evidence derived from it. A record still
+linked through another valid report, or obtained in the session itself, is
+unaffected. Restoring the report only marks its links for re-validation;
+``revalidate_report_links`` reinstates those that pass every import check
+again and records the outcome.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -48,6 +60,8 @@ from retail_analytics.application.contracts.evidence import (
     ImportedEvidence,
     NewEvidence,
     NewEvidenceImport,
+    ReuseLinkVerdict,
+    ReuseRevalidation,
     StoredEvidence,
 )
 from retail_analytics.application.contracts.query_compiler import (
@@ -62,6 +76,7 @@ from retail_analytics.application.ports.evidence import (
     EvidencePins,
     EvidenceRepository,
     ProductScopeSnapshots,
+    ReuseLinkRevalidation,
     SessionEvidenceImports,
 )
 from retail_analytics.application.result_privacy import ReleasedResult
@@ -305,11 +320,15 @@ class EvidenceService:
         policy: ReusePolicy | None = None,
         imports: SessionEvidenceImports | None = None,
         scopes: ProductScopeSnapshots | None = None,
+        links: ReuseLinkRevalidation | None = None,
     ) -> None:
         """Without ``imports`` and ``scopes`` evidence is strictly
-        session-scoped (report evidence cannot be reused elsewhere)."""
+        session-scoped (report evidence cannot be reused elsewhere). Without
+        ``links`` a restored report's withdrawn links are never re-validated
+        (they stay withdrawn; reading the report again re-imports)."""
         self._repository = repository
         self._pins = pins
+        self._links = links
         self._imports = imports if scopes is not None else None
         self._scopes = scopes
         self._clock = clock
@@ -418,9 +437,7 @@ class EvidenceService:
                     raise EvidenceRejected("input_unavailable")
                 continue
             stored = await self._repository.get(input_id)
-            if stored is None or self._policy.authority_block(
-                stored.evidence, authority, invalidated=stored.invalidated
-            ):
+            if stored is None or self._own_block(stored, authority):
                 raise EvidenceRejected("input_unavailable")
         if refreshes is not None:
             previous = await self._repository.get(refreshes)
@@ -499,6 +516,7 @@ class EvidenceService:
                     intent=request.intent,
                     now=now,
                     invalidated=candidate.invalidated,
+                    source_withdrawn=candidate.source_withdrawn,
                 )
             if block in (ReuseBlock.NOT_OWNED, ReuseBlock.OTHER_SESSION):
                 # Someone else's record looks exactly like a missing one.
@@ -531,14 +549,7 @@ class EvidenceService:
         stored = await self._repository.candidates(
             authority.executive_id, authority.session_id, limit=limit
         )
-        own = [
-            s.evidence
-            for s in stored
-            if self._policy.authority_block(
-                s.evidence, authority, invalidated=s.invalidated
-            )
-            is None
-        ]
+        own = [s.evidence for s in stored if self._own_block(s, authority) is None]
         imported = [
             s.evidence
             for s in await self._imported_standings(authority, limit=limit)
@@ -588,13 +599,7 @@ class EvidenceService:
                     stored.append(found)
                     known.add(evidence_id)
         standings = [
-            EvidenceStanding(
-                s.evidence,
-                self._policy.authority_block(
-                    s.evidence, authority, invalidated=s.invalidated
-                ),
-            )
-            for s in stored
+            EvidenceStanding(s.evidence, self._own_block(s, authority)) for s in stored
         ]
         standings += imported
         standings.sort(
@@ -717,9 +722,7 @@ class EvidenceService:
         for stored in found:
             evidence = stored.evidence
             if evidence.session_id == authority.session_id:
-                block = self._policy.authority_block(
-                    evidence, authority, invalidated=stored.invalidated
-                )
+                block = self._own_block(stored, authority)
             else:
                 block = self._policy.imported_block(
                     evidence,
@@ -735,18 +738,20 @@ class EvidenceService:
                 await self._repository.link_run(
                     ctx.correlation.run_id, evidence.evidence_id, EvidenceUse.REUSED
                 )
-            else:
-                await self._imports.add_import(
-                    NewEvidenceImport(
-                        session_id=authority.session_id,
-                        evidence_id=evidence.evidence_id,
-                        executive_id=ctx.executive_id,
-                        run_id=ctx.correlation.run_id,
-                        report_id=report_id,
-                        report_version=report_version,
-                        report_title=report_title,
-                    )
+            elif not await self._imports.add_import(
+                NewEvidenceImport(
+                    session_id=authority.session_id,
+                    evidence_id=evidence.evidence_id,
+                    executive_id=ctx.executive_id,
+                    run_id=ctx.correlation.run_id,
+                    report_id=report_id,
+                    report_version=report_version,
+                    report_title=report_title,
                 )
+            ):
+                # The report was soft-deleted after it was read.
+                refused.append((evidence.evidence_id, ReuseBlock.REPORT_LINK_WITHDRAWN))
+                continue
             linked.append(evidence.evidence_id)
             sources.append((evidence.evidence_id, source.describe(evidence)))
         return ReportEvidenceImport(tuple(linked), tuple(refused), tuple(sources))
@@ -780,11 +785,90 @@ class EvidenceService:
                     authority,
                     covered=i.evidence.authority.scope_digest in covered,
                     invalidated=i.invalidated,
+                    withdrawn=i.withdrawn,
                 ),
                 i.source,
             )
             for i in found
         ]
+
+    async def revalidate_report_links(
+        self,
+        *,
+        owner_id: str,
+        report_id: str,
+        scope: ProductScope,
+        readable_versions: frozenset[int],
+        compatibility_for: Callable[[str], Awaitable[AnalysisCompatibility]],
+        actor_id: str,
+    ) -> ReuseRevalidation:
+        """Re-validate a restored report's withdrawn links into the owner's
+        other sessions and record the outcome (trusted code only: the
+        restore flow, after the report is live again).
+
+        Each link must pass what an import checks now: the report version it
+        came from is readable by the owner (``readable_versions``, T18-F1),
+        the owner's current products cover the record's (``scope``), the
+        record is intact and not invalidated, and its meaning is compatible
+        with current definitions and that session's settings. Failing links
+        stay withdrawn, with the first failed rule recorded.
+        """
+        if self._links is None or self._imports is None:
+            return ReuseRevalidation(report_id)
+        pending = await self._links.pending_links(owner_id, report_id)
+        if not pending:
+            return ReuseRevalidation(report_id)
+        records: dict[str, StoredEvidence | None] = {}
+        for link in pending:
+            if link.evidence_id not in records:
+                records[link.evidence_id] = await self._repository.get(link.evidence_id)
+        covered = await self._covered(
+            scope,
+            {s.evidence.authority.scope_digest for s in records.values() if s},
+        )
+        compatibility: dict[str, AnalysisCompatibility] = {}
+        verdicts: list[ReuseLinkVerdict] = []
+        for link in pending:
+            stored = records[link.evidence_id]
+            block: ReuseBlock | None
+            if stored is None or stored.evidence.executive_id != owner_id:
+                block = ReuseBlock.NOT_OWNED
+            elif link.report_version not in readable_versions:
+                block = ReuseBlock.AUTHORIZATION_CHANGED
+            else:
+                block = self._policy.imported_block(
+                    stored.evidence,
+                    CurrentAuthority(owner_id, link.session_id, scope),
+                    covered=stored.evidence.authority.scope_digest in covered,
+                    invalidated=stored.invalidated or link.superseded,
+                )
+                if block is None:
+                    if link.session_id not in compatibility:
+                        compatibility[link.session_id] = await compatibility_for(
+                            link.session_id
+                        )
+                    block = compatibility_block(
+                        stored.evidence.content, compatibility[link.session_id]
+                    )
+            verdicts.append(ReuseLinkVerdict(link.session_id, link.evidence_id, block))
+        return await self._links.record_revalidation(
+            owner_id,
+            report_id,
+            verdicts,
+            at=self._clock(),
+            actor_id=actor_id,
+            audit_id=self._new_id(),
+        )
+
+    def _own_block(
+        self, stored: StoredEvidence, authority: CurrentAuthority
+    ) -> ReuseBlock | None:
+        return self._policy.authority_block(
+            stored.evidence,
+            authority,
+            invalidated=stored.invalidated,
+            source_withdrawn=stored.source_withdrawn,
+        )
 
     async def _covered(self, scope: ProductScope, digests: set[str]) -> frozenset[str]:
         if scope.is_empty or not digests:

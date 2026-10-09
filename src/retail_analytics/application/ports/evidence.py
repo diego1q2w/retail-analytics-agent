@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from datetime import datetime
 from typing import Protocol
 
 from retail_analytics.application.contracts.evidence import (
@@ -8,6 +9,9 @@ from retail_analytics.application.contracts.evidence import (
     ImportedEvidence,
     NewEvidence,
     NewEvidenceImport,
+    PendingReuseLink,
+    ReuseLinkVerdict,
+    ReuseRevalidation,
     RunEvidenceLink,
     StoredEvidence,
 )
@@ -55,11 +59,18 @@ class EvidenceRepository(Protocol):
 class SessionEvidenceImports(Protocol):
     """Saved-report evidence linked into the owner's other sessions."""
 
-    async def add_import(self, new: NewEvidenceImport) -> None:
-        """Record the link (repeating it is a no-op) and link the evidence
-        to ``new.run_id`` as reused, in one transaction. The evidence must
-        belong to ``new.executive_id`` and the session too, else
-        ``AccessDenied``."""
+    async def add_import(self, new: NewEvidenceImport) -> bool:
+        """Record the link through ``new.report_id`` and link the evidence
+        to ``new.run_id`` as reused, in one transaction. The evidence, the
+        session and the report must belong to ``new.executive_id``, else
+        ``AccessDenied``.
+
+        Repeating a live link is a no-op. The caller has just run every reuse
+        check, so a withdrawn link of a live report is reinstated (recorded as
+        a re-validation). Returns False, linking nothing, when the report has
+        been soft-deleted meanwhile (checked under the report's row lock, so a
+        concurrent deletion cannot be undone by a late import).
+        """
         ...
 
     async def imported(
@@ -73,6 +84,31 @@ class SessionEvidenceImports(Protocol):
     ) -> Sequence[ImportedEvidence]:
         """The executive's report evidence linked into that session, newest
         import first (optionally one record or one subject)."""
+        ...
+
+
+class ReuseLinkRevalidation(Protocol):
+    """Re-validation of a restored report's withdrawn links (T18-F5)."""
+
+    async def pending_links(
+        self, owner_id: str, report_id: str
+    ) -> Sequence[PendingReuseLink]:
+        """The owner's links through this report awaiting re-validation."""
+        ...
+
+    async def record_revalidation(
+        self,
+        owner_id: str,
+        report_id: str,
+        verdicts: Sequence[ReuseLinkVerdict],
+        *,
+        at: datetime,
+        actor_id: str,
+        audit_id: str,
+    ) -> ReuseRevalidation:
+        """Apply the verdicts to links still pending, with one audit event,
+        in one transaction: reinstate the passing ones, mark the others
+        failed. Nothing is reinstated if the report was deleted again."""
         ...
 
 

@@ -9,13 +9,15 @@ reuse decisions belong to ``EvidenceService`` and the domain policy.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import exc
-from sqlalchemy.dialects.postgresql import aggregate_order_by
+from sqlalchemy.dialects.postgresql import aggregate_order_by, distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from retail_analytics.adapters.postgres.audit import append_audit
 from retail_analytics.adapters.postgres.database import Database, violated_constraint
 from retail_analytics.adapters.postgres.product_scopes import record_snapshot
 from retail_analytics.adapters.postgres.schema import (
@@ -23,16 +25,25 @@ from retail_analytics.adapters.postgres.schema import (
     evidence_dependencies,
     evidence_invalidations,
     evidence_pins,
+    reports,
     run_evidence,
     session_report_evidence,
     sessions,
 )
 from retail_analytics.application.authorization import AccessDenied
+from retail_analytics.application.contracts.audit import AuditEvent
 from retail_analytics.application.contracts.evidence import (
     DEFAULT_CANDIDATE_LIMIT,
+    REVALIDATION_REIMPORTED,
+    REVALIDATION_REINSTATED,
+    WITHDRAWN_REVALIDATION_FAILED,
+    WITHDRAWN_REVALIDATION_PENDING,
     ImportedEvidence,
     NewEvidence,
     NewEvidenceImport,
+    PendingReuseLink,
+    ReuseLinkVerdict,
+    ReuseRevalidation,
     RunEvidenceLink,
     StoredEvidence,
 )
@@ -53,6 +64,7 @@ from retail_analytics.domain.evidence import (
     encode_provenance,
     encode_table,
 )
+from retail_analytics.domain.lifecycle import REUSE_REVALIDATED
 
 type Row = sa.Row[Any]
 
@@ -110,7 +122,12 @@ def _select() -> sa.Select[Any]:
         .where(evidence_invalidations.c.evidence_id == evidence.c.evidence_id)
         .label("invalidated")
     )
-    return sa.select(evidence, deps, invalidated)
+    # Derived from report evidence whose links into this record's session
+    # were all withdrawn (SQL function from migration 0018).
+    source_withdrawn = sa.func.evidence_source_withdrawn(
+        evidence.c.evidence_id, type_=sa.Boolean
+    ).label("source_withdrawn")
+    return sa.select(evidence, deps, invalidated, source_withdrawn)
 
 
 def _stored(row: Row) -> StoredEvidence:
@@ -138,12 +155,13 @@ def _stored(row: Row) -> StoredEvidence:
         computed_at=m["computed_at"],
         content_digest=m["content_digest"],
     )
-    return StoredEvidence(record, bool(m["invalidated"]))
+    return StoredEvidence(record, bool(m["invalidated"]), bool(m["source_withdrawn"]))
 
 
 class PostgresEvidenceStore:
     """Implements ``EvidenceRepository``, ``SessionEvidenceImports``,
-    ``EvidencePins`` and the preference ``FindingInvalidator`` port."""
+    ``ReuseLinkRevalidation``, ``EvidencePins`` and the preference
+    ``FindingInvalidator`` port."""
 
     def __init__(self, db: Database) -> None:
         self._db = db
@@ -334,8 +352,8 @@ class PostgresEvidenceStore:
 
     # --- SessionEvidenceImports -------------------------------------------
 
-    async def add_import(self, new: NewEvidenceImport) -> None:
-        def work(connection: sa.Connection) -> None:
+    async def add_import(self, new: NewEvidenceImport) -> bool:
+        def work(connection: sa.Connection) -> bool:
             owner = connection.execute(
                 sa.select(evidence.c.executive_id).where(
                     evidence.c.evidence_id == new.evidence_id
@@ -348,23 +366,51 @@ class PostgresEvidenceStore:
             ).scalar_one_or_none()
             if owner != new.executive_id or session_owner != new.executive_id:
                 raise AccessDenied("evidence", new.evidence_id)
+            # Shares the row lock the deletion confirmation takes for update,
+            # so a deletion either precedes this check or waits for the link
+            # (and then withdraws it).
+            report = connection.execute(
+                sa.select(reports.c.owner_id, reports.c.deleted_at)
+                .where(reports.c.report_id == new.report_id)
+                .with_for_update(read=True)
+            ).one_or_none()
+            if report is None or report.owner_id != new.executive_id:
+                raise AccessDenied("report", new.report_id)
+            if report.deleted_at is not None:
+                return False
+            now = self._db.clock()
+            insert = pg_insert(session_report_evidence).values(
+                session_id=new.session_id,
+                evidence_id=new.evidence_id,
+                executive_id=new.executive_id,
+                run_id=new.run_id,
+                report_id=new.report_id,
+                report_version=new.report_version,
+                report_title=new.report_title,
+                imported_at=now,
+            )
+            # The caller has just run every reuse check on a live report: a
+            # link withdrawn earlier comes back as a recorded re-validation.
             connection.execute(
-                pg_insert(session_report_evidence)
-                .values(
-                    session_id=new.session_id,
-                    evidence_id=new.evidence_id,
-                    executive_id=new.executive_id,
-                    run_id=new.run_id,
-                    report_id=new.report_id,
-                    report_version=new.report_version,
-                    report_title=new.report_title,
-                    imported_at=self._db.clock(),
+                insert.on_conflict_do_update(
+                    index_elements=["session_id", "evidence_id", "report_id"],
+                    set_={
+                        "withdrawn_at": None,
+                        "withdrawn_reason": None,
+                        "revalidated_at": now,
+                        "revalidation_result": REVALIDATION_REIMPORTED,
+                        "report_version": insert.excluded.report_version,
+                        "report_title": insert.excluded.report_title,
+                        "run_id": insert.excluded.run_id,
+                        "imported_at": now,
+                    },
+                    where=session_report_evidence.c.withdrawn_at.is_not(None),
                 )
-                .on_conflict_do_nothing()
             )
             self._link(connection, new.run_id, new.evidence_id, EvidenceUse.REUSED)
+            return True
 
-        await self._db.transaction(work)
+        return await self._db.transaction(work)
 
     async def imported(
         self,
@@ -376,28 +422,42 @@ class PostgresEvidenceStore:
         limit: int = DEFAULT_CANDIDATE_LIMIT,
     ) -> Sequence[ImportedEvidence]:
         imports = session_report_evidence
+        # One link per record: a live one if any (not superseded first), else
+        # the newest withdrawn one.
+        link_query = sa.select(imports).where(
+            imports.c.session_id == session_id,
+            imports.c.executive_id == executive_id,
+        )
+        if evidence_id is not None:
+            link_query = link_query.where(imports.c.evidence_id == evidence_id)
+        chosen = (
+            link_query.ext(distinct_on(imports.c.evidence_id))
+            .order_by(
+                imports.c.evidence_id,
+                imports.c.withdrawn_at.is_not(None),
+                imports.c.invalidated_at.is_not(None),
+                imports.c.imported_at.desc(),
+                imports.c.report_id,
+            )
+            .subquery("chosen")
+        )
         query = (
             _select()
             .add_columns(
-                imports.c.report_id,
-                imports.c.report_version,
-                imports.c.report_title,
-                imports.c.imported_at,
-                imports.c.invalidated_at,
+                chosen.c.report_id,
+                chosen.c.report_version,
+                chosen.c.report_title,
+                chosen.c.imported_at,
+                chosen.c.invalidated_at,
+                chosen.c.withdrawn_at,
             )
-            .join(imports, imports.c.evidence_id == evidence.c.evidence_id)
-            .where(
-                imports.c.session_id == session_id,
-                imports.c.executive_id == executive_id,
-                evidence.c.executive_id == executive_id,
-            )
+            .join(chosen, chosen.c.evidence_id == evidence.c.evidence_id)
+            .where(evidence.c.executive_id == executive_id)
         )
-        if evidence_id is not None:
-            query = query.where(evidence.c.evidence_id == evidence_id)
         if subject_key is not None:
             query = query.where(evidence.c.subject_key == subject_key)
         query = query.order_by(
-            imports.c.imported_at.desc(), evidence.c.evidence_id
+            chosen.c.imported_at.desc(), evidence.c.evidence_id
         ).limit(limit)
 
         def work(connection: sa.Connection) -> list[ImportedEvidence]:
@@ -415,9 +475,123 @@ class PostgresEvidenceStore:
                             m["imported_at"],
                         ),
                         stored.invalidated or m["invalidated_at"] is not None,
+                        withdrawn=m["withdrawn_at"] is not None,
                     )
                 )
             return found
+
+        return await self._db.transaction(work)
+
+    # --- ReuseLinkRevalidation --------------------------------------------
+
+    async def pending_links(
+        self, owner_id: str, report_id: str
+    ) -> Sequence[PendingReuseLink]:
+        imports = session_report_evidence
+
+        def work(connection: sa.Connection) -> list[PendingReuseLink]:
+            rows = connection.execute(
+                sa.select(
+                    imports.c.session_id,
+                    imports.c.evidence_id,
+                    imports.c.report_version,
+                    imports.c.invalidated_at,
+                )
+                .where(
+                    imports.c.report_id == report_id,
+                    imports.c.executive_id == owner_id,
+                    imports.c.withdrawn_reason == WITHDRAWN_REVALIDATION_PENDING,
+                )
+                .order_by(imports.c.session_id, imports.c.evidence_id)
+            )
+            return [
+                PendingReuseLink(
+                    r.session_id,
+                    r.evidence_id,
+                    r.report_version,
+                    superseded=r.invalidated_at is not None,
+                )
+                for r in rows
+            ]
+
+        return await self._db.transaction(work)
+
+    async def record_revalidation(
+        self,
+        owner_id: str,
+        report_id: str,
+        verdicts: Sequence[ReuseLinkVerdict],
+        *,
+        at: datetime,
+        actor_id: str,
+        audit_id: str,
+    ) -> ReuseRevalidation:
+        imports = session_report_evidence
+
+        def work(connection: sa.Connection) -> ReuseRevalidation:
+            report = connection.execute(
+                sa.select(reports.c.deleted_at)
+                .where(
+                    reports.c.report_id == report_id,
+                    reports.c.owner_id == owner_id,
+                )
+                .with_for_update(read=True)
+            ).one_or_none()
+            if report is None or report.deleted_at is not None:
+                # Deleted again (or purged): its links stay withdrawn.
+                return ReuseRevalidation(report_id)
+            reinstated = 0
+            refused: dict[str, int] = {}
+            for verdict in verdicts:
+                changes: dict[str, object] = {
+                    "revalidated_at": at,
+                    "revalidation_result": (
+                        REVALIDATION_REINSTATED
+                        if verdict.block is None
+                        else verdict.block.value
+                    ),
+                }
+                if verdict.block is None:
+                    changes |= {"withdrawn_at": None, "withdrawn_reason": None}
+                else:
+                    changes["withdrawn_reason"] = WITHDRAWN_REVALIDATION_FAILED
+                updated = connection.execute(
+                    sa.update(imports)
+                    .where(
+                        imports.c.session_id == verdict.session_id,
+                        imports.c.evidence_id == verdict.evidence_id,
+                        imports.c.report_id == report_id,
+                        imports.c.executive_id == owner_id,
+                        imports.c.withdrawn_reason == WITHDRAWN_REVALIDATION_PENDING,
+                    )
+                    .values(**changes)
+                ).rowcount
+                if not updated:
+                    continue
+                if verdict.block is None:
+                    reinstated += 1
+                else:
+                    refused[verdict.block.value] = (
+                        refused.get(verdict.block.value, 0) + 1
+                    )
+            outcome = ReuseRevalidation(report_id, reinstated, refused)
+            append_audit(
+                connection,
+                AuditEvent(
+                    audit_id=audit_id,
+                    occurred_at=at,
+                    actor_id=actor_id,
+                    action=REUSE_REVALIDATED,
+                    subject_type="report",
+                    subject_id=report_id,
+                    details={
+                        "owner_id": owner_id,
+                        "links_reinstated": reinstated,
+                        "links_refused": dict(sorted(refused.items())),
+                    },
+                ),
+            )
+            return outcome
 
         return await self._db.transaction(work)
 

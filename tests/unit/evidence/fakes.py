@@ -62,6 +62,8 @@ class FakeEvidenceStore:
     )
     imports_invalidated: set[tuple[str, str]] = field(default_factory=set)
     session_owners: dict[str, str] = field(default_factory=dict)
+    # Soft-deleted reports: their links are withdrawn (T18-F5).
+    deleted_reports: set[str] = field(default_factory=set)
 
     async def record(self, new: NewEvidence) -> Evidence:
         for existing in self.records.values():
@@ -187,13 +189,16 @@ class FakeEvidenceStore:
                 and slot in self.records[key[1]].content.analytical_slots
             }
 
-    async def add_import(self, new: NewEvidenceImport) -> None:
+    async def add_import(self, new: NewEvidenceImport) -> bool:
         record = self.records.get(new.evidence_id)
         owner = self.session_owners.get(new.session_id, new.executive_id)
         if record is None or not (record.executive_id == owner == new.executive_id):
             raise AccessDenied("evidence", new.evidence_id)
+        if new.report_id in self.deleted_reports:
+            return False
         self.imports.setdefault((new.session_id, new.evidence_id), (new, self.clock()))
         await self.link_run(new.run_id, new.evidence_id, EvidenceUse.REUSED)
+        return True
 
     async def imported(
         self,
@@ -209,6 +214,7 @@ class FakeEvidenceStore:
                 self.records[key[1]],
                 ReportSource(new.report_id, new.report_version, new.report_title, at),
                 key[1] in self.invalidated or key in self.imports_invalidated,
+                withdrawn=new.report_id in self.deleted_reports,
             )
             for key, (new, at) in self.imports.items()
             if key[0] == session_id

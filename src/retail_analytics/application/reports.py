@@ -46,6 +46,10 @@ report; it only stops its figures from being reused as results (they must be
 recomputed). Reused records keep their source and computation date
 (``ReportSource.describe``) wherever they appear.
 
+Soft deletion withdraws that reuse at once (T18-F5, in the deletion
+transaction); ``revalidate_restored`` re-checks the withdrawn links after a
+manual restore and reinstates only those that pass, with the outcome audited.
+
 Definition notices (T18-F3)
 ---------------------------
 ``read`` and ``export`` compare the definitions recorded with the cited
@@ -73,6 +77,7 @@ from dataclasses import replace
 from retail_analytics.application.artifacts import ArtifactError, ArtifactService
 from retail_analytics.application.authorization import AccessDenied, AccessResolver
 from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.evidence import ReuseRevalidation
 from retail_analytics.application.contracts.reports import (
     CitedEvidence,
     ExportedReport,
@@ -421,15 +426,7 @@ class ReportService:
         record = document.version
         if record.owner_id != ctx.executive_id:
             raise AccessDenied("report", record.report_id)
-        compatibility = AnalysisCompatibility(
-            catalog_version=self._catalog_version,
-            policy_version=PRIVACY_POLICY_VERSION,
-            preference_fingerprint=preference_fingerprint,
-            current_definitions={
-                metric_id: self._metrics.latest_version(metric_id)
-                for metric_id in self._metrics.metric_ids()
-            },
-        )
+        compatibility = self._compatibility(preference_fingerprint)
         return await self._evidence.import_report_evidence(
             ctx,
             report_id=record.report_id,
@@ -437,6 +434,61 @@ class ReportService:
             report_title=record.title,
             evidence_ids=record.evidence_ids,
             compatibility=compatibility,
+        )
+
+    async def revalidate_restored(
+        self, report_id: str, *, owner_id: str, actor_id: str
+    ) -> ReuseRevalidation:
+        """Re-validate the reuse links a restored report's deletion withdrew.
+
+        Trusted restore flow only (``LifecycleService.restore``, after the
+        report is live again); never reachable from model output. Judged with
+        the *owner's* current authority, whoever restored it: a link comes
+        back only if the owner may still read the report version it came from
+        (T18-F1), their products cover the record, the record is intact and
+        not invalidated, and its meaning matches current definitions and the
+        importing session's settings (T18-F3, unknown is not compatible).
+        """
+        scope = ProductScope(frozenset(), 0)
+        readable: frozenset[int] = frozenset()
+        try:
+            access = await self._resolver.current_access(
+                Principal(owner_id, frozenset())
+            )
+        except AccessDenied:
+            access = None
+        if access is not None and Permission.REPORTS_READ_OWN in access.permissions:
+            scope = access.product_scope
+            rows = await self._repository.versions(owner_id, report_id)
+            flags = await self._rule.readable(scope, [_digests(r) for r in rows])
+            readable = frozenset(
+                r.version for r, ok in zip(rows, flags, strict=True) if ok
+            )
+
+        async def compatibility_for(session_id: str) -> AnalysisCompatibility:
+            stored = await self._preferences.list_preferences(owner_id, session_id)
+            return self._compatibility(
+                EffectivePreferences.build(stored).analytical_fingerprint
+            )
+
+        return await self._evidence.revalidate_report_links(
+            owner_id=owner_id,
+            report_id=report_id,
+            scope=scope,
+            readable_versions=readable,
+            compatibility_for=compatibility_for,
+            actor_id=actor_id,
+        )
+
+    def _compatibility(self, preference_fingerprint: str) -> AnalysisCompatibility:
+        return AnalysisCompatibility(
+            catalog_version=self._catalog_version,
+            policy_version=PRIVACY_POLICY_VERSION,
+            preference_fingerprint=preference_fingerprint,
+            current_definitions={
+                metric_id: self._metrics.latest_version(metric_id)
+                for metric_id in self._metrics.metric_ids()
+            },
         )
 
     # --- search --------------------------------------------------------------

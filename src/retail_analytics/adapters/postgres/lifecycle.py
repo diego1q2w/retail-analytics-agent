@@ -42,9 +42,14 @@ from retail_analytics.adapters.postgres.schema import run_inputs as ri
 from retail_analytics.adapters.postgres.schema import run_principals as rpr
 from retail_analytics.adapters.postgres.schema import run_questions as rq
 from retail_analytics.adapters.postgres.schema import runs as rn
+from retail_analytics.adapters.postgres.schema import session_report_evidence as sre
 from retail_analytics.adapters.postgres.schema import sessions as ss
 from retail_analytics.adapters.postgres.schema import tool_executions as te
 from retail_analytics.application.contracts.audit import AuditEvent
+from retail_analytics.application.contracts.evidence import (
+    WITHDRAWN_REPORT_DELETED,
+    WITHDRAWN_REVALIDATION_PENDING,
+)
 from retail_analytics.application.contracts.lifecycle import (
     ContentRemoval,
     InvestigationCleanup,
@@ -186,6 +191,17 @@ class PostgresLifecycleStore:
         connection.execute(
             sa.update(rp).where(rp.c.report_id == report_id).values(deleted_at=None)
         )
+        # Restoring never revives reuse by itself (T18-F5): the links the
+        # deletion withdrew stay withdrawn until re-validated.
+        pending = connection.execute(
+            sa.update(sre)
+            .where(
+                sre.c.report_id == report_id,
+                sre.c.executive_id == row.owner_id,
+                sre.c.withdrawn_reason == WITHDRAWN_REPORT_DELETED,
+            )
+            .values(withdrawn_reason=WITHDRAWN_REVALIDATION_PENDING)
+        ).rowcount
         append_audit(
             connection,
             AuditEvent(
@@ -199,10 +215,11 @@ class PostgresLifecycleStore:
                     "owner_id": row.owner_id,
                     "deleted_at": row.deleted_at.isoformat(),
                     "by_admin": actor_is_admin and row.owner_id != actor_id,
+                    "reuse_links_pending_revalidation": pending,
                 },
             ),
         )
-        return RestoredReport(report_id, row.owner_id, at)
+        return RestoredReport(report_id, row.owner_id, at, reuse_links_pending=pending)
 
     async def list_restorable(
         self, owner_id: str, at: datetime

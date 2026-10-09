@@ -10,6 +10,7 @@ and the deletion, and two confirmations cannot interleave.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -22,8 +23,10 @@ from retail_analytics.adapters.postgres.schema import deletion_proposals as dp
 from retail_analytics.adapters.postgres.schema import report_required_scopes as rq
 from retail_analytics.adapters.postgres.schema import report_versions as rv
 from retail_analytics.adapters.postgres.schema import reports as rp
+from retail_analytics.adapters.postgres.schema import session_report_evidence as sre
 from retail_analytics.application.authorization import AccessDenied
 from retail_analytics.application.contracts.audit import AuditEvent
+from retail_analytics.application.contracts.evidence import WITHDRAWN_REPORT_DELETED
 from retail_analytics.application.contracts.report_deletion import NewDeletionProposal
 from retail_analytics.domain.report_deletion import (
     CANCELLED,
@@ -344,10 +347,31 @@ class PostgresReportDeletionRepository:
             )
             .values(status=ProposalStatus.CONFIRMED.value, resolved_at=at)
         )
+        # Reuse through the deleted reports stops now (T18-F5): every link
+        # they gave another session is withdrawn in this same transaction.
+        # Links of a restored-but-not-revalidated report are re-marked too.
+        withdrawn = connection.execute(
+            sa.update(sre)
+            .where(
+                sre.c.report_id.in_(ids),
+                sre.c.executive_id == owner_id,
+                sa.or_(
+                    sre.c.withdrawn_reason.is_(None),
+                    sre.c.withdrawn_reason != WITHDRAWN_REPORT_DELETED,
+                ),
+            )
+            .values(withdrawn_at=at, withdrawn_reason=WITHDRAWN_REPORT_DELETED)
+        ).rowcount
         resolved = PostgresReportDeletionRepository._get(
             connection, owner_id, proposal_id
         )
-        append_audit(connection, _audit(resolved, CONFIRMED, audit_id, at))
+        event = _audit(resolved, CONFIRMED, audit_id, at)
+        append_audit(
+            connection,
+            replace(
+                event, details={**event.details, "reuse_links_withdrawn": withdrawn}
+            ),
+        )
         return resolved
 
     @staticmethod

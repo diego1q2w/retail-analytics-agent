@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from retail_analytics.application.contracts.evidence import ReuseRevalidation
 from retail_analytics.application.contracts.lifecycle import (
     ContentRemoval,
     InvestigationCleanup,
@@ -12,6 +13,17 @@ from retail_analytics.application.contracts.lifecycle import (
     RestoredReport,
     UnresolvedOperation,
 )
+
+
+class RestoredReportReuse(Protocol):
+    """Re-validates a restored report's withdrawn reuse links (T18-F5)."""
+
+    async def revalidate_restored(
+        self, report_id: str, *, owner_id: str, actor_id: str
+    ) -> ReuseRevalidation:
+        """Check every pending link again (current access, definition
+        compatibility, evidence validity) and record the outcome."""
+        ...
 
 
 class LifecycleStore(Protocol):
@@ -35,6 +47,8 @@ class LifecycleStore(Protocol):
 
         Unknown and not-permitted reports raise the same error. The owner must
         still be an active executive. The audit event commits with the change.
+        Reuse links the deletion withdrew stay withdrawn, marked as awaiting
+        re-validation (counted in ``reuse_links_pending``).
         """
         ...
 

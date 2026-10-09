@@ -341,6 +341,9 @@ class ReuseBlock(StrEnum):
     AUTHORIZATION_CHANGED = "authorization_changed"
     TAMPERED = "tampered"
     INVALIDATED = "invalidated"
+    # Reached only through saved reports that were soft-deleted (or restored
+    # but not yet re-validated): reuse through them stopped with the deletion.
+    REPORT_LINK_WITHDRAWN = "report_link_withdrawn"
     CATALOG_CHANGED = "catalog_changed"
     POLICY_CHANGED = "policy_changed"
     DEFINITIONS_CHANGED = "definitions_changed"
@@ -368,6 +371,7 @@ _AUTHORITY_BLOCKS = frozenset(
         ReuseBlock.AUTHORIZATION_CHANGED,
         ReuseBlock.TAMPERED,
         ReuseBlock.INVALIDATED,
+        ReuseBlock.REPORT_LINK_WITHDRAWN,
     }
 )
 
@@ -426,9 +430,18 @@ class ReusePolicy:
             raise EvidenceError("freshness must not be negative")
 
     def authority_block(
-        self, evidence: Evidence, authority: CurrentAuthority, *, invalidated: bool
+        self,
+        evidence: Evidence,
+        authority: CurrentAuthority,
+        *,
+        invalidated: bool,
+        source_withdrawn: bool = False,
     ) -> ReuseBlock | None:
-        """Checks that apply to any use of stored evidence, including context."""
+        """Checks that apply to any use of stored evidence, including context.
+
+        ``source_withdrawn``: the record was derived from saved-report
+        evidence that no longer has a valid link into its session.
+        """
         if evidence.executive_id != authority.executive_id:
             return ReuseBlock.NOT_OWNED
         if evidence.session_id != authority.session_id:
@@ -439,6 +452,8 @@ class ReusePolicy:
             return ReuseBlock.AUTHORIZATION_CHANGED
         if not evidence.is_intact:
             return ReuseBlock.TAMPERED
+        if source_withdrawn:
+            return ReuseBlock.REPORT_LINK_WITHDRAWN
         if invalidated:
             return ReuseBlock.INVALIDATED
         return None
@@ -450,12 +465,15 @@ class ReusePolicy:
         *,
         covered: bool,
         invalidated: bool,
+        withdrawn: bool = False,
     ) -> ReuseBlock | None:
         """Authority for the owner's report evidence linked into another of
         their sessions (T18-F1 rule, no extra grant): same owner, and the
         current products cover the exact set it was computed under
         (``covered``, judged from trusted scope snapshots). Widened access
-        keeps it usable; losing any required product withholds it."""
+        keeps it usable; losing any required product withholds it.
+        ``withdrawn``: every report it was linked through was soft-deleted
+        (or restored and not yet re-validated)."""
         if evidence.executive_id != authority.executive_id:
             return ReuseBlock.NOT_OWNED
         if authority.scope.is_empty:
@@ -464,6 +482,8 @@ class ReusePolicy:
             return ReuseBlock.AUTHORIZATION_CHANGED
         if not evidence.is_intact:
             return ReuseBlock.TAMPERED
+        if withdrawn:
+            return ReuseBlock.REPORT_LINK_WITHDRAWN
         if invalidated:
             return ReuseBlock.INVALIDATED
         return None
@@ -477,9 +497,15 @@ class ReusePolicy:
         intent: ReuseIntent,
         now: datetime,
         invalidated: bool = False,
+        source_withdrawn: bool = False,
     ) -> ReuseBlock | None:
         """``None`` means the evidence may be reused for this request."""
-        block = self.authority_block(evidence, authority, invalidated=invalidated)
+        block = self.authority_block(
+            evidence,
+            authority,
+            invalidated=invalidated,
+            source_withdrawn=source_withdrawn,
+        )
         if block is not None:
             return block
         return self.suitability(

@@ -11,6 +11,7 @@ import pytest
 from retail_analytics.application.artifacts import ArtifactMaintenance, ReconcileReport
 from retail_analytics.application.authorization import AccessDenied, AccessResolver
 from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.evidence import ReuseRevalidation
 from retail_analytics.application.contracts.lifecycle import (
     ContentRemoval,
     InvestigationCleanup,
@@ -34,6 +35,7 @@ class FakeStore:
     removal: dict[str, ContentRemoval] = field(default_factory=dict)
     events: list[str] = field(default_factory=list)
     restores: list[tuple[str, str, bool]] = field(default_factory=list)
+    pending_links: int = 0
     previews: int = 0
     audit_deleted: int = 3
 
@@ -47,7 +49,9 @@ class FakeStore:
         audit_id: str,
     ) -> RestoredReport:
         self.restores.append((report_id, actor_id, actor_is_admin))
-        return RestoredReport(report_id, "owner", at)
+        return RestoredReport(
+            report_id, "owner", at, reuse_links_pending=self.pending_links
+        )
 
     async def list_restorable(
         self, owner_id: str, at: datetime
@@ -117,6 +121,7 @@ def service(
     roles: frozenset[Role] = frozenset({Role.EXECUTIVE}),
     fail: set[str] | None = None,
     policy: RetentionPolicy | None = None,
+    reuse: FakeReuse | None = None,
 ) -> LifecycleService:
     directory = Directory()
     directory.by_id = {
@@ -135,7 +140,19 @@ def service(
         policy=policy,
         clock=lambda: NOW,
         new_id=lambda: "audit-id",
+        reuse=reuse,
     )
+
+
+@dataclass
+class FakeReuse:
+    calls: list[tuple[str, str, str]] = field(default_factory=list)
+
+    async def revalidate_restored(
+        self, report_id: str, *, owner_id: str, actor_id: str
+    ) -> ReuseRevalidation:
+        self.calls.append((report_id, owner_id, actor_id))
+        return ReuseRevalidation(report_id, 1, {"authorization_changed": 1})
 
 
 def who(executive_id: str) -> Principal:
@@ -151,6 +168,26 @@ async def test_owner_restores_and_admin_flag_is_passed_through() -> None:
     assert store.restores == [("r1", "owner", False)]
     await svc.restore(who("admin"), "r1")
     assert store.restores[-1] == ("r1", "admin", True)
+
+
+@pytest.mark.asyncio
+async def test_restore_revalidates_withdrawn_reuse_links_for_the_owner() -> None:
+    store = FakeStore(pending_links=2)
+    reuse = FakeReuse()
+    restored = await service(store, reuse=reuse).restore(who("admin"), "r1")
+    # Judged for the report's owner; the acting admin is recorded.
+    assert reuse.calls == [("r1", "owner", "admin")]
+    assert restored.reuse == ReuseRevalidation("r1", 1, {"authorization_changed": 1})
+
+
+@pytest.mark.asyncio
+async def test_restore_without_withdrawn_links_or_wiring_revalidates_nothing() -> None:
+    reuse = FakeReuse()
+    restored = await service(FakeStore(), reuse=reuse).restore(who("owner"), "r1")
+    assert reuse.calls == [] and restored.reuse is None
+    # Unwired: links stay withdrawn (pending), nothing is revived.
+    unwired = await service(FakeStore(pending_links=1)).restore(who("owner"), "r1")
+    assert unwired.reuse_links_pending == 1 and unwired.reuse is None
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from retail_analytics.domain.evidence import (
@@ -9,6 +10,7 @@ from retail_analytics.domain.evidence import (
     EvidenceContent,
     EvidenceUse,
     ReportSource,
+    ReuseBlock,
 )
 
 DEFAULT_CANDIDATE_LIMIT = 20
@@ -18,6 +20,9 @@ DEFAULT_CANDIDATE_LIMIT = 20
 class StoredEvidence:
     evidence: Evidence
     invalidated: bool = False
+    # Derived (through records of its own session) from saved-report evidence
+    # of another session that no longer has a valid link into this session.
+    source_withdrawn: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,9 +74,55 @@ class ImportedEvidence:
     """Report evidence linked into a session, with where it came from.
 
     ``invalidated`` covers both the record itself and a later change of an
-    analytical setting scoped to the importing session.
+    analytical setting scoped to the importing session. A record linked
+    through several reports is returned once, with a live link's source when
+    it has one; ``withdrawn`` means every link was withdrawn (its reports
+    were soft-deleted, or restored and not re-validated).
     """
 
     evidence: Evidence
     source: ReportSource
     invalidated: bool = False
+    withdrawn: bool = False
+
+
+# Link states after a report deletion (T18-F5).
+WITHDRAWN_REPORT_DELETED = "report_deleted"
+WITHDRAWN_REVALIDATION_PENDING = "revalidation_pending"
+WITHDRAWN_REVALIDATION_FAILED = "revalidation_failed"
+REVALIDATION_REINSTATED = "reinstated"
+REVALIDATION_REIMPORTED = "reimported"
+
+
+@dataclass(frozen=True, slots=True)
+class PendingReuseLink:
+    """A restored report's link into a session, awaiting re-validation."""
+
+    session_id: str
+    evidence_id: str
+    report_version: int
+    # A setting scoped to that session changed since the import.
+    superseded: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ReuseLinkVerdict:
+    """Re-validation result for one link; ``block`` None reinstates it."""
+
+    session_id: str
+    evidence_id: str
+    block: ReuseBlock | None
+
+
+@dataclass(frozen=True, slots=True)
+class ReuseRevalidation:
+    """Recorded outcome of re-validating a restored report's reuse links
+    (counts only; the audit trail holds the same)."""
+
+    report_id: str
+    reinstated: int = 0
+    refused: Mapping[str, int] = field(default_factory=dict)
+
+    @property
+    def refused_total(self) -> int:
+        return sum(self.refused.values())

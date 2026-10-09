@@ -317,11 +317,17 @@ session_report_evidence = sa.Table(
     sa.Column("evidence_id", sa.Text, primary_key=True),
     sa.Column("executive_id", sa.Text, nullable=False),
     sa.Column("run_id", sa.Text, nullable=False),
-    sa.Column("report_id", sa.Text, nullable=False),
+    sa.Column("report_id", sa.Text, primary_key=True),
     sa.Column("report_version", sa.Integer, nullable=False),
     sa.Column("report_title", sa.Text, nullable=False),
     _ts("imported_at"),
     sa.Column("invalidated_at", sa.DateTime(timezone=True)),
+    # Set when the report was soft-deleted (T18-F5); cleared only by a
+    # successful re-validation after restore (or a fresh re-import).
+    sa.Column("withdrawn_at", sa.DateTime(timezone=True)),
+    sa.Column("withdrawn_reason", sa.Text),
+    sa.Column("revalidated_at", sa.DateTime(timezone=True)),
+    sa.Column("revalidation_result", sa.Text),
 )
 
 evidence_pins = sa.Table(

@@ -35,12 +35,16 @@ from retail_analytics.bootstrap.config import (
     ConfigError,
     load_backend_settings,
 )
+from retail_analytics.bootstrap.context import build_context
 from retail_analytics.bootstrap.entrypoint import CONFIG_ERROR_EXIT_CODE
+from retail_analytics.bootstrap.evidence import build_evidence
 from retail_analytics.bootstrap.lifecycle import build_lifecycle
 from retail_analytics.bootstrap.persistence import (
     Persistence,
     persistence_from_settings,
 )
+from retail_analytics.bootstrap.preferences import build_preferences
+from retail_analytics.bootstrap.reports import build_reports
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.lifecycle import RestoreError
 
@@ -55,11 +59,21 @@ def _open() -> tuple[Persistence, LifecycleService]:
         click.echo(str(exc), err=True)
         raise SystemExit(CONFIG_ERROR_EXIT_CODE) from None
     access = build_access(persistence, verifier=None)  # type: ignore[arg-type]
+    artifacts = build_artifacts(settings, persistence)
+    evidence = build_evidence(persistence, settings=settings)
+    context = build_context(
+        persistence, access, evidence, build_preferences(persistence, access)
+    )
+    # Re-validates a restored report's withdrawn reuse links (T18-F5).
+    reports = build_reports(
+        persistence, artifacts.service, evidence, context.gate, access.resolver
+    )
     service = build_lifecycle(
         persistence,
         access.resolver,
-        build_artifacts(settings, persistence),
+        artifacts,
         settings=settings,
+        reuse=reports,
     )
     return persistence, service
 
@@ -156,6 +170,14 @@ def restore(report_id: str, actor: str) -> None:
     finally:
         persistence.close()
     click.echo(f"restored {restored.report_id}")
+    if restored.reuse_links_pending:
+        reuse = restored.reuse
+        reinstated = 0 if reuse is None else reuse.reinstated
+        refused = restored.reuse_links_pending - reinstated
+        click.echo(
+            f"reuse_links_revalidated={restored.reuse_links_pending} "
+            f"reinstated={reinstated} still_withdrawn={refused}"
+        )
 
 
 @main.command()

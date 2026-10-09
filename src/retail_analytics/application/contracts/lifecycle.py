@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+from retail_analytics.application.contracts.evidence import ReuseRevalidation
 from retail_analytics.domain.lifecycle import DEFAULT_BATCH_SIZE
 
 
@@ -18,6 +19,11 @@ class RestoredReport:
     report_id: str
     owner_id: str
     restored_at: datetime
+    # Links into other sessions the deletion had withdrawn, now awaiting
+    # re-validation (none is reused before it passes).
+    reuse_links_pending: int = 0
+    # The re-validation's recorded outcome (None: not wired or nothing to do).
+    reuse: ReuseRevalidation | None = None
 
 
 @dataclass(frozen=True, slots=True)

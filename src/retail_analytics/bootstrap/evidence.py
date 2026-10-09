@@ -47,4 +47,6 @@ def build_evidence(
         # sessions, judged by required-scope coverage (T18-F2).
         imports=persistence.evidence,
         scopes=PostgresProductScopeSnapshots(Database(persistence.engine)),
+        # A restored report's withdrawn links are re-validated before reuse.
+        links=persistence.evidence,
     )

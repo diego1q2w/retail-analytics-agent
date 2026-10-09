@@ -12,6 +12,13 @@ store rechecks all of it under the report's row lock, so a restore and a purge
 of the same report have exactly one winner. Restoring changes only
 ``deleted_at``: the consumed deletion confirmation stays consumed.
 
+Restoring never silently revives reuse (T18-F5). The deletion withdrew every
+link the report gave the owner's other sessions; the restore transaction marks
+them as awaiting re-validation, and then ``RestoredReportReuse`` re-checks
+each one (current access, definition compatibility, evidence validity) and
+records the outcome. Until then, and for every link that fails, the evidence
+stays withheld in those sessions.
+
 Cleanup
 -------
 ``run_maintenance`` is idempotent, crash-safe and bounded per run:
@@ -38,6 +45,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from retail_analytics.application.artifacts import ArtifactMaintenance
@@ -52,7 +60,10 @@ from retail_analytics.application.contracts.lifecycle import (
     RestoredReport,
     UnresolvedOperation,
 )
-from retail_analytics.application.ports.lifecycle import LifecycleStore
+from retail_analytics.application.ports.lifecycle import (
+    LifecycleStore,
+    RestoredReportReuse,
+)
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.lifecycle import RetentionPolicy
 
@@ -80,8 +91,12 @@ class LifecycleService:
         policy: RetentionPolicy | None = None,
         clock: Clock = _utc_now,
         new_id: IdFactory = _new_id,
+        reuse: RestoredReportReuse | None = None,
     ) -> None:
+        """Without ``reuse`` a restored report's withdrawn links stay
+        withdrawn (reading the report again in a session re-imports it)."""
         self._store = store
+        self._reuse = reuse
         self._resolver = resolver
         self._artifacts = artifacts
         self._policy = policy or RetentionPolicy()
@@ -97,13 +112,21 @@ class LifecycleService:
         is_admin = Permission.ACCESS_ADMIN.value in permissions
         if not is_admin and Permission.REPORTS_DELETE_OWN.value not in permissions:
             raise AccessDenied("report", report_id)
-        return await self._store.restore_report(
+        restored = await self._store.restore_report(
             report_id=report_id,
             actor_id=principal.executive_id,
             actor_is_admin=is_admin,
             at=self._clock(),
             audit_id=self._new_id(),
         )
+        if self._reuse is None or not restored.reuse_links_pending:
+            return restored
+        # After the restore commits: a failure here leaves the links withdrawn
+        # (fail closed), never reused unchecked.
+        outcome = await self._reuse.revalidate_restored(
+            report_id, owner_id=restored.owner_id, actor_id=principal.executive_id
+        )
+        return replace(restored, reuse=outcome)
 
     async def list_restorable(
         self, principal: Principal
