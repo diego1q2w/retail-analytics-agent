@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import AsyncGenerator, AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -160,7 +160,12 @@ class GeminiInteractionsModel(Model):
             raise ModelAPIError(self._model_name, _transport_error(error)) from None
         try:
             if response.status_code != 200:
-                await response.aread()
+                try:
+                    await response.aread()
+                except httpx.HTTPError as error:
+                    raise ModelAPIError(
+                        self._model_name, _transport_error(error)
+                    ) from None
                 raise http_error(self._model_name, response)
             yield InteractionStream(
                 model_request_parameters=model_request_parameters,
@@ -168,7 +173,10 @@ class GeminiInteractionsModel(Model):
                 _lines=response.aiter_lines(),
             )
         finally:
-            await response.aclose()
+            # A broken connection may also fail to close; the request's own
+            # outcome (answer or error) is what the caller must see.
+            with suppress(httpx.HTTPError):
+                await response.aclose()
 
     def interaction_body(
         self,
@@ -319,19 +327,25 @@ class InteractionStream(StreamedResponse):
     _calls: set[int] = field(default_factory=set)
 
     async def _get_event_iterator(self) -> AsyncIterator[ModelResponseStreamEvent]:
-        async for data in _sse_data(self._lines):
-            kind = data.get("event_type")
-            if kind == "step.start":
-                event = self._start(data)
-                if event is not None:
-                    yield event
-            elif kind == "step.delta":
-                for event in self._delta(data):
-                    yield event
-            elif kind == "interaction.completed":
-                self._complete(data.get("interaction") or {})
-            elif kind == "error":
-                raise _stream_error(self._model_name, data.get("error"))
+        # The connection can also fail while the body streams (after HTTP
+        # 200): that is the same transient connection failure as one before
+        # the response started, so retries and fallback apply to it too.
+        try:
+            async for data in _sse_data(self._lines):
+                kind = data.get("event_type")
+                if kind == "step.start":
+                    event = self._start(data)
+                    if event is not None:
+                        yield event
+                elif kind == "step.delta":
+                    for event in self._delta(data):
+                        yield event
+                elif kind == "interaction.completed":
+                    self._complete(data.get("interaction") or {})
+                elif kind == "error":
+                    raise _stream_error(self._model_name, data.get("error"))
+        except httpx.HTTPError as error:
+            raise ModelAPIError(self._model_name, _transport_error(error)) from None
 
     def _start(self, data: Mapping[str, Any]) -> ModelResponseStreamEvent | None:
         index = data.get("index")

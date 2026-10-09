@@ -75,7 +75,9 @@ so that a slow start can be told apart from a long answer:
   signature. The run's active-time budget (10 minutes) bounds the
   investigation as a whole.
 - **Retries.** Retries cover throttling (429), server errors (5xx, 408/409),
-  connection failures and the timeouts above. They use the run budget's
+  connection failures (also a connection that breaks while the answer is
+  streaming; the partial answer is discarded) and the timeouts above. They
+  use the run budget's
   backoff with jitter and honour the provider's retry hint. There are at most
   `RETAIL_ANALYTICS_MAX_TRANSIENT_ATTEMPTS` (3) attempts per provider for one
   model request, and none once the run's active time is nearly spent.

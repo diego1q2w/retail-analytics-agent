@@ -177,3 +177,32 @@ async def test_no_secret_or_prompt_reaches_model_telemetry() -> None:
         assert secret not in text
     labels = {k for _, _, labels in sink.counts for k in labels}
     assert labels <= set(Label)
+
+
+async def test_connection_lost_mid_stream_is_attributed_as_a_connection_failure() -> (
+    None
+):
+    telemetry, sink = recording()
+    cut = stubs.broken_stream(stubs.gemini_text("partial")[:2])
+    gemini = stubs.Recorder([cut] * 3)
+    with use_telemetry(telemetry):
+        result = await harness(gemini, stubs.Recorder([gpt_answer()])).run()
+
+    attempts = sink.named(Span.MODEL_ATTEMPT)
+    assert [a.attributes["outcome"] for a in attempts] == ["failed"] * 3 + ["succeeded"]
+    assert {a.attributes["reason_class"] for a in attempts[:3]} == {"connection"}
+    assert (
+        sink.total(
+            Metric.MODEL_FALLBACKS,
+            from_provider=GEMINI,
+            to_provider=OPENAI,
+            reason_class="connection",
+        )
+        == 1
+    )
+    served = served_by(result)
+    assert (served.provider, served.fallback_from, served.fallback_reason) == (  # type: ignore[attr-defined]
+        OPENAI,
+        GEMINI,
+        "connection",
+    )

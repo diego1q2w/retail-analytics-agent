@@ -8,7 +8,7 @@ exercise the actual request mapping, streaming parsers and error handling.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -119,6 +119,30 @@ class Reply:
     events: list[dict[str, Any]] = field(default_factory=list)
     body: dict[str, Any] | None = None
     headers: dict[str, str] = field(default_factory=dict)
+    # Gemini only: after HTTP 200 and ``events``, the body raises this.
+    stream_error: Callable[[], BaseException] | None = None
+
+
+def _reset() -> BaseException:
+    # Transport messages can carry request details; the adapter must drop them.
+    return httpx.ReadError(f"connection reset ({GEMINI_KEY})")
+
+
+def broken_stream(
+    events: list[dict[str, Any]], error: Callable[[], BaseException] = _reset
+) -> Reply:
+    """HTTP 200, some events, then the connection fails mid-body."""
+    return Reply(events=events, stream_error=error)
+
+
+class _BrokenBody(httpx.AsyncByteStream):
+    def __init__(self, content: bytes, error: Callable[[], BaseException]) -> None:
+        self._content = content
+        self._error = error
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield self._content
+        raise self._error()
 
 
 def error(status: int, code: str, **extra: Any) -> Reply:
@@ -163,6 +187,12 @@ def gemini(
         reply = recorder.answer(
             str(request.url), dict(request.headers), request.content
         )
+        if reply.stream_error is not None:
+            return httpx.Response(
+                200,
+                stream=_BrokenBody(sse(reply.events, done=False), reply.stream_error),
+                headers={"content-type": "text/event-stream"},
+            )
         response: httpx.Response = _respond(reply, httpx.Response)
         return response
 

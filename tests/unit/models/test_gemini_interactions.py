@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -225,3 +226,22 @@ async def test_cut_stream_reports_no_usage() -> None:
     recorder = stubs.Recorder([stubs.Reply(events=events)])
     response = await stubs.gemini(recorder).request(QUESTION, None, PARAMS)
     assert response.usage.input_tokens == 0
+
+
+async def test_connection_lost_mid_stream_is_a_sanitized_api_error() -> None:
+    # HTTP 200, a text delta, then the connection breaks while streaming.
+    recorder = stubs.Recorder([stubs.broken_stream(stubs.gemini_text("Partial")[:2])])
+    with pytest.raises(ModelAPIError) as raised:
+        await stubs.gemini(recorder).request(QUESTION, None, PARAMS)
+    assert not isinstance(raised.value, ModelHTTPError)
+    assert "ReadError" in raised.value.message
+    assert stubs.GEMINI_KEY not in repr(raised.value)
+    assert raised.value.__cause__ is None and raised.value.__suppress_context__
+
+
+async def test_cancellation_mid_stream_is_not_converted() -> None:
+    recorder = stubs.Recorder(
+        [stubs.broken_stream(stubs.gemini_text("Partial")[:2], asyncio.CancelledError)]
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await stubs.gemini(recorder).request(QUESTION, None, PARAMS)

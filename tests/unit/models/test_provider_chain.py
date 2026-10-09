@@ -269,3 +269,46 @@ async def test_secrets_are_not_in_errors_or_charges() -> None:
         error = error.__cause__
     text = " ".join(chain) + repr(await h.provider_charges())
     assert stubs.GEMINI_KEY not in text and stubs.OPENAI_KEY not in text
+
+
+def gemini_cut(text: str = "PARTIAL-GEMINI") -> stubs.Reply:
+    """HTTP 200 and a text delta, then the connection breaks mid-stream."""
+    return stubs.broken_stream(stubs.gemini_text(text)[:2])
+
+
+async def test_connection_lost_mid_stream_is_retried_within_the_primary() -> None:
+    gemini = stubs.Recorder([gemini_cut(), gemini_answer()])
+    h = harness(gemini, stubs.Recorder([]))
+
+    result = await h.run()
+
+    assert result.output.text == "Sales were 10."
+    assert len(gemini.requests) == 2
+    assert "PARTIAL-GEMINI" not in json.dumps(gemini.requests[1])
+    assert "PARTIAL-GEMINI" not in str(result.all_messages())
+    charges = await h.provider_charges()
+    assert len(charges) == 2
+    cut, answered = charges
+    assert cut.ambiguous and cut.tokens > 0  # maybe processed: estimate stands
+    assert answered.settled and not answered.ambiguous
+
+
+async def test_connection_lost_mid_stream_falls_back_once_attempts_are_spent() -> None:
+    gemini = stubs.Recorder([gemini_cut()] * 3)
+    gpt = stubs.Recorder([gpt_answer()])
+    h = harness(gemini, gpt)
+
+    result = await h.run()
+
+    assert result.output.text == "Sales were 10."
+    assert len(gemini.requests) == 3 and len(gpt.requests) == 1
+    # No partial primary output reaches the backup or the answer.
+    assert "PARTIAL-GEMINI" not in json.dumps(gpt.requests[0])
+    assert "PARTIAL-GEMINI" not in str(result.all_messages())
+    providers = [
+        m.provider_name for m in result.all_messages() if isinstance(m, ModelResponse)
+    ]
+    assert providers == ["openai"]
+    charges = await h.provider_charges()
+    assert len(charges) == 4
+    assert sum(c.ambiguous for c in charges) == 3
