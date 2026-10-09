@@ -102,6 +102,14 @@ verified Gemini result.
   - Relevance labels were written by the implementing agent alone, before
     any run. There is no second annotator.
   - No relevance measurement on live traffic.
+- **Skill selection and Golden invocation.** Retrieval works when called, but
+  the agent may skip relevant Golden examples on an unprompted question.
+  The investigation skill adds guidance, not an execution guarantee. Existing
+  retrieval scores do not measure this selection decision. Production needs
+  labelled, repeated evaluations of selection precision and recall for Golden
+  retrieval and the other skills, plus answer quality, latency and cost;
+  those measurements are not yet established. See
+  [production evaluation](production-deployment.md#production-evaluation-of-skill-selection).
 - **Benchmarks.**
   - Expected values are reproduced by two SQL routes, but no named human
     reviewer has signed them off.

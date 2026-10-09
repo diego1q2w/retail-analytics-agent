@@ -444,6 +444,34 @@ query formulation and thresholds; reranking alone cannot recover them. Productio
 metrics and sampled human relevance reviews should drive this decision, rather
 than assuming a reranker is required for a larger deployment.
 
+### Production evaluation of skill selection
+
+The retrieval benchmark measures which examples are returned after retrieval
+is called. It does not establish that the agent calls Golden Knowledge when
+appropriate. Skill selection remains model-driven; the investigation guidance
+encourages consultation for driver investigations and new analytical reports,
+but is not a deterministic guarantee. Reliable unprompted use needs further
+evaluation before production.
+
+Build a reviewed, held-out set of natural questions and multi-turn conversations
+labelled for when each skill or tool is appropriate, unnecessary or unavailable.
+Measure selection precision (appropriate invocations divided by all invocations)
+and recall (eligible cases needing the capability where it was invoked divided
+by all eligible cases needing it), separately for Golden retrieval and the other
+skills. Define the scoring unit and valid reuse cases explicitly: an applicable
+example already in context should not require a redundant retrieval call.
+Include simple lookups, investigations, report creation versus saving existing
+analysis, preference changes, currency conversion and permission restrictions.
+
+Run repeated trials without telling the agent which skill to use. Report missed
+and unnecessary calls, successful tool execution, downstream answer quality,
+latency and cost, with sample sizes and uncertainty. Evaluate both selection and
+retrieval quality; neither metric substitutes for the other. Set production
+acceptance thresholds from these results, then monitor reviewed traffic samples
+and rerun evaluations after model, prompt, skill or corpus changes. These
+selection precision/recall measurements are planned, not established by the
+current smoke tests.
+
 ## Security and network (proposed)
 
 - Public ingress for the API only; the database, workers and any

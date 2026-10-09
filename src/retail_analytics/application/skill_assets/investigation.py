@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from retail_analytics.application.contracts.skills import (
     AnalyticalSkill,
     SkillSegment,
@@ -101,4 +103,18 @@ V2 = AnalyticalSkill(
     ),
 )
 
-VERSIONS: tuple[AnalyticalSkill, ...] = (V1, V2)
+V3 = replace(
+    V2,
+    version=3,
+    segments=(
+        *V2.segments,
+        SkillSegment(
+            f"For driver investigations and reports requiring new analysis, "
+            f"consult {FIND_EXAMPLES} before choosing the method, unless "
+            "applicable reviewed examples are already in context.",
+            any_of=_EXAMPLES,
+        ),
+    ),
+)
+
+VERSIONS: tuple[AnalyticalSkill, ...] = (V1, V2, V3)
