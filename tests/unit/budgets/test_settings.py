@@ -18,13 +18,14 @@ from tests.unit.sql_compiler.support import view
 
 
 def test_default_settings_are_the_accepted_limits() -> None:
-    settings = load_backend_settings({}, env_file=None)
+    settings = load_backend_settings({"APP_MODE": "fixture"}, env_file=None)
     assert run_limits(settings) == RunLimits()
 
 
 def test_settings_override_limits_for_new_runs() -> None:
     settings = load_backend_settings(
         {
+            "APP_MODE": "fixture",
             "RUN_MAX_QUERIES": "4",
             "QUERY_MAX_BYTES": str(64 * 1024 * 1024),
             "RESULT_MAX_ROWS": "50",

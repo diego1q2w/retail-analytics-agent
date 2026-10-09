@@ -163,7 +163,7 @@ async def main():
     # Full local composition (an engine connects lazily: nothing is contacted).
     persistence = build_persistence("postgresql+psycopg://u:p@127.0.0.1:9/none")
     local = build_local_investigations(
-        BackendSettings(),
+        BackendSettings(mode="fixture"),
         persistence,
         build_access(persistence, verifier=None),
         FunctionModel(lambda messages, info: None),

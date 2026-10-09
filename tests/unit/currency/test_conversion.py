@@ -29,6 +29,7 @@ from retail_analytics.application.tools import (
     ToolSucceeded,
     invoke,
 )
+from retail_analytics.bootstrap.config import RuntimeMode
 from retail_analytics.capabilities.currency import (
     CONVERT_CURRENCY,
     ConvertCurrencyOutput,
@@ -363,7 +364,10 @@ async def test_bootstrap_default_refuses_until_the_source_currency_is_verified()
     env = Env()
     rates = FixtureRateProvider(RATES)
     service = build_currency_conversion(
-        BackendSettings(), env.service, FakePreferenceStore(), rates=rates
+        BackendSettings(mode=RuntimeMode.FIXTURE),
+        env.service,
+        FakePreferenceStore(),
+        rates=rates,
     )
     compiled, released = compiled_and_released()
     source = await env.service.record_query(
@@ -388,7 +392,7 @@ async def test_declared_source_currency_is_disclosed_as_not_verified() -> None:
     statement = "source currency declared by operator, not verified from data"
     env = Env()
     service = build_currency_conversion(
-        BackendSettings(source_currency_declared="USD"),
+        BackendSettings(mode=RuntimeMode.FIXTURE, source_currency_declared="USD"),
         env.service,
         FakePreferenceStore(),
         rates=FixtureRateProvider(RATES),

@@ -19,7 +19,7 @@ from pydantic import SecretStr
 
 from retail_analytics.bootstrap import api as api_composition
 from retail_analytics.bootstrap.api import build_app
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.execution import ExecutionStartupError
 from retail_analytics.domain.runs import ExecutionBackend
 from tests.integration.test_http_api import (  # noqa: F401  (fixtures reused)
@@ -56,6 +56,7 @@ async def test_a_second_local_api_on_the_same_database_fails_clearly(
     monkeypatch.setattr(api_composition, "ensure_owned_work", no_foreign_work)
     second = build_app(
         BackendSettings(
+            mode=RuntimeMode.FIXTURE,
             database_url=SecretStr(api.stack.app_url),
             auth_signing_key=SecretStr(KEY),
             artifact_dir=api.root,

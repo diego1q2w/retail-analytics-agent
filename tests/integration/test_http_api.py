@@ -36,7 +36,7 @@ from pydantic_ai.models.function import FunctionModel
 from retail_analytics.adapters.auth.local_jwt import LocalJwtAuthority
 from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.bootstrap.api import SchedulerProvider, build_app
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.execution import local_scheduler
 from retail_analytics.domain.runs import ExecutionBackend
 from retail_analytics.interfaces.http.services import StreamSettings
@@ -120,6 +120,7 @@ def api(
                 text=True,
             )
         settings = BackendSettings(
+            mode=RuntimeMode.FIXTURE,
             database_url=SecretStr(stack.app_url),
             execution_backend=backend,
             temporal_address=f"127.0.0.1:{stack.temporal_port}" if temporal else None,

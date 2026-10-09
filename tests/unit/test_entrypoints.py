@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from retail_analytics import __version__
 from retail_analytics.bootstrap import api, cli, dev_access, worker
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.domain.access import Role
 from retail_analytics.interfaces.cli.app import cli as cli_group
 
@@ -27,7 +27,7 @@ def test_console_scripts_import_in_fresh_interpreter() -> None:
 
 
 def test_api_health_in_fixture_mode() -> None:
-    client = TestClient(api.build_app(BackendSettings()))
+    client = TestClient(api.build_app(BackendSettings(mode=RuntimeMode.FIXTURE)))
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.json() == {
@@ -71,7 +71,7 @@ def test_worker_requires_temporal_configuration() -> None:
 
 
 def test_cli_status_against_backend() -> None:
-    backend = TestClient(api.build_app(BackendSettings()))
+    backend = TestClient(api.build_app(BackendSettings(mode=RuntimeMode.FIXTURE)))
 
     def forward(request: httpx.Request) -> httpx.Response:
         reply = backend.get(request.url.path)

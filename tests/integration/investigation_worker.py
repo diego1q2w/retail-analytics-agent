@@ -13,7 +13,7 @@ from temporalio.client import Client
 
 from retail_analytics.adapters.temporal.scheduler import TemporalInvestigationScheduler
 from retail_analytics.bootstrap.access import build_access, local_token_authority
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.investigations import build_investigations
 from retail_analytics.bootstrap.persistence import build_persistence
 from retail_analytics.bootstrap.telemetry import install_from_settings
@@ -37,6 +37,7 @@ __all__ = [
 
 async def main() -> None:
     settings = BackendSettings(
+        mode=RuntimeMode.FIXTURE,
         database_url=SecretStr(os.environ["T13_DATABASE_URL"]),
         temporal_address=os.environ["T13_TEMPORAL_ADDRESS"],
         temporal_task_queue=os.environ["T13_TASK_QUEUE"],

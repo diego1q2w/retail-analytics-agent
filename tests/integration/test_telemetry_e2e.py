@@ -29,7 +29,7 @@ from retail_analytics.application.telemetry import (
     telemetry,
     trace_id_for,
 )
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.telemetry import build_telemetry
 from retail_analytics.bootstrap.trace_lookup import span_attributes
 from retail_analytics.domain.runs import RunStatus
@@ -151,6 +151,7 @@ def prometheus(stack: TelemetryStack, query: str) -> list[dict[str, Any]]:
 def api_telemetry(stack: TelemetryStack) -> Iterator[None]:
     """This process plays the API: it accepts runs and exports like the API."""
     settings = BackendSettings(
+        mode=RuntimeMode.FIXTURE,
         telemetry_enabled=True,
         telemetry_traces_endpoint=stack.traces_endpoint,
         telemetry_metrics_endpoint=stack.metrics_endpoint,

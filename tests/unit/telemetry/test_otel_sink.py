@@ -23,6 +23,7 @@ from retail_analytics.application.telemetry import (
     root_span_id_for,
     trace_id_for,
 )
+from retail_analytics.bootstrap.config import RuntimeMode
 
 
 def settings(**overrides: object) -> OtelSettings:
@@ -224,6 +225,7 @@ def test_the_default_on_configuration_survives_an_outage(backend: str) -> None:
     with black_hole() as hung:
         base = hung if backend == "black_hole" else closed_port()
         shipped = BackendSettings(
+            mode=RuntimeMode.FIXTURE,
             telemetry_traces_endpoint=f"{base}/v1/traces",
             telemetry_metrics_endpoint=f"{base}/v1/metrics",
         )

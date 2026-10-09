@@ -22,7 +22,7 @@ from pydantic_ai.models.openai import OpenAIResponsesModel
 from retail_analytics.adapters.models.gemini_interactions import (
     GeminiInteractionsModel,
 )
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.models import gemini_model, openai_model
 
 GEMINI_KEY = "gemini-test-key-0123456789"
@@ -197,7 +197,9 @@ def gemini(
         return response
 
     settings = BackendSettings(
-        gemini_api_key=SecretStr(GEMINI_KEY), agent_gemini_model=model_name
+        mode=RuntimeMode.FIXTURE,
+        gemini_api_key=SecretStr(GEMINI_KEY),
+        agent_gemini_model=model_name,
     )
     return gemini_model(
         settings, http_client=httpx.AsyncClient(transport=httpx.MockTransport(handle))
@@ -280,7 +282,7 @@ def openai(recorder: Recorder) -> OpenAIResponsesModel:
         return response
 
     model = openai_model(
-        BackendSettings(openai_api_key=SecretStr(OPENAI_KEY)),
+        BackendSettings(mode=RuntimeMode.FIXTURE, openai_api_key=SecretStr(OPENAI_KEY)),
         http_client=DefaultAsyncHttpxClient(transport=httpx2.MockTransport(handle)),
     )
     assert model is not None

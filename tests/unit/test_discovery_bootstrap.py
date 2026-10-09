@@ -11,22 +11,27 @@ from tests.unit.discovery_fixtures import FakeClock, StubMetadata, context
 
 def test_live_discovery_requires_a_bigquery_project() -> None:
     with pytest.raises(ConfigError):
-        build_discovery(load_backend_settings(environ={}, env_file=None))
+        build_discovery(
+            load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=None)
+        )
 
 
 def test_refresh_interval_setting_is_bounded() -> None:
     settings = load_backend_settings(
-        environ={"SCHEMA_REFRESH_SECONDS": "600"}, env_file=None
+        environ={"APP_MODE": "fixture", "SCHEMA_REFRESH_SECONDS": "600"}, env_file=None
     )
     assert settings.schema_refresh_seconds == 600
     with pytest.raises(ConfigError):
-        load_backend_settings(environ={"SCHEMA_REFRESH_SECONDS": "5"}, env_file=None)
+        load_backend_settings(
+            environ={"APP_MODE": "fixture", "SCHEMA_REFRESH_SECONDS": "5"},
+            env_file=None,
+        )
 
 
 @pytest.mark.asyncio
 async def test_build_with_stub_provider_serves_the_catalog() -> None:
     service = build_discovery(
-        load_backend_settings(environ={}, env_file=None),
+        load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=None),
         provider=StubMetadata(),
         clock=FakeClock(),
     )

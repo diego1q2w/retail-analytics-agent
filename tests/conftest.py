@@ -37,6 +37,8 @@ def isolated_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for key in list(os.environ):
         if key in KNOWN_ENV_NAMES or key in BARE_GENERIC_NAMES or is_legacy_name(key):
             monkeypatch.delenv(key)
+    # Tests opt into fixture mode; the application defaults to live analysis.
+    monkeypatch.setenv("APP_MODE", "fixture")
     # Telemetry is on by default for local runs; tests never export (no network).
     monkeypatch.setenv("TELEMETRY_ENABLED", "false")
     monkeypatch.chdir(tmp_path)

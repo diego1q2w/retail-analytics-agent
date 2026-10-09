@@ -324,18 +324,23 @@ def test_unset_thresholds_resolve_per_embedding_provider() -> None:
     from retail_analytics.bootstrap.config import load_backend_settings
     from retail_analytics.bootstrap.retrieval import retrieval_config
 
-    fixture = retrieval_config(load_backend_settings(environ={}, env_file=None))
+    fixture = retrieval_config(
+        load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=None)
+    )
     assert (fixture.min_similarity, fixture.min_lexical_coverage) == (0.55, 0.5)
     environ = {
         "EMBEDDING_PROVIDER": "gemini",
         "GEMINI_API_KEY": "x",
     }
-    gemini = retrieval_config(load_backend_settings(environ=environ, env_file=None))
+    gemini = retrieval_config(
+        load_backend_settings(environ={"APP_MODE": "fixture", **environ}, env_file=None)
+    )
     assert (gemini.min_similarity, gemini.min_lexical_coverage) == (0.70, 0.75)
     assert gemini.semantic_weight == 2.0
     explicit = retrieval_config(
         load_backend_settings(
             environ={
+                "APP_MODE": "fixture",
                 **environ,
                 "RETRIEVAL_MIN_SIMILARITY": "0.6",
                 "RETRIEVAL_SEMANTIC_WEIGHT": "4",
@@ -370,11 +375,11 @@ def test_bootstrap_builds_fixture_retriever_and_rejects_gemini_without_key() -> 
     from retail_analytics.bootstrap.config import ConfigError, load_backend_settings
     from retail_analytics.bootstrap.retrieval import build_embedder, retrieval_config
 
-    fixture = load_backend_settings(environ={}, env_file=None)
+    fixture = load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=None)
     assert isinstance(build_embedder(fixture), HashingEmbedder)
     assert retrieval_config(fixture).max_results == 3
     gemini = load_backend_settings(
-        environ={"EMBEDDING_PROVIDER": "gemini"}, env_file=None
+        environ={"APP_MODE": "fixture", "EMBEDDING_PROVIDER": "gemini"}, env_file=None
     )
     with pytest.raises(ConfigError):
         build_embedder(gemini)

@@ -112,7 +112,7 @@ class BackendSettings(BaseModel):
 
     model_config = _STRICT_MODEL
 
-    mode: RuntimeMode = RuntimeMode.FIXTURE
+    mode: RuntimeMode = RuntimeMode.LIVE
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8080, ge=1, le=65535)
     artifact_dir: Path = Path("data/local/artifacts")

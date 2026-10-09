@@ -10,6 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from retail_analytics.bootstrap import config, local_env, local_setup
+from retail_analytics.bootstrap.config import RuntimeMode
 from retail_analytics.bootstrap.local_setup import (
     BootstrapStep,
     SetupContext,
@@ -247,7 +248,7 @@ def _isolation_ctx(tmp_path: Path, env_text: str) -> SetupContext:
         "BIGQUERY_LOCATION=SENTINEL-FROM-REPO-ENV\n", encoding="utf-8"
     )
     env_file = tmp_path / "isolated.env"
-    env_file.write_text(env_text, encoding="utf-8")
+    env_file.write_text("APP_MODE=fixture\n" + env_text, encoding="utf-8")
     ctx = SetupContext(
         root=root, env_file=env_file, project="p", echo=lambda _line: None
     )
@@ -341,8 +342,10 @@ def _env_only(env_file: Path, *extra: str) -> str:
 
 
 def test_telemetry_defaults_to_on_in_settings_and_template() -> None:
-    assert config.BackendSettings().telemetry_enabled is True
-    assert config.load_backend_settings(environ={}, env_file=None).telemetry_enabled
+    assert config.BackendSettings(mode=RuntimeMode.FIXTURE).telemetry_enabled is True
+    assert config.load_backend_settings(
+        environ={"APP_MODE": "fixture"}, env_file=None
+    ).telemetry_enabled
     assert local_env.parse_values(TEMPLATE)[TELEMETRY_KEY] == "true"
 
 
@@ -381,7 +384,7 @@ def test_telemetry_flag_is_an_accepted_no_op(tmp_path: Path) -> None:
 
 def _tele_ctx(tmp_path: Path, env_text: str, telemetry: bool = True) -> SetupContext:
     env_file = tmp_path / "t.env"
-    env_file.write_text(env_text, encoding="utf-8")
+    env_file.write_text("APP_MODE=fixture\n" + env_text, encoding="utf-8")
     ctx = SetupContext(
         root=local_setup.ROOT,
         env_file=env_file,
@@ -431,7 +434,10 @@ OLD_ENV = (
 
 def test_template_and_settings_default_to_local_execution() -> None:
     assert local_env.parse_values(TEMPLATE)[BACKEND_KEY] == "local"
-    assert config.BackendSettings().execution_backend.value == "local"
+    assert (
+        config.BackendSettings(mode=RuntimeMode.FIXTURE).execution_backend.value
+        == "local"
+    )
 
 
 def test_existing_file_without_selector_adopts_local_and_explains() -> None:
@@ -482,7 +488,7 @@ def _backend_ctx(
     tmp_path: Path, env_text: str, option: str | None = None
 ) -> tuple[SetupContext, list[tuple[str, ...]]]:
     env_file = tmp_path / "b.env"
-    env_file.write_text(env_text, encoding="utf-8")
+    env_file.write_text("APP_MODE=fixture\n" + env_text, encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
     class Recording(SetupContext):
@@ -634,3 +640,19 @@ def test_env_only_warns_about_legacy_names_exported_by_the_shell(
     output = _env_only(tmp_path / "new.env")
     assert "RETAIL_ANALYTICS_DATABASE_URL" in output
     assert LEGACY_SECRET not in output
+
+
+def test_live_defaults_require_external_credentials(tmp_path: Path) -> None:
+    assert local_env.parse_values(TEMPLATE)["APP_MODE"] == "live"
+    ctx = _isolation_ctx(tmp_path, "")
+    ctx.values.pop("APP_MODE", None)
+    with pytest.raises(StepFailed, match="BIGQUERY_PROJECT and GEMINI_API_KEY"):
+        local_setup.step_check_credentials(ctx)
+    assert next(s for s in local_setup.STEPS if s.name == "check-credentials").required
+
+
+def test_fixture_skips_external_credential_checks(tmp_path: Path) -> None:
+    ctx = _isolation_ctx(tmp_path, "BIGQUERY_PROJECT=fake\nGEMINI_API_KEY=fake\n")
+    result = local_setup.step_check_credentials(ctx)
+    assert result.status == "skipped"
+    assert "fixed responses" in result.message

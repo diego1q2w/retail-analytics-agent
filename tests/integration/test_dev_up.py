@@ -208,6 +208,7 @@ def setup(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Setup]:
         "grafana": _free_port(),
     }
     env_file = base / "dev.env"
+    env_file.write_text("APP_MODE=fixture\n")
     try:
         subprocess.run(
             [

@@ -121,6 +121,7 @@ def test_port_in_use_is_refused_with_an_actionable_message() -> None:
 def _env_file(tmp_path: Path, extra: str = "") -> Path:
     path = tmp_path / "dev.env"
     path.write_text(
+        "APP_MODE=fixture\n"
         "APP_DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:1/db\n"
         "TEMPORAL_ADDRESS=127.0.0.1:1\n"
         f"AUTH_SIGNING_KEY={'k' * 40}\n" + extra,
@@ -175,6 +176,7 @@ def test_unreachable_backing_services_fail_fast(tmp_path: Path) -> None:
 def test_temporal_execution_requires_the_temporal_address(tmp_path: Path) -> None:
     path = tmp_path / "t.env"
     path.write_text(
+        "APP_MODE=fixture\n"
         "EXECUTION_BACKEND=temporal\n"
         "APP_DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:1/db\n"
         f"AUTH_SIGNING_KEY={'k' * 40}\n",
@@ -269,6 +271,7 @@ def test_dev_starts_the_services_and_prints_the_urls(
     monkeypatch.setattr(dev_up, "healthz_ok", lambda *_: True)
     env = tmp_path / "d.env"
     env.write_text(
+        "APP_MODE=fixture\n"
         "APP_DATABASE_URL=postgresql://u:p@127.0.0.1:1/db\n"
         "TEMPORAL_ADDRESS=127.0.0.1:1\n"
         f"AUTH_SIGNING_KEY={'k' * 40}\n",

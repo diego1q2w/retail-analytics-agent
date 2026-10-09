@@ -43,7 +43,7 @@ from retail_analytics.bootstrap.agent_evaluation import (
     realdata_source,
 )
 from retail_analytics.bootstrap.artifacts import build_artifacts
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.knowledge import build_knowledge
 from retail_analytics.bootstrap.persistence import build_persistence
 from retail_analytics.domain.knowledge import (
@@ -81,6 +81,7 @@ def backend() -> ExecutionBackend:
 @pytest.fixture(scope="module")
 def settings(stack: Stack, tmp_path_factory: pytest.TempPathFactory) -> BackendSettings:
     return BackendSettings(
+        mode=RuntimeMode.FIXTURE,
         database_url=SecretStr(stack.app_url),
         temporal_address=f"127.0.0.1:{stack.temporal_port}",
         artifact_dir=tmp_path_factory.mktemp("artifacts"),

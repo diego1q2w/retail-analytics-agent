@@ -39,7 +39,7 @@ from retail_analytics.application.contracts.persistence import (
 from retail_analytics.application.contracts.progress import EventKind
 from retail_analytics.application.investigation_runtime import INTERRUPTED_NOTICE
 from retail_analytics.application.investigations import RunNotActive
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.local_investigations import (
     LocalInvestigations,
     build_local_investigations,
@@ -86,7 +86,7 @@ class LocalEnv(Env):
     def build(
         self, *, settings: BackendSettings | None = None, model: Any = None
     ) -> LocalInvestigations:
-        settings = settings or BackendSettings()
+        settings = settings or BackendSettings(mode=RuntimeMode.FIXTURE)
         return build_local_investigations(
             settings,
             self.db,
@@ -352,7 +352,9 @@ async def test_reconnect_replays_events_and_never_restarts_work(
 async def test_budget_stop_and_model_fallback_use_shared_policy(
     env: LocalEnv,
 ) -> None:
-    limited = env.build(settings=BackendSettings(run_max_provider_requests=1))
+    limited = env.build(
+        settings=BackendSettings(mode=RuntimeMode.FIXTURE, run_max_provider_requests=1)
+    )
     async with limited.manager:
         run_id = await env.start(limited, "Analyze sales: effect case.")
         async with asyncio.timeout(60):
@@ -364,7 +366,9 @@ async def test_budget_stop_and_model_fallback_use_shared_policy(
         assert run.status in (RunStatus.PARTIAL, RunStatus.FAILED)
         assert await env.model_requests(run_id) == 1
         assert env.effects(run_id) == 1
-    fallback = env.build(model=fallback_chain(BackendSettings()))
+    fallback = env.build(
+        model=fallback_chain(BackendSettings(mode=RuntimeMode.FIXTURE))
+    )
     async with fallback.manager:
         run_id = await env.start(fallback, "Analyze sales: effect case.")
         await env.wait_status(run_id, RunStatus.COMPLETED, 90)

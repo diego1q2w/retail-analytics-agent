@@ -19,6 +19,7 @@ from retail_analytics.application.contracts.authorization import (
 )
 from retail_analytics.application.contracts.persistence import RunRequest
 from retail_analytics.bootstrap.access import build_access
+from retail_analytics.bootstrap.config import RuntimeMode
 from retail_analytics.bootstrap.persistence import Persistence, build_persistence
 from retail_analytics.bootstrap.persona import PersonaServices, build_persona
 from retail_analytics.domain.access import Permission, Role
@@ -461,7 +462,7 @@ async def test_runtime_instructions_carry_the_pinned_persona(world: World) -> No
     from retail_analytics.domain.persona import PERSONA_PREAMBLE
 
     services = build_investigations(
-        BackendSettings(),
+        BackendSettings(mode=RuntimeMode.FIXTURE),
         world.db,
         world.access,
         None,  # type: ignore[arg-type]

@@ -27,7 +27,7 @@ from pydantic import SecretStr
 from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.investigation_runtime import INTERRUPTED_NOTICE
 from retail_analytics.bootstrap.agent_evaluation import _PERMISSIONS, _Loop
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.domain.runs import ExecutionBackend, RunStatus
 from tests.integration import local_process
 from tests.integration.compose_stack import Stack, running_stack
@@ -71,6 +71,7 @@ def backend() -> ExecutionBackend:
 def settings(stack: Stack, tmp_path_factory: pytest.TempPathFactory) -> BackendSettings:
     # No Temporal address: the local backend must not need one.
     return BackendSettings(
+        mode=RuntimeMode.FIXTURE,
         database_url=SecretStr(stack.app_url),
         artifact_dir=tmp_path_factory.mktemp("artifacts"),
     )

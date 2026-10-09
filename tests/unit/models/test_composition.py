@@ -43,7 +43,9 @@ def _raw(member: ProviderAttempts) -> object:
 
 
 def test_defaults_select_gemini_primary_and_gpt_backup() -> None:
-    settings = BackendSettings(gemini_api_key=KEY, openai_api_key=KEY)
+    settings = BackendSettings(
+        mode=RuntimeMode.FIXTURE, gemini_api_key=KEY, openai_api_key=KEY
+    )
     assert settings.agent_gemini_model == "gemini-3.8-flash"
     assert settings.agent_openai_model == "gpt-5-mini"
     limits = response_limits(settings)
@@ -57,18 +59,19 @@ def test_defaults_select_gemini_primary_and_gpt_backup() -> None:
 
 
 def test_without_an_openai_key_there_is_no_backup() -> None:
-    (only,) = _members(BackendSettings(gemini_api_key=KEY))
+    (only,) = _members(BackendSettings(mode=RuntimeMode.FIXTURE, gemini_api_key=KEY))
     assert isinstance(_raw(only), GeminiInteractionsModel)
 
 
 def test_the_primary_is_required() -> None:
     with pytest.raises(ConfigError, match="GEMINI_API_KEY"):
-        provider_chain(BackendSettings(openai_api_key=KEY))
+        provider_chain(BackendSettings(mode=RuntimeMode.FIXTURE, openai_api_key=KEY))
 
 
 def test_model_settings_load_and_validate() -> None:
     settings = load_backend_settings(
         environ={
+            "APP_MODE": "fixture",
             "AGENT_GEMINI_MODEL": "gemini-3-flash-preview",
             "MODEL_FIRST_TOKEN_SECONDS": "90",
             "MODEL_STREAM_STALL_SECONDS": "45",
@@ -80,6 +83,7 @@ def test_model_settings_load_and_validate() -> None:
     with pytest.raises(ConfigError, match="MODEL_FIRST_TOKEN_SECONDS"):
         load_backend_settings(
             environ={
+                "APP_MODE": "fixture",
                 "MODEL_FIRST_TOKEN_SECONDS": "120",
                 "MODEL_REQUEST_MAX_SECONDS": "60",
             },
@@ -90,7 +94,9 @@ def test_model_settings_load_and_validate() -> None:
 def test_chain_repr_does_not_expose_keys() -> None:
     secret = "sk-very-secret-provider-key-123456"
     settings = BackendSettings(
-        gemini_api_key=SecretStr(secret), openai_api_key=SecretStr(secret)
+        mode=RuntimeMode.FIXTURE,
+        gemini_api_key=SecretStr(secret),
+        openai_api_key=SecretStr(secret),
     )
     chain = provider_chain(settings)(RunBudgets(MemoryRunBudgetStore(), RunLimits()))
     assert secret not in repr(chain)
@@ -99,7 +105,7 @@ def test_chain_repr_does_not_expose_keys() -> None:
 
 def test_provider_summary_names_providers_never_keys() -> None:
     key = "test-openai-key-must-not-be-printed"
-    fixture = BackendSettings()
+    fixture = BackendSettings(mode=RuntimeMode.FIXTURE)
     assert "fixture" in provider_summary(fixture)
     live = BackendSettings(
         mode=RuntimeMode.LIVE,

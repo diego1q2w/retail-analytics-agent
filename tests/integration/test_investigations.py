@@ -40,7 +40,7 @@ from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.application.investigations import RunNotActive
 from retail_analytics.application.query_execution import QueryCancelled
 from retail_analytics.application.tools import ToolFailed
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.investigations import (
     InvestigationServices,
     build_investigations,
@@ -103,7 +103,7 @@ class TestEnv(Env):
         env.queue = "t13-" + uuid.uuid4().hex
         env.scheduler = TemporalInvestigationScheduler(env.client, env.queue)
         env.services = build_investigations(
-            BackendSettings(),
+            BackendSettings(mode=RuntimeMode.FIXTURE),
             env.db,
             env.access,
             env.scheduler,
@@ -597,7 +597,9 @@ async def test_execute_analysis_reconciles_lost_response_and_records_one_evidenc
                     context, view(version=context.product_scope.entitlement_version)
                 )
 
-        budgets = build_run_budgets(BackendSettings(), env.db.budgets)
+        budgets = build_run_budgets(
+            BackendSettings(mode=RuntimeMode.FIXTURE), env.db.budgets
+        )
         warehouse = FakeWarehouse(
             oracle_runner(oracle), submit_faults=["lost_response"]
         )
@@ -613,7 +615,7 @@ async def test_execute_analysis_reconciles_lost_response_and_records_one_evidenc
             usage=budgets,
         )
         env.services = build_investigations(
-            BackendSettings(),
+            BackendSettings(mode=RuntimeMode.FIXTURE),
             env.db,
             env.access,
             env.scheduler,

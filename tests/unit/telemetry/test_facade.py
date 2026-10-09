@@ -12,6 +12,7 @@ from retail_analytics.application.telemetry import (
     trace_id_for,
     use_telemetry,
 )
+from retail_analytics.bootstrap.config import RuntimeMode
 from tests.unit.telemetry.recording import RecordingSink, recording
 
 EMAIL = "maria.canary@example.com"
@@ -164,10 +165,13 @@ def test_telemetry_is_on_by_default_and_built_only_when_enabled() -> None:
     from retail_analytics.bootstrap.config import BackendSettings
     from retail_analytics.bootstrap.telemetry import build_telemetry
 
-    assert BackendSettings().telemetry_enabled is True
-    assert not build_telemetry(BackendSettings(telemetry_enabled=False), "api").enabled
+    assert BackendSettings(mode=RuntimeMode.FIXTURE).telemetry_enabled is True
+    assert not build_telemetry(
+        BackendSettings(mode=RuntimeMode.FIXTURE, telemetry_enabled=False), "api"
+    ).enabled
     enabled = build_telemetry(
         BackendSettings(
+            mode=RuntimeMode.FIXTURE,
             telemetry_enabled=True,
             telemetry_traces_endpoint="http://127.0.0.1:1/v1/traces",
             telemetry_metrics_endpoint="http://127.0.0.1:1/v1/metrics",
@@ -188,5 +192,5 @@ def test_the_test_suite_never_builds_a_real_sink_from_default_settings() -> None
     from retail_analytics.bootstrap.telemetry import build_telemetry
 
     assert os.environ["TELEMETRY_ENABLED"] == "false"
-    assert BackendSettings().telemetry_enabled is True
-    assert not build_telemetry(BackendSettings(), "api").enabled
+    assert BackendSettings(mode=RuntimeMode.FIXTURE).telemetry_enabled is True
+    assert not build_telemetry(BackendSettings(mode=RuntimeMode.FIXTURE), "api").enabled

@@ -79,8 +79,10 @@ def run(tmp_path: Path) -> Iterator[Run]:
         "COMPOSE_PROMETHEUS_PORT": str(_free_port()),
         "COMPOSE_GRAFANA_PORT": str(_free_port()),
     }
+    env_file = tmp_path / "bootstrap.env"
+    env_file.write_text("APP_MODE=fixture\n")
     try:
-        yield Run(project, tmp_path / "bootstrap.env", env)
+        yield Run(project, env_file, env)
     finally:
         subprocess.run(
             [  # noqa: S607

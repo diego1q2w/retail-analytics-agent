@@ -29,7 +29,7 @@ from retail_analytics.bootstrap.agent_evaluation import (
     AgentRuntimeTarget,
     heldout_source,
 )
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.persistence import Persistence
 from retail_analytics.domain.runs import ExecutionBackend
 
@@ -94,8 +94,10 @@ def test_local_work_message_is_actionable() -> None:
 
 
 def test_selected_scheduler_follows_the_setting() -> None:
-    local = api.selected_scheduler(BackendSettings())
-    temporal = api.selected_scheduler(BackendSettings(execution_backend=TEMPORAL))
+    local = api.selected_scheduler(BackendSettings(mode=RuntimeMode.FIXTURE))
+    temporal = api.selected_scheduler(
+        BackendSettings(mode=RuntimeMode.FIXTURE, execution_backend=TEMPORAL)
+    )
     assert local is not temporal
     # Not entered: building a provider contacts nothing.
     persistence = object.__new__(Persistence)
@@ -106,6 +108,7 @@ def _unreachable_settings() -> BackendSettings:
     from pydantic import SecretStr
 
     return BackendSettings(
+        mode=RuntimeMode.FIXTURE,
         database_url=SecretStr("postgresql+psycopg://u:p@127.0.0.1:9/none"),
         auth_signing_key=SecretStr("k" * 40),
     )
@@ -139,18 +142,23 @@ def test_evaluation_target_records_the_configured_backend() -> None:
 
     model = scripted_model(plans)
     default = AgentRuntimeTarget(
-        BackendSettings(), heldout_source(REPO / "evaluation"), model
+        BackendSettings(mode=RuntimeMode.FIXTURE),
+        heldout_source(REPO / "evaluation"),
+        model,
     )
     assert default.backend is LOCAL
     assert default.target_id == "agent_runtime:local"
     configured = AgentRuntimeTarget(
-        BackendSettings(execution_backend=TEMPORAL),
+        BackendSettings(mode=RuntimeMode.FIXTURE, execution_backend=TEMPORAL),
         heldout_source(REPO / "evaluation"),
         model,
     )
     assert configured.target_id == "agent_runtime:temporal"
     explicit = AgentRuntimeTarget(
-        BackendSettings(), heldout_source(REPO / "evaluation"), model, backend=TEMPORAL
+        BackendSettings(mode=RuntimeMode.FIXTURE),
+        heldout_source(REPO / "evaluation"),
+        model,
+        backend=TEMPORAL,
     )
     assert explicit.backend is TEMPORAL
     assert explicit.target_id == "agent_runtime:temporal"
@@ -185,6 +193,7 @@ from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.persistence import persistence_from_settings
 
 settings = BackendSettings(
+    mode="fixture",
     database_url=SecretStr("postgresql+psycopg://u:p@127.0.0.1:9/none"),
     auth_signing_key=SecretStr("k" * 40),
     telemetry_enabled=False,

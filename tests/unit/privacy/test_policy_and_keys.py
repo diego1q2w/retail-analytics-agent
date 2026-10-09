@@ -120,17 +120,21 @@ def test_compilers_require_an_executive() -> None:
 
 def test_reference_key_setting_is_secret_and_long_enough() -> None:
     key = "r" * 40
-    settings = load_backend_settings(environ={"REFERENCE_KEY": key}, env_file=None)
+    settings = load_backend_settings(
+        environ={"APP_MODE": "fixture", "REFERENCE_KEY": key}, env_file=None
+    )
     assert settings.reference_key is not None
     assert key not in repr(settings)
     assert settings.redacted_summary()["REFERENCE_KEY"] == "<set>"
     assert build_query_compilers(settings).references_enabled
     with pytest.raises(ConfigError) as caught:
-        load_backend_settings(environ={"REFERENCE_KEY": "short"}, env_file=None)
+        load_backend_settings(
+            environ={"APP_MODE": "fixture", "REFERENCE_KEY": "short"}, env_file=None
+        )
     assert "REFERENCE_KEY must be at least 32 bytes" in str(caught.value)
     assert "short" not in str(caught.value)
 
 
 def test_without_reference_key_references_are_disabled() -> None:
-    settings = load_backend_settings(environ={}, env_file=None)
+    settings = load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=None)
     assert not build_query_compilers(settings).references_enabled

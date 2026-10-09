@@ -413,7 +413,9 @@ def _service_from_settings(env: Env, seconds: int | None) -> Any:
     )
     return build_evidence(
         SimpleNamespace(evidence=env.store, engine=None),  # type: ignore[arg-type]
-        settings=load_backend_settings(environ=raw, env_file=None),
+        settings=load_backend_settings(
+            environ={"APP_MODE": "fixture", **raw}, env_file=None
+        ),
         clock=env.clock,
     )
 

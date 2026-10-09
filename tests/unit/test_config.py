@@ -28,8 +28,15 @@ LIVE_ENV = {
 }
 
 
-def test_defaults_to_offline_fixture_mode() -> None:
-    settings = load_backend_settings(environ={}, env_file=None)
+def test_defaults_to_live_mode() -> None:
+    env = {k: v for k, v in LIVE_ENV.items() if k != "APP_MODE"}
+    assert load_backend_settings(environ=env, env_file=None).mode is RuntimeMode.LIVE
+    with pytest.raises(ConfigError, match="GEMINI_API_KEY"):
+        load_backend_settings(environ={}, env_file=None)
+
+
+def test_fixture_mode_is_explicit() -> None:
+    settings = load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=None)
     assert settings.mode is RuntimeMode.FIXTURE
     assert settings.database_url is None
 
@@ -50,9 +57,9 @@ def test_live_mode_lists_every_missing_required_setting() -> None:
 
 
 def test_execution_backend_defaults_to_local_independently_of_mode() -> None:
-    assert load_backend_settings(environ={}, env_file=None).execution_backend is (
-        ExecutionBackend.LOCAL
-    )
+    assert load_backend_settings(
+        environ={"APP_MODE": "fixture"}, env_file=None
+    ).execution_backend is (ExecutionBackend.LOCAL)
     live = {k: v for k, v in LIVE_ENV.items() if "TEMPORAL" not in k}
     settings = load_backend_settings(environ=live, env_file=None)
     assert settings.mode is RuntimeMode.LIVE
@@ -85,7 +92,7 @@ def test_live_temporal_backend_requires_the_temporal_address() -> None:
 def test_invalid_execution_backend_is_named_without_its_value() -> None:
     with pytest.raises(ConfigError) as caught:
         load_backend_settings(
-            environ={"EXECUTION_BACKEND": "celery-secret-xyz"},
+            environ={"APP_MODE": "fixture", "EXECUTION_BACKEND": "celery-secret-xyz"},
             env_file=None,
         )
     message = str(caught.value)
@@ -94,12 +101,14 @@ def test_invalid_execution_backend_is_named_without_its_value() -> None:
 
 
 def test_api_requirements_follow_the_execution_backend() -> None:
-    local = BackendSettings()
+    local = BackendSettings(mode=RuntimeMode.FIXTURE)
     assert missing_api_settings(local) == [
         "APP_DATABASE_URL",
         "AUTH_SIGNING_KEY",
     ]
-    temporal = BackendSettings(execution_backend=ExecutionBackend.TEMPORAL)
+    temporal = BackendSettings(
+        mode=RuntimeMode.FIXTURE, execution_backend=ExecutionBackend.TEMPORAL
+    )
     assert "TEMPORAL_ADDRESS" in missing_api_settings(temporal)
 
 
@@ -114,11 +123,13 @@ def test_api_requirements_follow_the_execution_backend() -> None:
 )
 def test_local_execution_limits_are_bounded(name: str, value: str) -> None:
     with pytest.raises(ConfigError, match=name):
-        load_backend_settings(environ={name: value}, env_file=None)
+        load_backend_settings(
+            environ={"APP_MODE": "fixture", name: value}, env_file=None
+        )
 
 
 def test_local_execution_limit_defaults() -> None:
-    settings = BackendSettings()
+    settings = BackendSettings(mode=RuntimeMode.FIXTURE)
     assert settings.local_max_concurrent_runs == 4
     assert settings.local_shutdown_grace_seconds == 10.0
 
@@ -154,7 +165,12 @@ def test_invalid_values_are_reported_without_echoing_input() -> None:
 def test_process_environment_is_read_only_for_known_names() -> None:
     # A stray, unrelated variable in the shell is ignored, never an error.
     settings = load_backend_settings(
-        environ={"GEMINI_KEY": SECRET, "PAGER": "less", "APP_API_PORT": "9001"},
+        environ={
+            "APP_MODE": "fixture",
+            "GEMINI_KEY": SECRET,
+            "PAGER": "less",
+            "APP_API_PORT": "9001",
+        },
         env_file=None,
     )
     assert settings.api_port == 9001
@@ -167,7 +183,7 @@ def test_unknown_env_file_key_is_flagged_without_its_value(tmp_path: Path) -> No
     )
     for load in (load_backend_settings, load_cli_settings):
         with pytest.raises(ConfigError) as caught:
-            load(environ={}, env_file=env_file)
+            load(environ={"APP_MODE": "fixture"}, env_file=env_file)
         message = str(caught.value)
         assert "unknown variable GEMINI_KEY" in message
         assert "did you mean GEMINI_API_KEY?" in message
@@ -191,7 +207,7 @@ def test_legacy_names_in_env_file_are_refused_with_the_fix(
     env_file.write_text(f"{legacy}={SECRET}\n")
     for load in (load_backend_settings, load_cli_settings):
         with pytest.raises(ConfigError) as caught:
-            load(environ={}, env_file=env_file)
+            load(environ={"APP_MODE": "fixture"}, env_file=env_file)
         message = str(caught.value)
         assert f"{legacy} -> {current}" in message
         assert "./scripts/bootstrap.sh --env-only" in message
@@ -201,7 +217,8 @@ def test_legacy_names_in_env_file_are_refused_with_the_fix(
 def test_legacy_names_in_process_environment_are_refused() -> None:
     with pytest.raises(ConfigError) as caught:
         load_backend_settings(
-            environ={"RETAIL_ANALYTICS_DATABASE_URL": SECRET}, env_file=None
+            environ={"APP_MODE": "fixture", "RETAIL_ANALYTICS_DATABASE_URL": SECRET},
+            env_file=None,
         )
     message = str(caught.value)
     assert "RETAIL_ANALYTICS_DATABASE_URL -> APP_DATABASE_URL" in message
@@ -217,7 +234,9 @@ def test_pointed_env_file_with_legacy_names_names_it_in_the_fix(
     pointed = tmp_path / "alt.env"
     pointed.write_text("RETAIL_ANALYTICS_API_PORT=9000\n")
     with pytest.raises(ConfigError) as caught:
-        load_backend_settings(environ={"APP_ENV_FILE": str(pointed)})
+        load_backend_settings(
+            environ={"APP_MODE": "fixture", "APP_ENV_FILE": str(pointed)}
+        )
     assert f"--env-only --env-file {pointed}" in str(caught.value)
 
 
@@ -238,7 +257,7 @@ def test_env_file_is_overridden_by_process_environment(tmp_path: Path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text("APP_API_PORT=9000\nAPP_API_HOST=0.0.0.0\n")
     settings = load_backend_settings(
-        environ={"APP_API_PORT": "9100"}, env_file=env_file
+        environ={"APP_MODE": "fixture", "APP_API_PORT": "9100"}, env_file=env_file
     )
     assert settings.api_port == 9100
     assert settings.api_host == "0.0.0.0"  # noqa: S104 - value under test, not a bind
@@ -253,16 +272,23 @@ def test_cli_settings_ignore_backend_variables() -> None:
 
 
 def test_settings_are_immutable() -> None:
-    settings = BackendSettings()
+    settings = BackendSettings(mode=RuntimeMode.FIXTURE)
     with pytest.raises(ValueError, match="frozen"):
         settings.api_port = 1
 
 
 def test_env_example_matches_settings() -> None:
     example = Path(__file__).resolve().parents[2] / ".env.example"
-    backend = load_backend_settings(environ={}, env_file=example)
-    assert backend.mode is RuntimeMode.FIXTURE
-    assert load_cli_settings(environ={}, env_file=example).timeout_seconds == 10
+    backend = load_backend_settings(
+        environ={k: v for k, v in LIVE_ENV.items() if k != "APP_MODE"}, env_file=example
+    )
+    assert backend.mode is RuntimeMode.LIVE
+    assert (
+        load_cli_settings(
+            environ={"APP_MODE": "fixture"}, env_file=example
+        ).timeout_seconds
+        == 10
+    )
     documented = {
         line.split("=", 1)[0]
         for line in example.read_text().splitlines()
@@ -274,7 +300,9 @@ def test_env_example_matches_settings() -> None:
 
 def test_auth_signing_key_is_secret_and_must_be_long_enough() -> None:
     key = "s" * 40
-    settings = load_backend_settings(environ={"AUTH_SIGNING_KEY": key}, env_file=None)
+    settings = load_backend_settings(
+        environ={"APP_MODE": "fixture", "AUTH_SIGNING_KEY": key}, env_file=None
+    )
     assert settings.auth_issuer == "retail-analytics-local"
     assert settings.auth_audience == "retail-analytics-api"
     assert key not in repr(settings)
@@ -282,7 +310,7 @@ def test_auth_signing_key_is_secret_and_must_be_long_enough() -> None:
 
     with pytest.raises(ConfigError) as caught:
         load_backend_settings(
-            environ={"AUTH_SIGNING_KEY": "short-secret"},
+            environ={"APP_MODE": "fixture", "AUTH_SIGNING_KEY": "short-secret"},
             env_file=None,
         )
     assert "AUTH_SIGNING_KEY must be at least 32 bytes" in str(caught.value)
@@ -292,11 +320,11 @@ def test_auth_signing_key_is_secret_and_must_be_long_enough() -> None:
 def test_evidence_freshness_default_and_override() -> None:
     assert (
         load_backend_settings(
-            environ={}, env_file=None
+            environ={"APP_MODE": "fixture"}, env_file=None
         ).evidence_current_freshness_seconds
         == 900
     )
-    env = {"EVIDENCE_CURRENT_FRESHNESS_SECONDS": "120"}
+    env = {"APP_MODE": "fixture", "EVIDENCE_CURRENT_FRESHNESS_SECONDS": "120"}
     settings = load_backend_settings(environ=env, env_file=None)
     assert settings.evidence_current_freshness_seconds == 120
 
@@ -311,17 +339,20 @@ def test_evidence_freshness_out_of_range_is_rejected(value: str) -> None:
 
 def test_declared_source_currency_is_optional_and_validated() -> None:
     assert (
-        load_backend_settings(environ={}, env_file=None).source_currency_declared
+        load_backend_settings(
+            environ={"APP_MODE": "fixture"}, env_file=None
+        ).source_currency_declared
         is None
     )
     ok = load_backend_settings(
-        environ={"SOURCE_CURRENCY_DECLARED": "USD"}, env_file=None
+        environ={"APP_MODE": "fixture", "SOURCE_CURRENCY_DECLARED": "USD"},
+        env_file=None,
     )
     assert ok.source_currency_declared == "USD"
     for bad in ("usd", "US", "DOLLAR"):
         with pytest.raises(ConfigError) as caught:
             load_backend_settings(
-                environ={"SOURCE_CURRENCY_DECLARED": bad},
+                environ={"APP_MODE": "fixture", "SOURCE_CURRENCY_DECLARED": bad},
                 env_file=None,
             )
         assert "SOURCE_CURRENCY_DECLARED" in str(caught.value)
@@ -337,7 +368,7 @@ def test_hand_renamed_bare_names_point_to_the_expected_key(
     env_file = tmp_path / ".env"
     env_file.write_text(f"{bare}={SECRET}\n")
     with pytest.raises(ConfigError) as caught:
-        load_backend_settings(environ={}, env_file=env_file)
+        load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=env_file)
     message = str(caught.value)
     assert f"unknown variable {bare} (did you mean {expected}?)" in message
     assert SECRET not in message
@@ -346,13 +377,15 @@ def test_hand_renamed_bare_names_point_to_the_expected_key(
 def test_database_url_is_app_scoped_and_bare_form_is_ignored(tmp_path: Path) -> None:
     url = f"postgresql://app:{SECRET}@localhost/app"
     # A shell DATABASE_URL from another project never reaches the settings.
-    settings = load_backend_settings(environ={"DATABASE_URL": url}, env_file=None)
+    settings = load_backend_settings(
+        environ={"APP_MODE": "fixture", "DATABASE_URL": url}, env_file=None
+    )
     assert settings.database_url is None
     assert legacy_replacement("RETAIL_ANALYTICS_DATABASE_URL") == "APP_DATABASE_URL"
     env_file = tmp_path / ".env"
     env_file.write_text(f"DATABASE_URL={url}\n")
     with pytest.raises(ConfigError) as caught:
-        load_backend_settings(environ={}, env_file=env_file)
+        load_backend_settings(environ={"APP_MODE": "fixture"}, env_file=env_file)
     message = str(caught.value)
     assert "unknown variable DATABASE_URL (did you mean APP_DATABASE_URL?)" in message
     assert SECRET not in message

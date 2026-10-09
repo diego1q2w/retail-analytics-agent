@@ -378,11 +378,16 @@ _CREDENTIAL_KEYS = (local_env.BIGQUERY_PROJECT_KEY, local_env.GEMINI_API_KEY_KEY
 
 
 def step_check_credentials(ctx: SetupContext) -> StepResult:
-    if not _has_external_credentials(ctx):
+    if ctx.values.get("APP_MODE", "live") == "fixture":
         return StepResult(
-            "skipped",
-            "BigQuery project or Gemini key not set; fixture mode works without "
-            "them. To go live follow docs/google-access.md, then rerun this command",
+            "skipped", "Explicit fixture mode: fixed responses only; no live analysis."
+        )
+    if not _has_external_credentials(ctx):
+        raise StepFailed(
+            "Live analysis requires BIGQUERY_PROJECT and GEMINI_API_KEY. "
+            "Set them in the environment file (or rerun with --interactive), "
+            "authenticate with gcloud auth application-default login, then rerun. "
+            "See docs/google-access.md."
         )
     ctx.python("-m", "retail_analytics.bootstrap.check_credentials", show=True)
     return StepResult("done", "external credentials verified")
@@ -425,7 +430,6 @@ STEPS: tuple[BootstrapStep, ...] = (
         "check-credentials",
         "verify BigQuery and Gemini access when configured",
         step_check_credentials,
-        required=False,
     ),
 )
 
@@ -453,7 +457,11 @@ def run_steps(
 
 
 def next_steps(ctx: SetupContext) -> list[str]:
-    lines = ["Local environment is ready (fixture mode works offline)."]
+    lines = [
+        "Local environment is ready (fixture mode: fixed responses only)."
+        if ctx.values.get("APP_MODE", "live") == "fixture"
+        else "Local environment is ready for live analysis."
+    ]
     custom = ctx.env_file.resolve() != (ctx.root / ".env").resolve()
     dev = "./scripts/dev.sh"
     issue_cmd = "retail-analytics-dev-access token local-admin"

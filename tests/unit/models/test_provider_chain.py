@@ -21,7 +21,7 @@ from pydantic_ai.messages import ModelResponse
 from retail_analytics.application.budgets import RetrySettings, RunBudgets
 from retail_analytics.application.contracts.investigations import StopReason
 from retail_analytics.application.investigation_runtime import RunStopped
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.domain.budgets import (
     BudgetResource,
@@ -34,7 +34,9 @@ from tests.unit.models import stubs
 
 pytestmark = pytest.mark.asyncio
 NOW = datetime(2026, 10, 9, tzinfo=UTC)
-SETTINGS = BackendSettings(retry_base_seconds=0.001, retry_max_seconds=0.01)
+SETTINGS = BackendSettings(
+    mode=RuntimeMode.FIXTURE, retry_base_seconds=0.001, retry_max_seconds=0.01
+)
 
 
 class Answer(BaseModel):

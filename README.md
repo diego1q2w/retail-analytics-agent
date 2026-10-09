@@ -4,9 +4,9 @@ A conversational analytics assistant for retail executives. It investigates busi
 
 ## Project status
 
-Early implementation. The application skeleton, configuration validation and repository checks exist; analytical behavior does not yet. The intended application uses a CLI connected to an HTTP backend, Pydantic AI for the agent, PostgreSQL for application state, and either in-process execution inside the API (the local default) or Temporal for durable execution (opt-in). BigQuery provides read-only retail analysis; model and database credentials stay on the backend.
+The application uses a CLI connected to an HTTP backend, Pydantic AI for the agent, PostgreSQL for application state, and either in-process execution inside the API (the local default) or Temporal for durable execution (opt-in). BigQuery provides read-only retail analysis; model and database credentials stay on the backend.
 
-Setup for live services, public architecture documentation and evaluation results will be added as their implementations are verified.
+See the architecture and evaluation documentation for verified behavior and remaining limitations.
 
 Do not commit credentials, raw query results or private conversation data.
 
@@ -30,12 +30,13 @@ choices and requirement-by-requirement coverage are in
 
 ## Quick start
 
-**Prerequisites:** Git, Docker with Compose v2, and Python 3.12 (or [uv](https://docs.astral.sh/uv/)). That is all for fixture mode, which runs offline. Real analysis (live mode) also needs a Google Cloud project for BigQuery query jobs with Application Default Credentials, and a Gemini API key; an OpenAI key is an optional backup. See [Google access setup](docs/google-access.md).
+**Prerequisites:** Git, Docker with Compose v2, and Python 3.12 (or [uv](https://docs.astral.sh/uv/)). Live analysis is the default and also needs a Google Cloud project for BigQuery query jobs with Application Default Credentials, and a Gemini API key; an OpenAI key is an optional backup. See [Google access setup](docs/google-access.md).
 
-**1. Set up** (once; safe to rerun):
+**1. Set up** (once; safe to rerun). Enter your Google Cloud project and Gemini key when prompted; existing values are preserved. Authenticate BigQuery first:
 
 ```sh
-./scripts/bootstrap.sh
+gcloud auth application-default login
+./scripts/bootstrap.sh --interactive
 ```
 
 **2. Start** the backend (Ctrl-C stops it):
@@ -55,7 +56,7 @@ analytics chat
 
 You are the local administrator, `exec-local-admin`: bootstrap provisions it with the executive, editor, reviewer and admin roles and an explicit grant of every product in the dataset (an admin role alone grants no data). The token is written only to that private file and lasts 60 minutes (`--minutes` up to 1440); run the same line again for a new one. Nothing is printed to the logs.
 
-In fixture mode (the default) every question gets a fixed "no language model is configured" answer: that checks authentication, sessions, runs and streaming without any credentials. For real answers, set `APP_MODE=live`, `BIGQUERY_PROJECT` and `GEMINI_API_KEY` in `.env` (and optionally `OPENAI_API_KEY`), run `gcloud auth application-default login`, then rerun `./scripts/bootstrap.sh` (it verifies BigQuery and Gemini access without printing secrets) and restart `./scripts/dev.sh`. Investigations run inside the API by default; Temporal is [opt-in](#temporal-execution-opt-in).
+Live mode and local execution are the defaults (`APP_MODE=live`, `EXECUTION_BACKEND=local`). Missing credentials or failed access checks stop setup with an actionable error. Existing `.env` values are preserved: if yours explicitly says `APP_MODE=fixture`, change it to `live` and rerun bootstrap. Fixture mode is an opt-in offline wiring check that returns a fixed response, not real analysis. Temporal is [opt-in](#temporal-execution-opt-in).
 
 ### Representative conversations (live mode)
 
@@ -73,7 +74,7 @@ More: [CLI guide](docs/cli.md) (commands, resuming with `analytics chat --resume
 
 ### What bootstrap and dev.sh do
 
-`./scripts/bootstrap.sh` is idempotent and does everything needed for a working, seeded local environment in fixture mode (offline, no credentials):
+`./scripts/bootstrap.sh` is idempotent and does everything needed for a working, seeded local environment for live analysis once external credentials are supplied:
 
 1. creates `.venv` and installs the pinned dependencies if no virtualenv is active;
 2. creates `.env` from `.env.example`, or only adds the keys an existing `.env` lacks. It never overwrites or reorders a value, generates local-only secrets (`AUTH_SIGNING_KEY`, `REFERENCE_KEY`, and the database passwords for a new Compose volume) with `secrets`, and fills the connection defaults. It prints `<generated>`, `<kept>`, `<default>` or `<missing: action>` per key, never a value;
@@ -88,7 +89,7 @@ By default investigations run inside the API process (local execution): `dev.sh`
 
 `dev.sh` makes sure PostgreSQL, the telemetry stack (MLflow, Prometheus, Grafana; skip with `--no-telemetry`) and the migrations are in place (the same bootstrap steps; unrelated containers are never touched), starts `retail-analytics-api` with the same environment file and `[api]`-prefixed logs, waits until `/healthz` answers for the selected execution backend, then prints the API URL, the Grafana and MLflow URLs and the command that issues a dev token (the token and secrets are never printed). Ctrl-C or SIGTERM stops what it started (SIGTERM, then SIGKILL after 10 s; with local execution after `LOCAL_SHUTDOWN_GRACE_SECONDS` + 5 s, so the API first ends its running investigations as interrupted) and exits 0; if a process exits on its own, the command exits 1 naming it. It refuses to start if the API port is taken by something else. Options: `--env-file FILE` (the same isolation as bootstrap: only that file is read, parent-shell setting variables are dropped), `--project NAME` (Compose project), `--execution-backend local|temporal` (this run only), `--no-services` (do not touch Docker; only check that the needed services are reachable), `--no-telemetry` (do not start the telemetry stack; `--telemetry` is accepted and does nothing), `--ready-timeout SECONDS`. It is a local-development convenience, not a supervisor.
 
-External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `REFERENCE_KEY`: rotating it invalidates every existing customer reference.
+External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and explicit fixture mode works without them but does not analyze data. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `REFERENCE_KEY`: rotating it invalidates every existing customer reference.
 
 Options: MLflow, Prometheus and Grafana start by default and the next steps print their URLs; `--no-telemetry` skips them (and writes `TELEMETRY_ENABLED=false` when that key is new), `--telemetry` is accepted and does nothing; an existing env file without the key gets `true`, and an explicit `false` is never overwritten (the stack is then not started either); `--env-file FILE` works on another environment file (the Compose and every child command then use only its values; the repository's `.env` is never read or changed); `--project NAME`, `--postgres-port`, `--temporal-port` pick an isolated Compose project and free ports; `--execution-backend local|temporal` selects the backend for this run (written to the env file only when the key is new); `--env-only` only creates or completes the env file; `--list-steps` prints the ordered steps.
 
@@ -159,10 +160,10 @@ Backend entry points accept `--check-config`: validate settings, print them with
 
 `./scripts/bootstrap.sh` creates `.env` for you (see Quick start); to do it by hand, copy `.env.example` to `.env` (ignored by Git). Process environment variables override `.env`; `APP_ENV_FILE=/path/file` makes the loader read that one file instead of `.env` (it must exist; it is a pointer, not a setting). Bootstrap sets it for every child command and drops every setting variable (and older `RETAIL_ANALYTICS_*`/`ANALYTICS_CLI_*` names) from your shell, so child commands see exactly: the env file's non-empty values, then everything else (PATH, `COMPOSE_*`, `DOCKER_*`); empty values count as unset. Names and the migration from the older prefixed names: see [Environment variables](#environment-variables).
 
-- `APP_MODE=fixture` (default) runs offline with no credentials.
+- `APP_MODE=fixture` explicitly opts into offline fixed responses with no credentials.
 - `GEMINI_MODEL` is the default model name used by the credential check.
 - The investigation agent uses `AGENT_GEMINI_MODEL` (default `gemini-3.8-flash`, Gemini Interactions API) as primary and `AGENT_OPENAI_MODEL` (default `gpt-5-mini`, OpenAI Responses API) as backup when `OPENAI_API_KEY` is set. First-token (60 s), streaming-stall (30 s) and per-request (180 s) limits, retries, fallback and per-attempt budget accounting are described in [docs/model-providers.md](docs/model-providers.md).
-- `APP_MODE=live` requires the database URL, BigQuery project and Gemini API key (and the Temporal address with Temporal execution); all missing settings are reported together.
+- `APP_MODE=live` (default) requires the database URL, BigQuery project and Gemini API key (and the Temporal address with Temporal execution); all missing settings are reported together.
 - `EXECUTION_BACKEND=local` (default) or `temporal`: see [Temporal execution (opt-in)](#temporal-execution-opt-in). `LOCAL_MAX_CONCURRENT_RUNS` (4) and `LOCAL_SHUTDOWN_GRACE_SECONDS` (10) bound local execution.
 - `REFERENCE_KEY` (at least 32 bytes) is the master key for opaque customer, order and item references. It is optional: when it is unset, queries that need references fail closed. Never commit or log it.
 

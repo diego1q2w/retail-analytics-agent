@@ -37,7 +37,7 @@ from retail_analytics.application.tools import (
 from retail_analytics.application.tools.gateway import invoke
 from retail_analytics.bootstrap.access import AccessServices
 from retail_analytics.bootstrap.budgets import build_run_budgets
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.context import build_context
 from retail_analytics.bootstrap.evidence import build_evidence
 from retail_analytics.bootstrap.investigations import build_capability_registry
@@ -66,7 +66,7 @@ _TOOL_LIKE = re.compile(
 
 
 def _registry() -> CapabilityRegistry:
-    settings = BackendSettings()
+    settings = BackendSettings(mode=RuntimeMode.FIXTURE)
     persistence = build_persistence("postgresql+psycopg://u:p@127.0.0.1:1/none")
     access = AccessServices(MagicMock(), MagicMock(), MagicMock())
     evidence = build_evidence(persistence, settings=settings)

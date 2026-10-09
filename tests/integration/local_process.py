@@ -36,7 +36,7 @@ from retail_analytics.bootstrap.agent_evaluation import (
     FixtureSource,
     heldout_source,
 )
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.domain.runs import ExecutionBackend
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -124,6 +124,7 @@ def target(settings: BackendSettings, *, hold: bool) -> AgentRuntimeTarget:
 
 async def main() -> None:
     settings = BackendSettings(
+        mode=RuntimeMode.FIXTURE,
         database_url=SecretStr(os.environ["LOCAL_DATABASE_URL"]),
         artifact_dir=Path(os.environ["LOCAL_ARTIFACT_DIR"]),
     )

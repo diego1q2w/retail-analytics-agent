@@ -29,7 +29,7 @@ from retail_analytics.application.contracts.investigations import (
 )
 from retail_analytics.application.contracts.persistence import RunRequest
 from retail_analytics.application.conversations import ConversationService
-from retail_analytics.bootstrap.config import BackendSettings
+from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.local_investigations import (
     LocalInvestigations,
     build_local_investigations,
@@ -92,7 +92,10 @@ class ReleaseEnv(Env):
 async def env(stack: Stack) -> AsyncIterator[ReleaseEnv]:
     env = ReleaseEnv(stack)
     env.local = build_local_investigations(
-        BackendSettings(), env.db, env.access, FunctionModel(scripted_model)
+        BackendSettings(mode=RuntimeMode.FIXTURE),
+        env.db,
+        env.access,
+        FunctionModel(scripted_model),
     )
     try:
         yield env
