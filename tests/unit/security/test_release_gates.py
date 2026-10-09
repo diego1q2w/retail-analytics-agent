@@ -160,13 +160,6 @@ async def test_g3_cued_names_are_masked_and_brands_or_places_are_not() -> None:
     assert PLACES_AND_BRANDS in plain.render()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RELEASE BLOCKER G-2: Golden knowledge screening has no person-name "
-        "detector, and retrieved examples reach the model unscreened."
-    ),
-)
 def test_g3_golden_text_naming_a_customer_is_refused() -> None:
     assert screen_fields(
         {"question": "Revenue from the customer named Maria Lopez last quarter"}

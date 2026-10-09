@@ -7,6 +7,11 @@ from dataclasses import replace
 import pytest
 
 from retail_analytics.adapters.embedding.hashing import HashingEmbedder
+from retail_analytics.application import knowledge as knowledge_module
+from retail_analytics.application.knowledge import (
+    KnowledgeError,
+    KnowledgeErrorCode,
+)
 from retail_analytics.application.retrieval import (
     GoldenIndex,
     GoldenRetriever,
@@ -14,6 +19,7 @@ from retail_analytics.application.retrieval import (
     RetrievalUnavailable,
 )
 from retail_analytics.domain.access import ProductScope
+from retail_analytics.domain.disclosure import MASK
 from retail_analytics.domain.knowledge import (
     ApplicabilityContext,
     ErasureReason,
@@ -27,6 +33,7 @@ from retail_analytics.domain.retrieval import (
     reciprocal_rank_fusion,
     tokenize,
 )
+from retail_analytics.domain.sensitive_content import Finding
 from tests.knowledge_scenarios import (
     CONTEXT,
     SCOPE_ALL,
@@ -421,3 +428,68 @@ async def test_other_model_or_dimensions_get_their_own_rows(
         ("hashing-v1-256", 256),
         ("hashing-v1-64", 64),
     }
+
+
+# -- person names (release gate G-2) -------------------------------------------
+
+NAMED = "Which products did the customer named Maria Lopez buy each month?"
+
+
+@pytest.mark.asyncio
+async def test_named_person_example_is_refused_at_draft(harness: Harness) -> None:
+    with pytest.raises(KnowledgeError) as refused:
+        await submit(harness, draft(question=NAMED))
+    assert refused.value.code is KnowledgeErrorCode.SENSITIVE_CONTENT
+    assert ("question", Finding.PERSON_NAME.value) in refused.value.findings
+    assert "Maria" not in str(refused.value) + repr(refused.value.findings)
+    # Paired: the same method without the name publishes and is retrieved.
+    legit = await publish(
+        harness,
+        await submit(
+            harness,
+            draft(
+                question=NAMED.replace(
+                    "the customer named Maria Lopez", "customers in each state"
+                )
+            ),
+        ),
+    )
+    r, _ = retriever(harness)
+    result = await r.retrieve(SCOPE_ALL, CONTEXT, "products customers state month")
+    assert [e.ref for e in result.examples] == [legit.ref]
+    assert legit.content is not None
+    assert result.examples[0].question == legit.content.question
+
+
+@pytest.mark.asyncio
+async def test_retrieved_examples_pass_the_context_screen(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An example stored before the name detector existed (or one it missed at
+    # publication) is still screened before it reaches the model.
+    with monkeypatch.context() as patch:
+        patch.setattr(knowledge_module, "screen_fields", lambda fields: ())
+        legacy = await publish(
+            harness,
+            await submit(
+                harness,
+                replace(
+                    draft(question=NAMED),
+                    method_summary="Ask Mrs. Jane Roe; sum completed sales by month.",
+                ),
+            ),
+        )
+    await seed(harness, "revenue")
+    r, _ = retriever(
+        harness, RetrievalConfig(min_similarity=-1, min_lexical_coverage=0)
+    )
+    result = await r.retrieve(SCOPE_ALL, CONTEXT, "monthly revenue products month")
+    by_ref = {e.ref: e for e in result.examples}
+    screened = by_ref[legacy.ref]
+    for text in (screened.question, screened.method_summary):
+        assert MASK in text
+        assert "Maria" not in text and "Jane Roe" not in text
+    assert "sum completed sales by month" in screened.method_summary
+    clean = [e for e in result.examples if e.ref != legacy.ref]
+    assert clean and clean[0].question == CORPUS["revenue"][0]
+    assert clean[0].method_summary == CORPUS["revenue"][1]

@@ -10,6 +10,11 @@ Order of operations, each step narrowing what can leak:
 3. Delivery through ``GoldenKnowledgeReader`` only, which rechecks status,
    access, compatibility and the pinned content digest, so a stale index
    entry (retired, suspended, erased, changed) never reaches the model.
+4. Every delivered field passes the same context screen as other
+   model-bound text (``screen_for_model``): personal data such as a cued
+   person name and any opaque reference are masked. Publication already
+   refuses such content; this covers examples stored before a detector
+   existed and anything the publication screen missed.
 
 The index is derived data: it holds the question plus reviewed method summary
 (never SQL or reports), the access policy and the content digest.
@@ -19,7 +24,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from retail_analytics.application.contracts.knowledge import IndexDocument
 from retail_analytics.application.knowledge import (
@@ -44,6 +49,7 @@ from retail_analytics.domain.retrieval import (
     reciprocal_rank_fusion,
     tokenize,
 )
+from retail_analytics.domain.sensitive_content import screen_for_model
 
 _PAGE = 200
 
@@ -330,9 +336,26 @@ class GoldenRetriever:
             refused.extend(delivery.refused)
             by_ref = {h.ref: h for h in batch}
             for example in delivery.examples:
-                examples.append(example)
+                examples.append(_screened(example))
                 chosen.append(by_ref[example.ref])
         return examples, chosen, refused
+
+
+def _screened(example: GoldenExample) -> GoldenExample:
+    """``example`` with every model-bound field through the context screen."""
+    question, q_kinds = screen_for_model(example.question)
+    sql, s_kinds = screen_for_model(example.sql)
+    method, m_kinds = screen_for_model(example.method_summary)
+    report, r_kinds = screen_for_model(example.report_markdown)
+    if not (q_kinds or s_kinds or m_kinds or r_kinds):
+        return example
+    return replace(
+        example,
+        question=question,
+        sql=sql,
+        method_summary=method,
+        report_markdown=report,
+    )
 
 
 def _key(ref: ExampleRef) -> str:

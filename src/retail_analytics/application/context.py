@@ -72,6 +72,7 @@ from retail_analytics.domain.evidence import Evidence, EvidenceCell
 from retail_analytics.domain.labels import fallback_for, label_notes
 from retail_analytics.domain.preferences import EffectivePreferences
 from retail_analytics.domain.request_scope import Admission, assess_request
+from retail_analytics.domain.sensitive_content import screen_for_model
 
 MAX_FETCH_ROWS = 50
 FIGURE_MASK = "[figure withheld]"
@@ -484,19 +485,11 @@ class _Screen:
     masked: set[DisclosureKind] = field(default_factory=set)
 
     def text(self, raw: str) -> str:
-        text = normalize(raw)
-        detections = list(scan(text, self.protected))
-        for mention in references(text):
-            if mention.reference not in self.permitted:
-                detections.append(
-                    Detection(
-                        mention.start, mention.end, DisclosureKind.OPAQUE_REFERENCE
-                    )
-                )
-        if not detections:
-            return text
-        self.masked.update(d.kind for d in detections)
-        return mask(text, detections)
+        text, kinds = screen_for_model(
+            raw, permitted=self.permitted, protected=self.protected
+        )
+        self.masked.update(kinds)
+        return text
 
 
 def user_supplied_terms(texts: Iterable[str]) -> tuple[ProtectedTerm, ...]:

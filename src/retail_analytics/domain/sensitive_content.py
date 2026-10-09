@@ -6,13 +6,33 @@ identifier lists, or result values. Detectors here are a conservative
 supplement to human review, not proof of anonymity: they report *which field*
 failed and *which kind* of finding, never the matched text, so a rejection
 cannot itself leak the content.
+
+Person names reuse the cue-based detector of ``domain.disclosure`` ("customer
+named ...", honorifics, a name next to a customer reference), the same one
+that screens model context and output. A bare name with no cue ("Maria Lopez
+bought the most") is not detected: names have no general shape, so that stays
+with the human reviewer.
+
+``screen_for_model`` is the context screen applied to any text entering the
+model (conversation history, evidence notes, retrieved Golden examples): it
+masks personal data and opaque references the caller did not permit.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
+
+from retail_analytics.domain.disclosure import (
+    Detection,
+    DisclosureKind,
+    ProtectedTerm,
+    mask,
+    normalize,
+    references,
+    scan,
+)
 
 
 class Finding(StrEnum):
@@ -22,6 +42,7 @@ class Finding(StrEnum):
     LONG_NUMBER = "long_number"
     ID_LIST = "id_list"
     IDENTITY_FILTER = "identity_filter"
+    PERSON_NAME = "person_name"
 
 
 _PATTERNS: tuple[tuple[Finding, re.Pattern[str]], ...] = (
@@ -54,7 +75,38 @@ _PATTERNS: tuple[tuple[Finding, re.Pattern[str]], ...] = (
 
 
 def screen_text(text: str) -> frozenset[Finding]:
-    return frozenset(f for f, pattern in _PATTERNS if pattern.search(text))
+    found = {f for f, pattern in _PATTERNS if pattern.search(text)}
+    if _names_a_person(text):
+        found.add(Finding.PERSON_NAME)
+    return frozenset(found)
+
+
+def _names_a_person(text: str) -> bool:
+    return any(d.kind is DisclosureKind.PERSON_NAME for d in scan(normalize(text)))
+
+
+def screen_for_model(
+    raw: str,
+    *,
+    permitted: frozenset[str] = frozenset(),
+    protected: Iterable[ProtectedTerm] = (),
+) -> tuple[str, frozenset[DisclosureKind]]:
+    """``raw`` normalized with personal data and unpermitted references masked.
+
+    Returns the screened text and the kinds that were masked (empty when the
+    text was clean). No reference is permitted by default, which is right for
+    shared text such as Golden examples.
+    """
+    text = normalize(raw)
+    detections = list(scan(text, protected))
+    detections.extend(
+        Detection(m.start, m.end, DisclosureKind.OPAQUE_REFERENCE)
+        for m in references(text)
+        if m.reference not in permitted
+    )
+    if not detections:
+        return text, frozenset()
+    return mask(text, detections), frozenset(d.kind for d in detections)
 
 
 def screen_fields(fields: Mapping[str, str]) -> tuple[tuple[str, Finding], ...]:

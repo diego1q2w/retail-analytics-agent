@@ -15,7 +15,7 @@ are reported one by one. They are never averaged into a quality score.
 
 | Run | Backend | Result |
 | --- | --- | --- |
-| Unit selection (in-memory fakes, DuckDB privacy oracle) | none (backend-neutral application code) | 858 passed, 2 xfailed (open blockers G-1, G-2) |
+| Unit selection (in-memory fakes, DuckDB privacy oracle) | none (backend-neutral application code) | 891 passed, 1 xfailed (open blocker G-1) |
 | Docker selection, PostgreSQL only | local (default) | 44 passed, 1 xfailed (open blocker G-1) |
 | Docker selection, PostgreSQL + Temporal | temporal | 5 passed |
 
@@ -23,9 +23,9 @@ There were no skips. An `xfail(strict=True)` case is an open release blocker,
 not a pass. When the fix lands, the case starts passing, and strict mode then
 fails the run until the marker is removed.
 
-**Two release gates are not met** (see [Open findings](#open-findings)):
-G-1 (release-time recheck of uncited conclusions) and G-2 (names in
-Golden knowledge text).
+**One release gate is not met** (see [Open findings](#open-findings)):
+G-1 (release-time recheck of uncited conclusions). G-2 (names in Golden
+knowledge text) is fixed.
 
 ## Commands
 
@@ -39,7 +39,8 @@ python -m pytest tests/unit/security tests/unit/privacy tests/unit/context \
   tests/unit/http/test_api.py tests/unit/http/test_conversations.py \
   tests/unit/tools/test_gateway.py tests/unit/tools/test_agent_capabilities.py \
   tests/unit/cli/test_commands.py tests/unit/persona/test_screening.py \
-  tests/unit/test_knowledge.py tests/unit/evidence/test_report_reuse.py -q
+  tests/unit/test_knowledge.py tests/unit/evidence/test_report_reuse.py \
+  tests/unit/test_retrieval.py tests/unit/test_sensitive_content.py -q
 
 # Docker, local backend (PostgreSQL only)
 python -m pytest -m docker tests/integration/test_security_release_gates.py \
@@ -105,7 +106,7 @@ Case IDs are test node IDs. Paths are relative to `tests/`.
 | --- | --- | --- | --- |
 | 1. Revoked evidence leaves history by provenance | `unit/security/test_release_gates.py::test_g1_withdrawn_conclusions_leave_history_by_provenance` (a percentage, a small integer and a qualitative ranking); `::test_g1_generated_text_without_provenance_fails_closed`; `unit/context/test_context_builder.py::test_scope_narrowed_mid_session_removes_facts_from_evidence_and_history`; `unit/test_guarded_model_history.py::test_stale_history_never_reaches_provider`; `integration/test_report_reuse_withdrawal.py::test_deletion_withdraws_links_and_excludes_dependent_answers` | the same message is kept before narrowing; a linked answer is kept with no access change | met |
 | 2. Authority rechecked at release | `unit/security/test_release_gates.py::test_g2_release_recheck_blocks_cited_and_recognisable_figures`; `integration/test_security_release_gates.py::test_cited_answer_is_withheld_after_mid_generation_revocation` (local); `integration/test_investigations.py::test_release_masks_email_and_withholds_revoked_evidence`, `::test_fresh_authority_at_model_tool_and_release_boundaries` (temporal); `unit/http/test_conversations.py::test_authority_is_rechecked_on_every_batch`; `unit/http/test_api.py::test_sse_stops_when_authority_is_revoked_mid_stream` | `integration/test_security_release_gates.py::test_answer_released_under_unchanged_access` | **not met: G-1** |
-| 3. Names in user, retrieved and generated text | `unit/security/test_release_gates.py::test_g3_cued_names_are_masked_and_brands_or_places_are_not`; `unit/context/test_output_gate.py::test_names_the_user_typed_cannot_be_echoed_later` | brand and place names are released unmasked (report destination); `::test_g3_golden_screen_positive_control` | **not met: G-2**; residual risk below |
+| 3. Names in user, retrieved and generated text | `unit/security/test_release_gates.py::test_g3_cued_names_are_masked_and_brands_or_places_are_not`; `unit/context/test_output_gate.py::test_names_the_user_typed_cannot_be_echoed_later`; Golden: `unit/security/test_release_gates.py::test_g3_golden_text_naming_a_customer_is_refused`, `unit/test_sensitive_content.py::test_cued_person_names_are_flagged`, `unit/test_retrieval.py::test_named_person_example_is_refused_at_draft`, `::test_retrieved_examples_pass_the_context_screen` | brand and place names are released unmasked (report destination); `::test_g3_golden_screen_positive_control`; `unit/test_sensitive_content.py::test_brands_places_and_method_text_are_not_names`; the unnamed example still publishes and is retrieved unchanged | met (cue-based; residual risk below) |
 | 4. Analysis-only scope is not the authorization boundary | `unit/security/test_release_gates.py::test_g4_mixed_requests_with_an_off_topic_task_are_declined`, `::test_g4_admitted_injection_still_cannot_cross_the_product_boundary`; `unit/context/test_request_scope.py` | `unit/context/test_request_scope.py::test_analysis_and_administration_proceed` | met (classifier is coarse; see limits) |
 
 ## Open findings
@@ -122,13 +123,15 @@ Case IDs are test node IDs. Paths are relative to `tests/`.
   and
   `integration/test_security_release_gates.py::test_uncited_answer_is_withheld_after_mid_generation_revocation`
   (local backend, through `InvestigationRuntime.release_answer`).
-- **G-2, release blocker, needs a product fix.** The screen for Golden
-  knowledge content has no person-name detector, so an example question such
-  as "revenue from the customer named …" is accepted. Retrieved examples
-  then reach the model without the context screen. Case:
-  `unit/security/test_release_gates.py::test_g3_golden_text_naming_a_customer_is_refused`.
-  Human review of Golden content is the remaining safeguard. This includes the
-  local administrator's self-publish path.
+- **G-2, fixed.** The Golden knowledge screen now uses the same cue-based
+  name detector as the context and output screens, so an example naming a
+  person ("revenue from the customer named …") is refused when it is
+  submitted, on every publication path including the local administrator's
+  self-publish. Retrieved examples also pass the context screen before they
+  reach the model: names and opaque references are masked. This covers
+  examples stored before the detector existed. A name without a cue is still
+  not detected (see Coverage limits); human review remains the safeguard
+  for it.
 
 ## Coverage limits
 
@@ -136,7 +139,8 @@ Case IDs are test node IDs. Paths are relative to `tests/`.
   after a cue such as "customer named", "Mr." or "client called", and when
   the user typed them earlier with such a cue. The detector also uses an
   optional known-name list, which is empty by default. A bare name in
-  generated prose ("Maria Lopez bought the most") is not detected. Released
+  generated prose or in Golden knowledge ("Maria Lopez bought the most") is
+  not detected. Released
   query results never contain customer names (the name columns are
   forbidden), so the remaining exposure is names the user supplies or the
   model invents.
