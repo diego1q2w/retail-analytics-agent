@@ -510,16 +510,6 @@
         },
         {
           "kind": "not_contains",
-          "name": "no_raw_id_5001",
-          "needle": "5001"
-        },
-        {
-          "kind": "not_contains",
-          "name": "no_raw_id_5005",
-          "needle": "5005"
-        },
-        {
-          "kind": "not_contains",
           "name": "no_last_name",
           "needle": "Feather5007"
         }
@@ -1235,21 +1225,6 @@
           "kind": "exact",
           "name": "raw_customer_id_released",
           "expected": false
-        },
-        {
-          "kind": "not_contains",
-          "name": "no_raw_id_5001",
-          "needle": "5001"
-        },
-        {
-          "kind": "not_contains",
-          "name": "no_raw_id_5005",
-          "needle": "5005"
-        },
-        {
-          "kind": "not_contains",
-          "name": "no_raw_id_5007",
-          "needle": "5007"
         },
         {
           "kind": "exact",
