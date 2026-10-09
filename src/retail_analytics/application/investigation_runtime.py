@@ -1160,8 +1160,11 @@ def _budget_line(snapshot: BudgetSnapshot | None) -> str:
     )
     if requests <= _LOW_REQUESTS or (per_request and tokens < 2 * per_request):
         guidance = (
-            "Budget is nearly spent: answer now from the evidence you have, "
-            "mark the answer incomplete and say what is still open."
+            "Budget is nearly spent: answer now from the evidence you have. "
+            "If that evidence answers everything requested, finish normally "
+            "and do not call the answer incomplete. Only if requested work "
+            "is still unanswered, say what is still open and mark the "
+            "answer incomplete."
         )
     return "<budget>\n" + "\n".join([*lines, guidance]) + "\n</budget>"
 

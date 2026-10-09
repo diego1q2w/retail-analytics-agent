@@ -336,3 +336,12 @@ def test_values_are_formatted_for_reading(
     cell: EvidenceCell, column: EvidenceColumn, money: bool, expected: str
 ) -> None:
     assert format_value(cell, column, money=money, currency=UNKNOWN) == expected
+
+
+def test_low_budget_with_remaining_work_is_partial_with_the_stop_reason() -> None:
+    selection = select_relevant(QUESTION, SESSION, run_id=RUN)
+    stop = stop_message(StopReason.BUDGET, BudgetResource.PROVIDER_REQUESTS)
+    text, _ = render_partial(stop, selection, metrics=METRICS, currency=UNKNOWN)
+    assert text.startswith(stop)
+    assert stop != TOKENS_STOP
+    assert "Not answered" in text

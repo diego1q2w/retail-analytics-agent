@@ -197,7 +197,10 @@ async def test_low_budget_asks_for_a_conclusion_and_enforcement_is_unchanged() -
     line = _budget_line(snapshot)
     assert "tokens left: 1200 of 2400" in line
     assert "nearly spent: answer now from the evidence you have" in line
-    assert "mark the answer incomplete" in line
+    # Answered requests finish normally; incomplete only if work remains.
+    assert "finish normally" in line
+    assert "do not call the answer incomplete" in line
+    assert "Only if requested work is still unanswered" in line
     # The line is advice; the budget still refuses work past its limit.
     await _model(budgets, "a1").request(MESSAGES, None, ModelRequestParameters())
     with pytest.raises(RunStopped) as stopped:
