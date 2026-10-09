@@ -13,8 +13,10 @@ Both backends are best effort and can never slow or break a run:
 
 Correlation: all spans of a run share the trace id derived from the run id
 (``application.telemetry.trace_id_for``). A process that has no active span for
-the run parents its spans on the run's deterministic root span id; the root
-span itself is emitted when the run closes (``root=True``) with that id.
+the run (or only an ended one) parents its spans on the run's deterministic
+root span id; the root span itself is emitted when the run closes
+(``root=True``) with that id and never has a parent, so a run's spans form one
+acyclic tree whether it executes in the API process or a Temporal worker.
 """
 
 from __future__ import annotations
@@ -316,9 +318,19 @@ class OtelSink:
             trace_int = int(trace_id_for(run_id), 16)
             if root:
                 forced = (trace_int, int(root_span_id_for(run_id), 16))
+                # Never inherit the ambient span: the run root has no parent.
+                parent_context = otel_context.Context()
             else:
-                current = trace.get_current_span().get_span_context()
-                if not (current.is_valid and current.trace_id == trace_int):
+                ambient = trace.get_current_span()
+                current = ambient.get_span_context()
+                # Nest under a live span of this run only; an ended one (for
+                # example the accept span a background run was started from)
+                # or another trace falls back to the run's root.
+                if not (
+                    current.is_valid
+                    and current.trace_id == trace_int
+                    and ambient.is_recording()
+                ):
                     parent = SpanContext(
                         trace_int,
                         int(root_span_id_for(run_id), 16),

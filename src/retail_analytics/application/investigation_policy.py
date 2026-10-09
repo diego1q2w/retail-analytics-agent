@@ -93,6 +93,7 @@ def _how_to_work(tools: frozenset[str]) -> str:
         "changes the answer. If a required input is missing, ask one focused "
         "clarification."
     ]
+    steps.append(_proportion_step(tools))
     if FIND_EXAMPLES in tools:
         steps.append(
             f"When a method or definition is unclear, {FIND_EXAMPLES} may "
@@ -103,13 +104,43 @@ def _how_to_work(tools: frozenset[str]) -> str:
     steps.append(_investigate_step(tools))
     steps.append("Check that evidence, calculations and conclusions agree.")
     steps.append(
-        "Answer with findings, definitions, limitations and suggested actions."
+        "Answer with findings, definitions, limitations and suggested actions; "
+        "a discovery answer is a short overview, not a report."
     )
     numbered = [f"{i}. {text}" for i, text in enumerate(steps, 1)]
     return (
         "How to work (guidelines, not a fixed sequence; skip, repeat or "
         "revisit steps):\n" + "\n".join(numbered)
     )
+
+
+def _proportion_step(tools: frozenset[str]) -> str:
+    """Keep the work as small as the request: discovery is not analysis."""
+    schema = _names(tools, LIST_RELATIONS, DESCRIBE_RELATION)
+    source = (
+        f"from the permitted schema ({schema}; describe a relation only when "
+        "the overview needs its fields)"
+        if schema
+        else "from what you know you can do for this user"
+    )
+    text = (
+        "Match the work to the request. A question about what data or help is "
+        'available ("what data do you have?", "what can you do?") is '
+        f"answered {source}: name the main subjects and periods of analysis "
+        "they support, give three to five example questions, then stop. Do "
+        "not run queries, list saved reports or state counts, totals or date "
+        "ranges for it. If the user then names a subject (for example "
+        '"orders"), narrow the overview to that subject\'s fields and '
+        "example questions and ask what they want to measure; still compute "
+        "nothing unasked. Preferences may shape the wording, not widen the work."
+    )
+    if EXECUTE_ANALYSIS in tools:
+        text += (
+            ' Questions that ask for a figure ("how many orders are there?", '
+            '"what date range does the data cover?") are analysis: query and '
+            "cite evidence."
+        )
+    return text
 
 
 def _investigate_step(tools: frozenset[str]) -> str:

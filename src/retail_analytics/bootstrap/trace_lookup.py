@@ -30,8 +30,14 @@ _SHOWN = (
     "fallback_from",
     "fallback_reason",
     "answered_by",
+    "answered_model",
     "status",
+    "decision",
+    "topic",
+    "classifier_version",
+    "error.type",
 )
+_MAX_VALUE = 80
 
 
 def mlflow_base(traces_endpoint: str) -> str:
@@ -67,34 +73,98 @@ def span_attributes(span: Mapping[str, object]) -> dict[str, str]:
     return found
 
 
-def span_lines(spans: Sequence[Mapping[str, object]]) -> list[str]:
-    """An indented span tree, parents before children."""
-    children: dict[str | None, list[Mapping[str, object]]] = {}
-    for span in spans:
-        parent = span.get("parent_span_id")
-        children.setdefault(parent if isinstance(parent, str) else None, []).append(
-            span
-        )
-    lines: list[str] = []
+def _detail(span: Mapping[str, object]) -> str:
+    attributes = span_attributes(span)
+    shown = {key: attributes[key] for key in _SHOWN if key in attributes}
+    return " ".join(f"{key}={_clip(value)}" for key, value in shown.items())
 
-    def walk(parent: str | None, depth: int) -> None:
-        ordered = sorted(
-            children.get(parent, []),
-            key=lambda s: int(str(s.get("start_time_unix_nano", 0))),
-        )
-        for span in ordered:
-            attributes = span_attributes(span)
-            shown = {key: attributes[key] for key in _SHOWN if key in attributes}
-            detail = " ".join(f"{key}={value}" for key, value in shown.items())
+
+def _clip(value: str) -> str:
+    # One short token per value; the allowlist above already excludes payloads.
+    text = "".join(c if c.isprintable() else " " for c in value).strip()
+    return text if len(text) <= _MAX_VALUE else text[: _MAX_VALUE - 1] + "~"
+
+
+def _start(span: Mapping[str, object]) -> int:
+    try:
+        return int(str(span.get("start_time_unix_nano", 0)))
+    except ValueError:
+        return 0
+
+
+def span_lines(spans: Sequence[Mapping[str, object]]) -> list[str]:
+    """An indented span tree, parents before children.
+
+    Recorded traces can be incomplete (the root is written when the run
+    closes) or, for traces recorded before the parentage fix, malformed (a
+    parent cycle with no root). Every span is still listed once with its
+    details: spans whose parent is missing start their own branch, spans in a
+    cycle are listed after a warning, and nothing recurses.
+    """
+    by_id: dict[str, Mapping[str, object]] = {}
+    for span in spans:
+        span_id = span.get("span_id")
+        if isinstance(span_id, str) and span_id:
+            by_id.setdefault(span_id, span)
+
+    def parent_of(span: Mapping[str, object]) -> str | None:
+        parent = span.get("parent_span_id")
+        return parent if isinstance(parent, str) and parent else None
+
+    children: dict[str, list[Mapping[str, object]]] = {}
+    roots: list[Mapping[str, object]] = []
+    orphans: list[Mapping[str, object]] = []
+    for span in spans:
+        parent = parent_of(span)
+        if parent is None:
+            roots.append(span)
+        elif parent in by_id:
+            children.setdefault(parent, []).append(span)
+        else:
+            orphans.append(span)
+
+    lines: list[str] = []
+    seen: set[int] = set()
+
+    def walk(top: Mapping[str, object], marker: str) -> None:
+        stack: list[tuple[Mapping[str, object], int, str]] = [(top, 0, marker)]
+        while stack:
+            span, depth, mark = stack.pop()
+            if id(span) in seen:
+                continue
+            seen.add(id(span))
+            detail = " ".join(part for part in (mark, _detail(span)) if part)
             lines.append(f"{'  ' * depth}{span.get('name')}  {detail}".rstrip())
             span_id = span.get("span_id")
-            if isinstance(span_id, str):
-                walk(span_id, depth + 1)
+            kids = children.get(span_id, []) if isinstance(span_id, str) else []
+            for kid in sorted(kids, key=_start, reverse=True):
+                if id(kid) not in seen:
+                    stack.append((kid, depth + 1, ""))
 
-    walk(None, 0)
-    if not lines:  # spans whose parent was never exported (e.g. root still open)
-        lines = [f"{span.get('name')}" for span in spans]
-    return lines
+    for span in sorted(roots, key=_start):
+        walk(span, "")
+    for span in sorted(orphans, key=_start):
+        walk(span, "[parent missing]")
+    cyclic = [span for span in spans if id(span) not in seen]
+    for span in sorted(cyclic, key=_start):
+        walk(span, "[in parent cycle]")
+
+    notes: list[str] = []
+    if cyclic:
+        notes.append(
+            f"warning: malformed span hierarchy: {len(cyclic)} span(s) form a "
+            "parent cycle; listed flat below the other spans."
+        )
+    if orphans:
+        notes.append(
+            f"note: {len(orphans)} span(s) have a parent missing from the trace "
+            "(the run may still be open, or export dropped spans)."
+        )
+    if not roots and spans:
+        notes.append("note: the trace has no root span.")
+    elif len(roots) > 1:
+        notes.append(f"warning: the trace has {len(roots)} root spans.")
+    return notes + lines
 
 
 @click.command()

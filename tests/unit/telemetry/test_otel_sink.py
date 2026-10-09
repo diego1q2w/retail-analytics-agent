@@ -237,3 +237,52 @@ def test_the_default_on_configuration_survives_an_outage(backend: str) -> None:
         telemetry.flush(shipped.telemetry_export_timeout_seconds)
         assert time.monotonic() - started < 8.0
         assert emit_many(telemetry, 50) < 2.0
+
+
+def test_root_never_inherits_an_ambient_span_and_ended_spans_are_not_parents() -> None:
+    """The reproduced cycle: a local run started inside ``run.accept`` used to
+    parent its spans, and its root, on that span (T39-F1)."""
+    telemetry, exporter, _, sink = captured()
+    run_id = "run_0123456789abcdef"
+    root_id = int(root_span_id_for(run_id), 16)
+    with telemetry.span(Span.HTTP, attributes={"method": "POST"}):
+        accept = telemetry.span(Span.ACCEPT, run_id=run_id)
+        accept.__enter__()
+        # Still inside the open accept span: the root has no parent anyway.
+        with telemetry.span(Span.RUN, run_id=run_id, root=True):
+            pass
+        accept.__exit__(None, None, None)
+    # The same ambient context after the accept span ended: a background run
+    # that inherited it nests under the root, not under the ended span.
+    with telemetry.span(Span.HTTP, attributes={"method": "POST"}):
+        ended = telemetry.span(Span.ACCEPT, run_id=run_id)
+        ended.__enter__()
+        ended.__exit__(None, None, None)
+    sink.flush(1)
+    # Both processors export to the same in-memory exporter: dedupe by id.
+    spans = list({s.context.span_id: s for s in exporter.get_finished_spans()}.values())
+    (root,) = [s for s in spans if s.name == Span.RUN]
+    assert root.parent is None and root.context.span_id == root_id
+    accepts = [s for s in spans if s.name == Span.ACCEPT]
+    assert {parent_id(s) for s in accepts} == {root_id}
+
+
+def test_a_run_started_from_an_ended_span_context_parents_on_the_root() -> None:
+    from opentelemetry import context as otel_context
+    from opentelemetry import trace
+
+    telemetry, exporter, _, sink = captured()
+    run_id = "run_fedcba9876543210"
+    root_id = int(root_span_id_for(run_id), 16)
+    with telemetry.span(Span.ACCEPT, run_id=run_id):
+        inherited = otel_context.get_current()
+    token = otel_context.attach(inherited)
+    try:
+        assert not trace.get_current_span().is_recording()
+        with telemetry.span(Span.TOOL, run_id=run_id):
+            pass
+    finally:
+        otel_context.detach(token)
+    sink.flush(1)
+    tools = {s for s in exporter.get_finished_spans() if s.name == Span.TOOL}
+    assert {parent_id(s) for s in tools} == {root_id}

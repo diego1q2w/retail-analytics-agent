@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import logging
 import uuid
 from collections.abc import Iterator
@@ -292,8 +293,13 @@ class LocalInvestigationManager:
             return reference
         bound = self._require()
         signals = _Signals()
+        # A fresh context: the run outlives the request that started it and
+        # must not inherit its request-scoped state (such as the active trace
+        # span), exactly as a Temporal worker does not.
         task = asyncio.create_task(
-            self._execute(bound, run_id, signals), name="investigation"
+            self._execute(bound, run_id, signals),
+            name="investigation",
+            context=contextvars.Context(),
         )
         self._executions[run_id] = (signals, task)
         self._started.add(run_id)

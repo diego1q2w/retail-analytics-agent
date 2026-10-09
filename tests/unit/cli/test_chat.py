@@ -316,3 +316,15 @@ def test_pending_proposals_are_listed_after_a_run_without_an_event() -> None:
     assert "Nothing is deleted yet" in result.output
     assert backend.calls("POST", "/confirm") == []
     assert backend.requests[-1].url.params.get("status", "pending")
+
+
+def test_non_interactive_output_has_no_terminal_control_sequences() -> None:
+    backend = base()
+    backend.runs["r1"] = run_view("completed", answer="Revenue was 10.")
+    backend.streams = [finishing_stream()]
+    result = chat(backend, "How much revenue?\n/quit\n")
+    assert result.exit_code == 0, result.output
+    assert "Revenue was 10." in result.output
+    assert "\x1b" not in result.output and "\r" not in result.output
+    # Prompts are only drawn on a terminal.
+    assert "steer>" not in result.output and "you>" not in result.output

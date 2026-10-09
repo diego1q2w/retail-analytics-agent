@@ -119,7 +119,7 @@ from retail_analytics.domain.investigations import (
     message_id_for,
     question_id_for,
 )
-from retail_analytics.domain.request_scope import AdmissionDecision
+from retail_analytics.domain.request_scope import Admission, AdmissionDecision
 from retail_analytics.domain.runs import Run, RunStatus
 
 _STOP_TIME = frozenset(
@@ -284,6 +284,7 @@ class InvestigationRuntime:
         except AccessDenied:
             return BeginOutcome(run.status, AdmissionDecision.PROCEED)
         admission = built.admission
+        _record_admission(run, admission)
         if admission.decision is AdmissionDecision.RESET_TOPIC:
             await self._context.reset_topic(principal, run.session_id, run.run_id)
         return BeginOutcome(run.status, admission.decision, admission.message)
@@ -969,3 +970,20 @@ def _source_notes(cited: Sequence[EvidenceStanding]) -> str:
         if s.source is not None
     ]
     return "\n\nSources from saved reports:\n" + "\n".join(lines) if lines else ""
+
+
+def _record_admission(run: Run, admission: Admission) -> None:
+    """Codes only: why the request was admitted, declined or clarified."""
+    with telemetry().span(
+        Span.ADMISSION,
+        run_id=run.run_id,
+        attributes={
+            "run_id": run.run_id,
+            "session_id": run.session_id,
+            "decision": admission.decision.value,
+            "topic": admission.topic.value,
+            "reason": admission.reason.value if admission.reason else "unknown",
+            "classifier_version": admission.classifier_version,
+        },
+    ):
+        pass

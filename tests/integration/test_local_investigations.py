@@ -545,3 +545,98 @@ async def test_unopened_manager_refuses_to_execute(env: LocalEnv) -> None:
     assert isinstance(local.manager, LocalInvestigationManager)
     assert local.manager.running() == frozenset()
     assert env.effects(run_id) == 0
+
+
+async def test_local_run_exports_one_acyclic_tree_under_a_parentless_root(
+    env: LocalEnv, local: LocalInvestigations
+) -> None:
+    """The run is started inside request spans (as the API does), yet its
+    spans and its root never hang off them (T39-F1)."""
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from retail_analytics.adapters.telemetry.otel import OtelSettings, OtelSink
+    from retail_analytics.application.contracts.telemetry import Span
+    from retail_analytics.application.telemetry import (
+        Telemetry,
+        root_span_id_for,
+        trace_id_for,
+        use_telemetry,
+    )
+    from retail_analytics.bootstrap.trace_lookup import span_lines
+
+    exporter = InMemorySpanExporter()
+    sink = OtelSink(
+        OtelSettings(
+            service="retail-analytics-test",
+            instance="local-1",
+            traces_endpoint="http://127.0.0.1:1/v1/traces",
+            metrics_endpoint="http://127.0.0.1:1/v1/metrics",
+            export_timeout_seconds=1.0,
+            cooloff_seconds=60.0,
+        ),
+        span_exporter=exporter,
+    )
+    sink._traces.add_span_processor(SimpleSpanProcessor(exporter))
+    try:
+        with use_telemetry(Telemetry(sink)) as installed:
+            with installed.span(Span.HTTP, attributes={"method": "POST"}):
+                run_id = await env.start(local, "Analyze sales: effect case.")
+            await env.wait_status(run_id, RunStatus.COMPLETED)
+            trace = int(trace_id_for(run_id), 16)
+
+            def run_spans() -> dict[int, Any]:
+                return {
+                    s.context.span_id: s
+                    for s in exporter.get_finished_spans()
+                    if s.context.trace_id == trace
+                }
+
+            # The root is emitted as the run closes, just after its status.
+            for _ in range(200):
+                if any(s.name == Span.RUN for s in run_spans().values()):
+                    break
+                await asyncio.sleep(0.05)
+    finally:
+        sink.shutdown(1)
+    spans = run_spans()
+    names = {s.name for s in spans.values()}
+    assert {"run.accept", "run.admission", "investigation.run", "tool.call"} <= names
+    (root,) = [s for s in spans.values() if s.parent is None]
+    assert root.name == Span.RUN
+    assert root.context.span_id == int(root_span_id_for(run_id), 16)
+    # Every other span has a parent inside the run, and following parents
+    # always reaches the root (connected, no cycle).
+    for span in spans.values():
+        seen: set[int] = set()
+        current = span
+        while current.parent is not None:
+            assert current.parent.span_id in spans, current.name
+            assert current.context.span_id not in seen, "parent cycle"
+            seen.add(current.context.span_id)
+            current = spans[current.parent.span_id]
+        assert current is root
+    (admission,) = [s for s in spans.values() if s.name == Span.ADMISSION]
+    attributes = dict(admission.attributes or {})
+    assert attributes["decision"] == "proceed"
+    assert attributes["classifier_version"] == "request-scope/2"
+    assert set(attributes) >= {"topic", "reason", "run_id", "session_id"}
+    # The lookup prints it as one well-formed tree.
+    exported = [
+        {
+            "span_id": format(s.context.span_id, "016x"),
+            "parent_span_id": None
+            if s.parent is None
+            else format(s.parent.span_id, "016x"),
+            "name": s.name,
+            "start_time_unix_nano": s.start_time,
+            "attributes": dict(s.attributes or {}),
+        }
+        for s in spans.values()
+    ]
+    lines = span_lines(exported)
+    assert lines[0].startswith("investigation.run")
+    assert not any(line.startswith(("warning", "note")) for line in lines)
+    assert len(lines) == len(spans)

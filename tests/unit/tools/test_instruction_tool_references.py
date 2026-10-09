@@ -289,3 +289,20 @@ def test_analysis_only_tool_call_to_save_report_is_refused() -> None:
     )
     assert isinstance(result.outcome, ToolFailed)
     assert result.outcome.code is not ToolErrorCode.INVALID_INPUT
+
+
+def test_discovery_requests_get_proportional_guidance_for_every_catalog() -> None:
+    """A capability overview is answered from the schema and stops there;
+    explicit counting or coverage questions remain analysis (T39-F1)."""
+    registry = _registry()
+    for name, permissions in _role_combinations():
+        catalog, policy, _ = _principal_text(registry, permissions)
+        if not catalog:
+            continue
+        assert "Match the work to the request." in policy, name
+        assert "Do not run queries, list saved reports" in policy, name
+        assert "narrow the overview to that subject" in policy, name
+        if "execute_analysis" in catalog:
+            assert "how many orders are there?" in policy, name
+        else:
+            assert "how many orders are there?" not in policy, name

@@ -31,7 +31,7 @@ from retail_analytics.application.telemetry import (
 )
 from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.telemetry import build_telemetry
-from retail_analytics.bootstrap.trace_lookup import span_attributes
+from retail_analytics.bootstrap.trace_lookup import span_attributes, span_lines
 from retail_analytics.domain.runs import RunStatus
 from tests.integration.compose_stack import (
     COMPOSE_FILE,
@@ -240,7 +240,13 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
         def complete_trace() -> list[dict[str, Any]] | None:
             spans = mlflow_spans(stack, run_id)
             names = {s["name"] for s in spans}
-            needed = {"run.accept", "investigation.run", "tool.call", "model.attempt"}
+            needed = {
+                "run.accept",
+                "run.admission",
+                "investigation.run",
+                "tool.call",
+                "model.attempt",
+            }
             return spans if needed <= names else None
 
         spans = eventually("the run's trace in MLflow", complete_trace, 90)
@@ -255,6 +261,25 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
         assert {
             s["parent_span_id"] for s in by_name["run.accept"] + by_name["tool.call"]
         } == {root["span_id"]}
+        # One acyclic tree: every parent is in the trace and leads to the root.
+        parents = {s["span_id"]: s.get("parent_span_id") or None for s in spans}
+        for span_id in parents:
+            seen: set[str] = set()
+            while parents[span_id] is not None:
+                assert span_id not in seen, "parent cycle"
+                seen.add(span_id)
+                assert parents[span_id] in parents
+                span_id = parents[span_id]
+            assert span_id == root["span_id"]
+        # The admission decision is diagnosable from codes alone.
+        (admission,) = by_name["run.admission"]
+        admitted = span_attributes(admission)
+        assert admitted["decision"] == "proceed"
+        assert admitted["classifier_version"] == "request-scope/2"
+        assert admitted["topic"] and admitted["reason"]
+        tree = span_lines(spans)
+        assert tree[0].startswith("investigation.run")
+        assert "decision=proceed" in "\n".join(tree)
         accept = span_attributes(by_name["run.accept"][0])
         assert accept["run_id"] == run_id
         tool = span_attributes(by_name["tool.call"][0])

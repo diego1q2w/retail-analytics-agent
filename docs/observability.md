@@ -16,9 +16,9 @@ Local only (see the README for the Compose stack). Production hosting needs its 
 
 ## Correlation
 
-The trace id of a run is derived from its run id (`application.telemetry.trace_id_for`), so the API, the Temporal workflow's activities, tool calls, query attempts and model attempts of one run land in one MLflow trace without passing trace context between processes. Spans of a run that have no active parent hang from the run's root span, whose id is also derived from the run id; the root span (`investigation.run`, start time = run creation) is emitted when the run closes, with the final status, budget use and the answering provider. A run that never closes has no root span yet.
+The trace id of a run is derived from its run id (`application.telemetry.trace_id_for`), so the API, the Temporal workflow's activities, tool calls, query attempts and model attempts of one run land in one MLflow trace without passing trace context between processes. Spans of a run that have no live parent span of the same run hang from the run's root span, whose id is also derived from the run id; the root span (`investigation.run`, start time = run creation) is emitted when the run closes, never has a parent, and carries the final status, budget use and the answering provider. A local run executes detached from the request that started it, as a Temporal worker does, so both backends export one acyclic tree. A run that never closes has no root span yet.
 
-Attributes you can search on: `run_id`, `session_id`, `operation_id` (the idempotency key of one tool execution; also in every progress event), `job_id` (BigQuery job), `attempt`. A user-visible event carries `run_id` and `operation_id`; `python -m retail_analytics.bootstrap.trace_lookup <run_id> --tree` shows the matching tool attempt with its sanitized error code and summary.
+Attributes you can search on: `run_id`, `session_id`, `operation_id` (the idempotency key of one tool execution; also in every progress event), `job_id` (BigQuery job), `attempt`. A user-visible event carries `run_id` and `operation_id`; `python -m retail_analytics.bootstrap.trace_lookup <run_id> --tree` shows the matching tool attempt with its sanitized error code and summary. The tree lists every span once, also for incomplete traces (spans whose parent was not exported are marked `[parent missing]`) and for malformed traces recorded before the parentage fix (a parent cycle is reported as a warning and its spans are marked `[in parent cycle]`).
 
 HTTP request spans are separate small traces that carry `run_id` and `run_trace_id` when the route has a run in its path. The run-creating request is linked through the `run.accept` span inside the run's trace.
 
@@ -27,6 +27,7 @@ HTTP request spans are separate small traces that carry `run_id` and `run_trace_
 | Span | Attributes |
 | --- | --- |
 | `run.accept` | run, session, status, created |
+| `run.admission` | request admission codes: `decision` (`proceed`/`clarify`/`decline`/`reset_topic`), `topic`, `reason` (which rule decided), `classifier_version`; never the request text |
 | `tool.call` | capability, version, attempt, operation, outcome (`succeeded`/`empty`/`pending`/`unknown`/`failed`), error code, sanitized summary |
 | `query.execute` | operation, attempt, outcome, error code and reason, job id, bytes processed/billed, cache hit, result size (never SQL or values) |
 | `retrieval.search` | outcome (`hit`/`no_match`/`unavailable`), counts, top similarity and lexical coverage, example ids, `review_sample` (about 1 in 10) |

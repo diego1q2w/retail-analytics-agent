@@ -8,6 +8,11 @@ request, ``/cancel`` cancels. When stdin is not a terminal (scripts, tests)
 the next line is read only once the run has finished or asks a question, so
 results are deterministic.
 
+On a terminal (stdin and stdout both TTYs) the chat reads keys itself
+(``terminal.LineEditor``): progress is printed above the input line and the
+one active prompt is drawn again with the text typed so far, switching
+between ``you>``, ``steer>`` and ``answer>`` as the run's state changes.
+
 Ctrl-C: while a run is being followed it only DETACHES (the run keeps
 working; nothing is cancelled); at an idle prompt it leaves the chat. Use
 ``/cancel`` to stop a run. Reopen the session to see its progress again.
@@ -49,6 +54,7 @@ from retail_analytics.interfaces.cli.render import (
     one_line,
 )
 from retail_analytics.interfaces.cli.runs import Question, open_question
+from retail_analytics.interfaces.cli.terminal import LineEditor, RawTerminal
 
 HELP = """Type a question to start an investigation. While one is running:
   <text>            steer it (or answer its question when it asks one)
@@ -84,10 +90,16 @@ class Chat:
         stall_seconds: float = DEFAULT_STALL_SECONDS,
         sleep: Callable[[float], None] = time.sleep,
         write_file: Callable[[str, bytes], None] | None = None,
+        terminal: RawTerminal | None = None,
     ) -> None:
         self.api = api
         self.session_id = session_id
-        self.out = out
+        self._raw_out = out
+        self.out = self._print
+        self._terminal = terminal
+        self._editor = None if terminal is None else LineEditor(terminal.write)
+        self._keys = ""
+        self._fixed_prompt: str | None = None
         self._stdin = stdin
         self._interactive = interactive
         self._stall = stall_seconds
@@ -128,6 +140,8 @@ class Chat:
                 if not self._dispatch(line):
                     break
             except KeyboardInterrupt:
+                if self._editor is not None:
+                    self._editor.interrupt()
                 if self.following:
                     self._detach()
                     continue
@@ -156,8 +170,18 @@ class Chat:
 
     # --- input ---
 
+    def _print(self, text: str) -> None:
+        if self._editor is None:
+            self._raw_out(text)
+        else:
+            self._editor.print_above(lambda: self._raw_out(text))
+
     def _start_reader(self) -> None:
         if self._reader is not None:
+            return
+        if self._terminal is not None:
+            self._reader = threading.current_thread()  # marks it started
+            self._terminal.start(lambda keys: self._inbox.put(_Item("keys", 0, keys)))
             return
 
         def work() -> None:
@@ -173,6 +197,8 @@ class Chat:
         self._reader.start()
 
     def _read_line(self, prompt: str, *, force_prompt: bool = False) -> str | None:
+        if self._editor is not None:
+            return self._edit_line(self._editor, prompt, force_prompt=force_prompt)
         self._start_reader()
         self._have_line = False
         self._want.set()
@@ -188,6 +214,31 @@ class Chat:
             self._eof = True
             return None
         return line.rstrip("\r\n")
+
+    def _edit_line(
+        self, editor: LineEditor, prompt: str, *, force_prompt: bool
+    ) -> str | None:
+        """Terminal input: one prompt, kept below any progress printed."""
+        self._start_reader()
+        self._fixed_prompt = prompt if force_prompt else None
+        editor.begin(prompt)
+        try:
+            while True:
+                while self._keys:
+                    key, self._keys = self._keys[0], self._keys[1:]
+                    done, line = editor.feed(key)
+                    if done:
+                        if line is None:
+                            self._eof = True
+                        return line
+                if self._eof:
+                    editor.interrupt()
+                    return None
+                self._pump_once(0.2)
+                if editor.active:
+                    editor.set_prompt(self._fixed_prompt or self._prompt())
+        finally:
+            self._fixed_prompt = None
 
     def _settle(self) -> None:
         """Non-interactive: process events until the run finished, asks for an
@@ -206,13 +257,19 @@ class Chat:
             self._line = item.payload
             self._have_line = True
             return
+        if item.kind == "keys":
+            if item.payload is None:
+                self._eof = True
+            else:
+                self._keys += item.payload
+            return
         if item.generation != self._generation:
             return
         try:
             self._handle(item)
         except (ApiError, Unreachable) as error:
             self.out(format_error(error))
-        if self._interactive:
+        if self._interactive and self._editor is None:
             self._redraw = True
 
     # --- stream events ---

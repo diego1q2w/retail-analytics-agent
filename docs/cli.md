@@ -32,7 +32,7 @@ Session 6f1c...  Ask a question; /help lists commands, /quit leaves.
 you> How did Women's revenue trend last quarter?
 Working on it.
   > Looking up the available data.
-  > Running an analysis query.
+  > Running a query.
   ok Query finished.
 The assistant needs an answer to continue:
   Which sales period should I use?
@@ -53,6 +53,12 @@ show or re-attach to progress. Other commands: `/sessions`, `/new`,
 `/export <id> [file]`, `/confirm <proposal>`, `/decline <proposal>`,
 `/help`, `/quit`. Malformed or unknown commands and any backend error print
 one error line and the chat continues.
+
+On a terminal the chat keeps one input line at the bottom: progress is
+printed above it, and the prompt (`you>` idle, `steer>` while a run works,
+`answer>` while it waits for your answer) is redrawn with whatever you have
+typed so far. Editing keys: Backspace, Ctrl-U (clear line), Ctrl-W (delete
+word), Enter; arrow keys are ignored. Ctrl-D on an empty line leaves.
 
 When stdin is not a terminal (scripts, tests) each line is sent only after
 the previous run has finished or asked a question, so a script is

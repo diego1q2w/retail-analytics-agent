@@ -244,7 +244,7 @@ def analysis_capability(
             "evidence context. Aggregate in SQL rather than fetching detail rows. "
             "Cite evidence ids for every figure you report."
         ),
-        progress_label="Running a query on the permitted data.",
+        progress_label="Running a query.",
         input_model=ExecuteAnalysisInput,
         output_model=ExecuteAnalysisOutput,
         handler=execute_analysis,

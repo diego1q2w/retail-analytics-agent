@@ -97,6 +97,8 @@ class Span(StrEnum):
 
     RUN = "investigation.run"
     ACCEPT = "run.accept"
+    # Request admission: decision, topic, reason code, classifier version.
+    ADMISSION = "run.admission"
     HTTP = "http.request"
     TOOL = "tool.call"
     MODEL_REQUEST = "model.request"

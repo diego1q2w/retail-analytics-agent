@@ -47,6 +47,7 @@ from retail_analytics.interfaces.cli.render import (
     one_line,
 )
 from retail_analytics.interfaces.cli.runs import Driven, Question, drive_run
+from retail_analytics.interfaces.cli.terminal import stdio_terminal
 
 ClientFactory = Callable[[], httpx.Client]
 
@@ -167,18 +168,21 @@ def chat(
     if session_id is None:
         session_id = str(api.open_session(new_submission_key())["session_id"])
     interactive = sys.stdin.isatty()
-    if interactive:
+    terminal = stdio_terminal() if interactive else None
+    if interactive and terminal is None:
         with contextlib.suppress(ImportError):
             import readline  # noqa: F401  (line editing for input)
     _out(f"Session {session_id}. Ask a question; /help lists commands, /quit leaves.")
-    Chat(
-        api,
-        session_id,
-        out=_out,
-        stdin=sys.stdin,
-        interactive=interactive,
-        stall_seconds=stall_seconds,
-    ).run(resume=reopen)
+    with terminal or contextlib.nullcontext():
+        Chat(
+            api,
+            session_id,
+            out=_out,
+            stdin=sys.stdin,
+            interactive=interactive,
+            stall_seconds=stall_seconds,
+            terminal=terminal,
+        ).run(resume=reopen)
 
 
 # --- scriptable run commands ---

@@ -553,7 +553,10 @@ def report_capabilities(
         CapabilitySpec(
             name=LIST_REPORTS,
             version=1,
-            description="List the user's saved reports, newest first.",
+            description=(
+                "List the user's saved reports, newest first. Use it when the "
+                "user asks about their reports, not to describe available data."
+            ),
             progress_label="Listing your saved reports.",
             input_model=ListReportsInput,
             output_model=ListReportsOutput,

@@ -155,6 +155,32 @@ credentials; writes `evaluation-results/realdata-drift.json`, gitignored).
 Unit tests for the attribution and figure checks:
 `pytest tests/unit/evaluation/test_real_model.py tests/unit/models/test_gemini_interactions.py`.
 
+## Discovery walkthrough (before/after, T39-F1)
+
+`discovery_walkthrough.py` measures a first conversation: "What data do you
+have, and what questions can you help me answer?" followed by "orders", plus
+an explicit "How many orders are there, and what date range does the data
+cover?". Same harness as above (local backend, offline DuckDB over the frozen
+extract, fresh evaluation sessions on a throwaway PostgreSQL), one run each on
+2026-10-09. "Before" is the code before this change; "after" includes it.
+Gemini `gemini-3.8-flash` answered every request in both; no fallback.
+
+| conversation | before | after |
+| --- | --- | --- |
+| Opening question | clarification asked before any model call ("What would you like to analyze?"); "orders" answered it | admitted as data discovery, answered directly |
+| Opening + "orders": tools | list_relations, describe_relation x4, execute_analysis x5 (4 queries) | turn 1: list_relations, describe_relation x4; turn 2: describe_relation, inspect_preferences (0 queries) |
+| Model requests / tokens (in+out) | 8 / 44,115 + 5,701 | 3 / 14,516 + 1,515, then 3 / 15,709 + 1,830 |
+| Active time | 59.5 s (user wait not counted; the harness answers at once) | 18.9 s + 20.3 s |
+| Answer | schema overview plus unrequested cancellation/return counts, customer count and coverage period | four subjects, supported periods, four example questions; "orders" narrowed to the orders fields and example questions, then asked what to measure. No figures, no saved-report listing |
+| Explicit count/date-range question | not run | list_relations, describe_relation x2, find_analysis_examples, execute_analysis x2, inspect_preferences: 2 queries, 8 requests, 40,429 + 2,432 tokens, 37.6 s; order count and date range cited from evidence |
+
+One run per conversation on one day: these are observations, not latency or
+token promises. The model still chooses its tools (for example it described
+all four relations for the overview). Reproduce from the repository root
+(needs a migrated PostgreSQL with no local-execution API attached, and the
+`.env` keys): `python evaluation/real-model/discovery_walkthrough.py
+[--only overview profiling] [--show-answers]`.
+
 ## Limitations
 
 - Ten conversations, one run each, one day: no variance estimate, and no
