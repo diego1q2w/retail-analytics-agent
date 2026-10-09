@@ -10,6 +10,24 @@ Setup for live services, public architecture documentation and evaluation result
 
 Do not commit credentials, raw query results or private conversation data.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    cli["analytics CLI"] -- "HTTPS + SSE" --> api["API<br/>auth, sessions, confirmations"]
+    api --> runner["Investigation runner<br/>local (default) or Temporal (opt-in)"]
+    runner --> agent["Pydantic AI agent"]
+    agent -- "tool calls" --> guards["Guards: SQL compiler,<br/>privacy gates, budgets"]
+    agent --> models["Gemini, GPT backup"]
+    guards --> bq[("BigQuery")]
+    api --> pg[("PostgreSQL + artifacts")]
+    guards --> pg
+```
+
+The high-level design, production reference deployment, data flow, technology
+choices and requirement-by-requirement coverage are in
+[docs/architecture](docs/architecture/README.md).
+
 ## Quick start
 
 On a new machine with Docker (Compose v2) and Python 3.12 (or [uv](https://docs.astral.sh/uv/)) installed:
