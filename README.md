@@ -53,13 +53,19 @@ gcloud auth application-default login
 **3. Chat**, in a second terminal:
 
 ```sh
+./scripts/local_cli.sh
+```
+
+The launcher issues a fresh local-admin token into `~/.analytics-token` (mode 0600) and runs `analytics chat`; options such as `--resume` are passed on to `chat`. It starts nothing, so the backend from step 2 must be running. To do it by hand (for example to use another token file), run:
+
+```sh
 source .venv/bin/activate
 (umask 077; retail-analytics-dev-access token local-admin > ~/.analytics-token)
 export CLI_TOKEN_FILE=~/.analytics-token
 analytics chat
 ```
 
-You are the local administrator, `exec-local-admin`: bootstrap provisions it with the executive, editor, reviewer and admin roles and an explicit grant of every product in the dataset (an admin role alone grants no data). The token is written only to that private file and lasts 60 minutes (`--minutes` up to 1440); run the same line again for a new one. Nothing is printed to the logs.
+You are the local administrator, `exec-local-admin`: bootstrap provisions it with the executive, editor, reviewer and admin roles and an explicit grant of every product in the dataset (an admin role alone grants no data). The token is written only to that private file and lasts 60 minutes (`--minutes` up to 1440); run the launcher again for a new one. Nothing is printed to the logs.
 
 Live mode and local execution are the defaults (`APP_MODE=live`, `EXECUTION_BACKEND=local`). Missing credentials or failed access checks stop setup with an actionable error. Existing `.env` values are preserved: if yours explicitly says `APP_MODE=fixture`, change it to `live` and rerun bootstrap. Fixture mode is an opt-in offline wiring check that returns a fixed response, not real analysis. Temporal is [opt-in](#temporal-execution-opt-in).
 
