@@ -122,3 +122,19 @@ def test_investigation_input_schema_upgrades_and_downgrades_offline() -> None:
     sql = buffer.getvalue()
     for table in ("run_principals", "run_inputs", "run_questions"):
         assert f"DROP TABLE {table}" in sql
+
+
+def test_report_schema_upgrades_and_downgrades_offline() -> None:
+    buffer = StringIO()
+    command.upgrade(_config(buffer), "0012:0013", sql=True)
+    sql = buffer.getvalue()
+    for table in ("reports", "report_versions", "report_evidence"):
+        assert f"CREATE TABLE {table}" in sql
+    assert "CONSTRAINT uq_report_versions_idempotency UNIQUE" in sql
+    assert "CREATE TRIGGER report_versions_append_only BEFORE UPDATE" in sql
+
+    buffer = StringIO()
+    command.downgrade(_config(buffer), "0013:0012", sql=True)
+    sql = buffer.getvalue()
+    for table in ("report_evidence", "report_versions", "reports"):
+        assert f"DROP TABLE {table}" in sql

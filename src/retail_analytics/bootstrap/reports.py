@@ -1,0 +1,34 @@
+"""Composition of saved reports: PostgreSQL metadata, artifacts and the output gate."""
+
+from __future__ import annotations
+
+from retail_analytics.adapters.postgres.database import Database
+from retail_analytics.adapters.postgres.reports import PostgresReportRepository
+from retail_analytics.application.artifacts import ArtifactService
+from retail_analytics.application.authorization import AccessResolver
+from retail_analytics.application.evidence import EvidenceService
+from retail_analytics.application.output_privacy import OutputPrivacyGate
+from retail_analytics.application.reports import ReportService
+from retail_analytics.bootstrap.persistence import Persistence
+from retail_analytics.domain.metrics import MetricCatalog, default_catalog
+
+
+def build_reports(
+    persistence: Persistence,
+    artifacts: ArtifactService,
+    evidence: EvidenceService,
+    gate: OutputPrivacyGate,
+    resolver: AccessResolver,
+    *,
+    metrics: MetricCatalog | None = None,
+) -> ReportService:
+    """``gate`` is ``build_context(...).gate``; ``artifacts`` is
+    ``build_artifacts(...).service``."""
+    return ReportService(
+        PostgresReportRepository(Database(persistence.engine)),
+        artifacts,
+        evidence,
+        gate,
+        resolver,
+        metrics or default_catalog(),
+    )

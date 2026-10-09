@@ -403,3 +403,38 @@ run_questions = sa.Table(
     _ts("asked_at"),
     _ts("closed_at", nullable=True),
 )
+
+reports = sa.Table(
+    "reports",
+    metadata,
+    sa.Column("report_id", sa.Text, primary_key=True),
+    sa.Column("owner_id", sa.Text, nullable=False),
+    sa.Column("session_id", sa.Text),
+    _ts("created_at"),
+    _ts("deleted_at", nullable=True),
+)
+
+report_versions = sa.Table(
+    "report_versions",
+    metadata,
+    sa.Column("report_id", sa.Text, primary_key=True),
+    sa.Column("version", sa.Integer, primary_key=True),
+    sa.Column("owner_id", sa.Text, nullable=False),
+    sa.Column("artifact_version", sa.Integer, nullable=False),
+    sa.Column("title", sa.Text, nullable=False),
+    sa.Column("run_id", sa.Text),
+    sa.Column("idempotency_key", sa.Text, nullable=False),
+    sa.Column("draft_digest", sa.String(64), nullable=False),
+    sa.Column("scope_digest", sa.String(64), nullable=False),
+    sa.Column("authorization_version", sa.Integer, nullable=False),
+    _ts("created_at"),
+)
+
+report_evidence = sa.Table(
+    "report_evidence",
+    metadata,
+    sa.Column("report_id", sa.Text, primary_key=True),
+    sa.Column("version", sa.Integer, primary_key=True),
+    sa.Column("evidence_id", sa.Text, primary_key=True),
+    sa.Column("ordinal", sa.Integer, nullable=False),
+)

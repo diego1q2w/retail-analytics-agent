@@ -453,6 +453,24 @@ class EvidenceService:
                 executive_id, tuple(dict.fromkeys(evidence_ids)), holder
             )
 
+    async def owned_records(
+        self, executive_id: str, evidence_ids: Sequence[str]
+    ) -> tuple[Evidence, ...]:
+        """The executive's own records by ID, in the order given.
+
+        Reading is not authorization to *use* a record: the caller must judge
+        each one against current authority (for a report, its product-set
+        digest). An unknown or another owner's ID raises the same
+        ``AccessDenied``, so IDs cannot be probed.
+        """
+        found: list[Evidence] = []
+        for evidence_id in dict.fromkeys(evidence_ids):
+            stored = await self._repository.get(evidence_id)
+            if stored is None or stored.evidence.executive_id != executive_id:
+                raise AccessDenied("evidence", evidence_id)
+            found.append(stored.evidence)
+        return tuple(found)
+
     async def release_pins(self, holder: PinHolder) -> int:
         return await self._pins.unpin(holder)
 
