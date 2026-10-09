@@ -66,6 +66,8 @@ async def test_report_is_listed_reopened_and_exported_with_cited_evidence(
     assert "| 101 | Unnamed product | Acme | 10 |" in text
     assert "| 102 | Unnamed product | Unknown brand | 20 |" in text
     assert "| 103 | Shirt | Zed | 30 |" in text
+    assert '2 row(s) show "Unnamed product"' in text
+    assert '1 row(s) show "Unknown brand"' in text
 
 
 async def test_missing_labels_are_display_only_and_ids_stay_distinct(

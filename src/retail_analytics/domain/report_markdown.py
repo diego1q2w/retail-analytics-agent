@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from retail_analytics.domain.evidence import DefinitionRef, Evidence
-from retail_analytics.domain.labels import label_caveat, present_rows
+from retail_analytics.domain.labels import label_notes, present_rows
 from retail_analytics.domain.reports import ReportDraft
 
 type DefinitionDescriber = Callable[[DefinitionRef], str | None]
@@ -106,8 +106,7 @@ def render_evidence_appendix(
         if not table.rows:
             out.append("")
             out.append("_The result had no rows._")
-        caveat = label_caveat(table)
-        if caveat:
-            out += ["", f"_{caveat}_"]
+        for note in label_notes(table):
+            out += ["", f"_{note}_"]
         out.append("")
     return "\n".join(out).rstrip() + "\n"

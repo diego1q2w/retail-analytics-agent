@@ -325,6 +325,10 @@ Tests: `tests/unit/context/` (detectors and encodings, scope narrowed mid-sessio
 
 Tests: `tests/unit/reports/` and `tests/integration/test_reports.py` (PostgreSQL, concurrent duplicate saves, immutability, access change).
 
+### Missing product labels
+
+A few source products have no name or brand. Evidence keeps the NULL. Anything shown to the model or a person substitutes an explicit label (`domain/labels.py`): "Unnamed product" for a missing name and "Unknown brand" for a missing brand, applied only to NULL cells in columns that come from the product name or brand fields. The product ID is never replaced, and no fallback is used to group, deduplicate or join, so two unnamed products stay two rows with different IDs, and a brand breakdown keeps its NULL brand as its own "Unknown brand" group that reconciles with the total. Model context (`ContextBuilder`) and report exports add a note with how many rows use a fallback, and warn when a table has unnamed products but no product ID column (a query grouped by name alone merges them in the source query, so group by product ID). Tests: `tests/unit/context/test_label_fallbacks.py`.
+
 ### Local telemetry (MLflow, Prometheus, Grafana)
 
 The same `compose.yaml` adds MLflow 3.14 (sanitized agent traces), Prometheus 3.12 (metrics) and Grafana 12.4 (dashboards), image versions pinned. For local development only: every port is bound to `127.0.0.1`, passwords are throwaway defaults, and none of it is a hardened or authenticated production setup (production hosting needs its own authentication, network restrictions, retention and backup design). No project-specific retention is configured; backend defaults apply.

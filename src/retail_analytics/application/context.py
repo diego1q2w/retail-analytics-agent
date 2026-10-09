@@ -63,6 +63,7 @@ from retail_analytics.domain.disclosure import (
     scan,
 )
 from retail_analytics.domain.evidence import Evidence, EvidenceCell
+from retail_analytics.domain.labels import fallback_for, label_notes
 from retail_analytics.domain.preferences import EffectivePreferences
 from retail_analytics.domain.request_scope import Admission, assess_request
 
@@ -100,6 +101,8 @@ class EvidenceDigest:
     truncated_at_source: bool
     # True when only a reference is included (budget); fetch rows on demand.
     compacted: bool
+    # Disclosures about display fallbacks (missing product names or brands).
+    notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -416,9 +419,10 @@ def _preference_lines(preferences: EffectivePreferences) -> list[str]:
     ]
 
 
-def _cell_text(cell: EvidenceCell) -> str:
+def _cell_text(cell: EvidenceCell, fallback: str | None = None) -> str:
+    """Cell text; a missing product name or brand shows its explicit fallback."""
     if cell is None:
-        return ""
+        return fallback or ""
     if isinstance(cell, datetime):
         return cell.isoformat()
     return str(cell)
@@ -432,7 +436,7 @@ def _digest(evidence: Evidence, max_rows: int, screen: _Screen) -> EvidenceDiges
             # Reference cells are already in the permitted set.
             _cell_text(cell)
             if column.role == "reference"
-            else screen.text(_cell_text(cell))
+            else screen.text(_cell_text(cell, fallback_for(column)))
             for cell, column in zip(row, table.columns, strict=True)
         )
         for row in table.rows[:max_rows]
@@ -449,6 +453,7 @@ def _digest(evidence: Evidence, max_rows: int, screen: _Screen) -> EvidenceDiges
         total_rows=len(table.rows),
         truncated_at_source=table.truncated,
         compacted=False,
+        notes=label_notes(table),
     )
 
 
@@ -464,6 +469,7 @@ def _compact(digest: EvidenceDigest) -> EvidenceDigest:
         total_rows=digest.total_rows,
         truncated_at_source=digest.truncated_at_source,
         compacted=True,
+        notes=digest.notes,
     )
 
 
@@ -487,6 +493,7 @@ def _render_evidence(item: EvidenceDigest) -> str:
         lines.extend(" | ".join(_quote(c) for c in row) for row in item.rows)
         if len(item.rows) < item.total_rows:
             lines.append(f"... {item.total_rows - len(item.rows)} more rows by id")
+    lines.extend(f"note: {note}" for note in item.notes)
     return "\n".join(lines)
 
 

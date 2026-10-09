@@ -71,16 +71,32 @@ def present_rows(table: EvidenceTable) -> tuple[tuple[str, ...], ...]:
     )
 
 
-def label_caveat(table: EvidenceTable) -> str | None:
-    """A warning when unnamed products cannot be told apart in ``table``."""
-    if has_product_id(table.columns):
-        return None
+def label_notes(table: EvidenceTable) -> tuple[str, ...]:
+    """Disclosures for fallback labels used in ``table``.
+
+    One note per fallback with how many rows show it (those rows stay separate
+    rows or groups), and a warning when unnamed products cannot be told apart
+    because the table has no product ID.
+    """
+    notes: list[str] = []
+    unnamed_without_id = False
     for index, column in enumerate(table.columns):
-        if fallback_for(column) == UNNAMED_PRODUCT and any(
-            row[index] is None for row in table.rows
-        ):
-            return (
-                f'Rows labelled "{UNNAMED_PRODUCT}" carry no product ID here, so '
-                "different unnamed products cannot be told apart."
-            )
-    return None
+        label = fallback_for(column)
+        if label is None:
+            continue
+        missing = sum(1 for row in table.rows if row[index] is None)
+        if not missing:
+            continue
+        kind = "name" if label == UNNAMED_PRODUCT else "brand"
+        notes.append(
+            f'{missing} row(s) show "{label}" because the source has no product '
+            f"{kind} for them. They are shown as they are stored, never merged "
+            "into another row or group."
+        )
+        unnamed_without_id |= label == UNNAMED_PRODUCT
+    if unnamed_without_id and not has_product_id(table.columns):
+        notes.append(
+            f'Rows labelled "{UNNAMED_PRODUCT}" carry no product ID here, so '
+            "different unnamed products cannot be told apart."
+        )
+    return tuple(notes)

@@ -192,6 +192,7 @@ class World:
         sql: str = SPEND_SQL,
         principal: Principal = A,
         values: dict[str, object] | None = None,
+        grain: tuple[str, ...] | None = None,
     ) -> tuple[Evidence, ReleasedResult]:
         ctx = await self.resolver.context_for_run(principal, run_id)
         scope = ctx.product_scope
@@ -206,7 +207,8 @@ class World:
             raw_rows(self.db, compiled),
             catalog=view(version=scope.entitlement_version),
         )
-        grain = ("customer_ref",) if "customer_ref" in sql else ("brand",)
+        if grain is None:
+            grain = ("customer_ref",) if "customer_ref" in sql else ("brand",)
         evidence = await self.evidence.record_query(
             OperationContext(ctx, f"op{next(self._ops)}"),
             compiled,
