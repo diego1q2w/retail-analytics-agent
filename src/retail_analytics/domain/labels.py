@@ -1,4 +1,4 @@
-"""Display-only fallbacks for missing product labels.
+"""Display-only fallbacks for missing product labels (and raw-number rounding).
 
 The source has products without a name or brand. Stored evidence keeps the
 NULL (it is what the source said); only text shown to a person or a model
@@ -14,6 +14,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from retail_analytics.domain.evidence import EvidenceCell, EvidenceColumn, EvidenceTable
+from retail_analytics.domain.number_display import rounded_raw_cell
 
 UNNAMED_PRODUCT = "Unnamed product"
 UNKNOWN_BRAND = "Unknown brand"
@@ -66,9 +67,22 @@ def present_rows(table: EvidenceTable) -> tuple[tuple[str, ...], ...]:
     """
     fallbacks = [fallback_for(c) for c in table.columns]
     return tuple(
-        tuple(format_cell(v, f) for v, f in zip(row, fallbacks, strict=True))
+        tuple(
+            _shown(v, c, f)
+            for v, c, f in zip(row, table.columns, fallbacks, strict=True)
+        )
         for row in table.rows
     )
+
+
+def _shown(value: EvidenceCell, column: EvidenceColumn, fallback: str | None) -> str:
+    """Raw unrounded numbers are shown at display precision (stored evidence
+    keeps them); everything else as ``format_cell`` writes it."""
+    if column.role == "value":
+        rounded = rounded_raw_cell(value, column.name)
+        if rounded is not None:
+            return rounded
+    return format_cell(value, fallback)
 
 
 def label_notes(table: EvidenceTable) -> tuple[str, ...]:

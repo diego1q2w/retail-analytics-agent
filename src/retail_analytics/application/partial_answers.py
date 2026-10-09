@@ -34,9 +34,12 @@ from retail_analytics.domain.currency import SourceCurrency
 from retail_analytics.domain.evidence import EvidenceCell, EvidenceColumn
 from retail_analytics.domain.metrics import (
     MetricCatalog,
-    Operation,
-    Unit,
-    UnknownMetricError,
+)
+from retail_analytics.domain.number_display import (
+    display_number,
+    is_percent_column,
+    is_share_column,
+    money_columns,
 )
 from retail_analytics.domain.periods import DateWindow
 
@@ -69,8 +72,6 @@ _YEAR = re.compile(r"\b(19\d\d|20\d\d|2100)\b")
 _WORD = re.compile(r"[a-z]+")
 # Metric-id tokens that say nothing about which measure was asked for.
 _GENERIC_TOKENS = frozenset({"completed", "per", "of", "and"})
-_PERCENT_SUFFIXES = ("_pct", "_percent", "_percentage")
-_SHARE_WORDS = ("share", "rate", "ratio")
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,33 +325,7 @@ def _record_lines(
 def _money_columns(
     standing: EvidenceStanding, metrics: MetricCatalog
 ) -> frozenset[str]:
-    """Value columns read from the measure of a recorded currency definition."""
-    analysis = standing.evidence.content.analysis
-    if not analysis.definitions_recorded:
-        return frozenset()
-    measures: set[str] = set()
-    for ref in analysis.definitions:
-        try:
-            definition = metrics.get(ref.metric_id, ref.version)
-        except UnknownMetricError:
-            continue
-        if definition.unit is not Unit.CURRENCY_AMOUNT:
-            continue
-        if definition.operation is Operation.RATIO:
-            parts = (definition.numerator_id, definition.denominator_id)
-            for part in parts:
-                if part is None:
-                    continue
-                inner = metrics.get(part)
-                if inner.unit is Unit.CURRENCY_AMOUNT and inner.measure_field:
-                    measures.add(f"{inner.relation.value}.{inner.measure_field}")
-        elif definition.measure_field:
-            measures.add(f"{definition.relation.value}.{definition.measure_field}")
-    return frozenset(
-        c.name
-        for c in standing.evidence.content.table.columns
-        if c.role == "value" and measures.intersection(c.sources)
-    )
+    return money_columns(standing.evidence, metrics)
 
 
 def _label(name: str) -> str:
@@ -390,16 +365,11 @@ def format_value(
     value = Decimal(str(cell)) if isinstance(cell, float) else Decimal(cell)
     if not value.is_finite():
         return str(cell)
-    name = column.name.casefold()
-    if name.endswith(_PERCENT_SUFFIXES) or name.startswith(("pct_", "percent_")):
-        return f"{value:,.1f}%"
-    if any(word in name.split("_") for word in _SHARE_WORDS) and abs(value) <= 1:
-        return f"{value * 100:,.1f}%"
+    if is_percent_column(column.name):
+        return display_number(value, percent=True) + "%"
+    if is_share_column(column.name) and abs(value) <= 1:
+        return display_number(value * 100, percent=True) + "%"
     if money:
         code = currency.code if currency is not None else None
-        return f"{value:,.2f}" + (f" {code}" if code else "")
-    if value == value.to_integral_value():
-        return f"{value:,.0f}"
-    if abs(value) >= 1:
-        return f"{value:,.2f}"
-    return f"{value:.3g}"
+        return display_number(value, money=True) + (f" {code}" if code else "")
+    return display_number(value)

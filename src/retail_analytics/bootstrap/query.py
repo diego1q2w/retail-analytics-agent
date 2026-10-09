@@ -23,6 +23,7 @@ from retail_analytics.application.result_privacy import (
     ResultLimits,
     ResultPrivacyBoundary,
 )
+from retail_analytics.application.scope_values import ScopeValueCheck
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 from retail_analytics.bootstrap.persistence import Persistence
 
@@ -87,4 +88,5 @@ def build_query_execution(
         jobs=persistence.query_jobs,
         admission=admission or budgets,
         usage=budgets,
+        scope_values=ScopeValueCheck(persistence.brand_access),
     )

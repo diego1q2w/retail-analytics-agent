@@ -168,6 +168,9 @@ class _Store:
         values = list(self.catalog.values())
         return {b: values.count(b) for b in brands}
 
+    async def brands_within(self, product_ids: Iterable[str]) -> frozenset[str]:
+        return frozenset(self.catalog[p] for p in product_ids if p in self.catalog)
+
     async def sync_catalog(
         self, catalog: ProductBrandCatalog, *, actor_id: str = ""
     ) -> BrandCatalogSync:

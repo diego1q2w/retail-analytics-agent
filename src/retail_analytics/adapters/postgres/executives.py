@@ -375,6 +375,24 @@ class PostgresExecutiveDirectory:
         found = {brand: count for brand, count in rows}
         return {brand: found.get(brand, 0) for brand in brands}
 
+    async def brands_within(self, product_ids: Iterable[str]) -> frozenset[str]:
+        wanted = sorted(set(product_ids))
+        if not wanted:
+            return frozenset()
+        return await self._db.transaction(self._brands_within, wanted)
+
+    @staticmethod
+    def _brands_within(connection: sa.Connection, ids: list[str]) -> frozenset[str]:
+        rows = connection.execute(
+            sa.select(catalog_product_brands.c.brand)
+            .where(
+                catalog_product_brands.c.product_id
+                == sa.func.any(sa.literal(ids, sa.ARRAY(sa.Text)))
+            )
+            .distinct()
+        )
+        return frozenset(brand for (brand,) in rows)
+
     async def replace_brands(
         self,
         executive_id: str,

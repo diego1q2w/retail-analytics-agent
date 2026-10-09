@@ -71,6 +71,7 @@ from retail_analytics.application.contracts.query_compiler import (
     ParameterType,
     QueryParameter,
     ScalarValue,
+    ValueFilter,
 )
 from retail_analytics.application.contracts.sql_dialect import DERIVED_JOIN_FEEDBACK
 from retail_analytics.application.query_compiler import (
@@ -195,6 +196,7 @@ class SqlglotQueryCompiler:
         outputs = _lineage(tree, scopes)
         latest = _latest_month(scopes, catalog, values)
         window = None if latest is not None else _date_window(scopes, catalog, values)
+        filters = _value_filters(scopes, catalog, values)
         literal_parameters = _parameterize(tree, len(values))
         logical_sql = tree.sql(dialect=_DIALECT)
         relations, fields = self._bind(scopes, catalog)
@@ -219,6 +221,7 @@ class SqlglotQueryCompiler:
             date_window=window,
             latest_month=latest,
             demographic_use=demographics,
+            value_filters=filters,
         )
 
     def _bind(
@@ -1090,6 +1093,84 @@ def _parameterize(tree: exp.Select, offset: int) -> list[QueryParameter]:
                 )
             bind(literal, ParameterType.FLOAT64, number)
     return parameters
+
+
+# --- value filters -------------------------------------------------------------------
+
+_FIELD_WRAPPERS = (exp.Lower, exp.Upper, exp.Trim)
+_MAX_FILTER_VALUES = 20
+
+
+def _value_filters(
+    scopes: list[Scope], catalog: CatalogView, values: Mapping[str, QueryParameter]
+) -> tuple[ValueFilter, ...]:
+    """String-field comparisons with literal values, per relation field.
+
+    Descriptive only (scope messages); bounded and never raising: anything
+    it cannot read as a plain literal comparison is ignored.
+    """
+    found: list[ValueFilter] = []
+    for scope in scopes:
+        for column in scope.columns:
+            selected = scope.selected_sources.get(column.table)
+            if selected is None or not isinstance(selected[1], exp.Table):
+                continue
+            relation = catalog.relation(selected[1].name)
+            field = relation.field(column.name) if relation is not None else None
+            if relation is None or field is None or field.type is not FieldType.STRING:
+                continue
+            node: exp.Expr = column
+            while isinstance(node.parent, _FIELD_WRAPPERS):
+                node = node.parent
+            comparison = node.parent
+            if isinstance(comparison, exp.EQ):
+                other = (
+                    comparison.expression
+                    if comparison.this is node
+                    else comparison.this
+                )
+                literals = (other,)
+                pattern = False
+            elif isinstance(comparison, exp.In) and comparison.this is node:
+                literals = tuple(comparison.expressions)
+                pattern = False
+            elif (
+                isinstance(comparison, exp.Like | exp.ILike) and comparison.this is node
+            ):
+                literals = (comparison.expression,)
+                pattern = True
+            else:
+                continue
+            texts = [_string_value(e, values) for e in literals]
+            if not texts or any(t is None for t in texts):
+                continue
+            found.append(
+                ValueFilter(
+                    FieldRef(relation.name, field.name),
+                    tuple(t for t in texts if t is not None)[:_MAX_FILTER_VALUES],
+                    required=_required(comparison),
+                    pattern=pattern,
+                )
+            )
+    return tuple(found[:_MAX_FILTER_VALUES])
+
+
+def _string_value(node: exp.Expr, values: Mapping[str, QueryParameter]) -> str | None:
+    if isinstance(node, exp.Literal) and node.is_string:
+        return str(node.this)
+    if isinstance(node, exp.Parameter):
+        parameter = values.get(node.name)
+        if parameter is not None and isinstance(parameter.value, str):
+            return parameter.value
+    return None
+
+
+def _required(comparison: exp.Expr) -> bool:
+    """A top-level AND condition of a WHERE clause."""
+    node = comparison
+    while isinstance(node.parent, exp.And | exp.Paren):
+        node = node.parent
+    return isinstance(node.parent, exp.Where)
 
 
 def _structural_literal(literal: exp.Literal, parent: exp.Expr | None) -> bool:

@@ -130,6 +130,7 @@ from retail_analytics.domain.evidence import (
 from retail_analytics.domain.labels import present_rows
 from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.metrics import MetricCatalog, UnknownMetricError
+from retail_analytics.domain.number_display import known_values, round_raw_figures
 from retail_analytics.domain.preferences import EffectivePreferences
 from retail_analytics.domain.report_definitions import (
     DefinitionNotice,
@@ -326,7 +327,13 @@ class ReportService:
         released = await self._gate.check(
             principal, run_id, _sections(draft), OutputDestination.REPORT
         )
-        texts = {section.name: section.text for section in released}
+        # Raw unrounded figures are saved at display precision (the cited
+        # evidence keeps full precision).
+        known, protected = known_values(records, self._metrics)
+        texts = {
+            section.name: round_raw_figures(section.text, known, protected=protected)
+            for section in released
+        }
         checked = _apply_texts(draft, texts)
         markdown = render_report(checked, records, self._describe)
         # Required scope: the trusted stamps of the cited evidence records
@@ -772,8 +779,9 @@ def _sections(draft: ReportDraft) -> list[OutputSection]:
 
 
 def _apply_texts(draft: ReportDraft, texts: dict[str, str]) -> ReportDraft:
-    """The draft with the checked text of each section (REPORT never alters text,
-    but the saved report must be exactly what passed the check)."""
+    """The draft with the checked text of each section (REPORT never masks
+    text, but the saved report must be exactly what passed the check, with
+    raw figures rounded)."""
     return replace(
         draft,
         title=texts["title"],

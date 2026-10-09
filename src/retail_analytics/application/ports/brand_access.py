@@ -47,6 +47,10 @@ class BrandAccessStore(Protocol):
         """Products per brand in the stored snapshot (0 when unknown)."""
         ...
 
+    async def brands_within(self, product_ids: Iterable[str]) -> frozenset[str]:
+        """Distinct snapshot brands of these products (empty when none known)."""
+        ...
+
     async def sync_catalog(
         self, catalog: ProductBrandCatalog, *, actor_id: str = SYSTEM_ACTOR
     ) -> BrandCatalogSync:

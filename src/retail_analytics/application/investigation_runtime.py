@@ -138,6 +138,7 @@ from retail_analytics.domain.investigations import (
     unapplied_summary,
 )
 from retail_analytics.domain.metrics import MetricCatalog, default_catalog
+from retail_analytics.domain.number_display import known_values, round_raw_figures
 from retail_analytics.domain.request_scope import Admission, AdmissionDecision
 from retail_analytics.domain.runs import Run, RunStatus
 
@@ -446,13 +447,20 @@ class InvestigationRuntime:
             _trace_answer(draft, withheld=withheld)
             return _withheld(withheld)
         await self._evidence.link_to_run(context, released.cited_evidence)
-        cited = await self._cited(context, draft.run_id, released.cited_evidence)
+        cited, linked = await self._cited(
+            context, draft.run_id, released.cited_evidence
+        )
         truncated = any(s.evidence.content.table.truncated for s in cited)
         if truncated:
             # Never record an answer resting on a cut result as complete.
             status = RunStatus.PARTIAL
+        # Raw unrounded figures (floats copied from evidence) are shown at
+        # display precision; evidence itself keeps full precision.
+        known, protected = known_values(
+            [s.evidence for s in (*cited, *linked)], self._metrics
+        )
         answer = (
-            released.text
+            round_raw_figures(released.text, known, protected=protected)
             + _source_notes(cited)
             + (f"\n\n{TRUNCATED_NOTE}" if truncated else "")
         )
@@ -787,12 +795,19 @@ class InvestigationRuntime:
 
     async def _cited(
         self, context: ExecutionContext, run_id: str, cited: Sequence[str]
-    ) -> list[EvidenceStanding]:
-        if not cited:
-            return []
+    ) -> tuple[list[EvidenceStanding], list[EvidenceStanding]]:
+        """The cited records, and the usable records linked to the run."""
         session = await self._evidence.session_standing(context, run_ids=[run_id])
         wanted = set(cited)
-        return [s for s in session.standings if s.evidence.evidence_id in wanted]
+        linked = session.run_links.get(run_id, frozenset())
+        return (
+            [s for s in session.standings if s.evidence.evidence_id in wanted],
+            [
+                s
+                for s in session.standings
+                if s.usable and s.evidence.evidence_id in linked
+            ],
+        )
 
     async def _build_context(self, principal: Principal, run: Run) -> ModelContext:
         inputs = await self._inputs.for_run(run.run_id)

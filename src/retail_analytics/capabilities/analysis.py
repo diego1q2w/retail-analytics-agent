@@ -57,6 +57,7 @@ from retail_analytics.application.query_execution import (
     QuerySucceeded,
 )
 from retail_analytics.application.recovery import classify
+from retail_analytics.application.scope_values import ScopeValueCheck
 from retail_analytics.application.tools import (
     AuthorizationSpec,
     CapabilitySpec,
@@ -136,6 +137,7 @@ def analysis_capability(
     operations: ToolExecutionRepository,
     attempt_timeout: timedelta = timedelta(minutes=4),
     metrics: MetricCatalog | None = None,
+    scope_values: ScopeValueCheck | None = None,
 ) -> CapabilitySpec[ExecuteAnalysisInput, ExecuteAnalysisOutput]:
     catalog = metrics or default_catalog()
 
@@ -201,6 +203,13 @@ def analysis_capability(
                     return ToolFailed(code=code, message=rejected.message)
                 recovery = classify(outcome)
                 rows = len(outcome.result.rows)
+                note = _note(rows, recovery.complete)
+                if scope_values is not None and outcome.compiled.value_filters:
+                    outside = await scope_values.assess(
+                        outcome.compiled.value_filters, ctx.execution.product_scope
+                    )
+                    if outside is not None:
+                        note = f"{outside.note()} {note}"
                 return ToolSucceeded(
                     output=ExecuteAnalysisOutput(
                         evidence_id=recorded.evidence_id,
@@ -208,7 +217,7 @@ def analysis_capability(
                         row_count=rows,
                         complete=recovery.complete,
                         truncated=recovery.truncated,
-                        note=_note(rows, recovery.complete),
+                        note=note,
                     ),
                     empty=rows == 0,
                 )

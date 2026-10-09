@@ -79,6 +79,23 @@ class FieldRef:
 
 
 @dataclass(frozen=True, slots=True)
+class ValueFilter:
+    """A comparison of a logical string field with literal values, found by
+    the compiler in the model's query (``=``, ``IN``, ``LIKE``; the field may
+    be wrapped in ``LOWER``/``UPPER``/``TRIM``).
+
+    ``required`` means the comparison is a top-level ``AND`` condition of a
+    ``WHERE`` clause, so the rows that query level reads must match it.
+    ``pattern`` means ``values`` are ``LIKE`` patterns.
+    """
+
+    field: FieldRef
+    values: tuple[str, ...]
+    required: bool = False
+    pattern: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class OutputColumn:
     """A result column and the logical fields it is computed from.
 
@@ -135,6 +152,9 @@ class CompiledQuery:
     # Verified by the compiler's grain check; the result boundary withholds
     # demographic results unless this says AGGREGATE.
     demographic_use: DemographicUse = DemographicUse.NONE
+    # String-field comparisons with literal values (for scope messages; never
+    # an authorization input: the bound product scope is the boundary).
+    value_filters: tuple[ValueFilter, ...] = ()
 
     @property
     def analysis_parameters(self) -> tuple[QueryParameter, ...]:

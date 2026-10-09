@@ -88,6 +88,11 @@ from retail_analytics.application.result_privacy import (
     ResultPrivacyBoundary,
     ResultWithheld,
 )
+from retail_analytics.application.scope_values import (
+    OUTSIDE_SCOPE,
+    REFUSED_MESSAGE,
+    ScopeValueCheck,
+)
 from retail_analytics.application.telemetry import SpanRecorder, Stopwatch, telemetry
 from retail_analytics.application.warehouse_jobs import (
     JobAlreadyExists,
@@ -265,7 +270,12 @@ def is_compiler_rejection(execution: ToolExecution) -> bool:
 
 QUERY_DEADLINE = "query_deadline"
 RETRIES_EXHAUSTED = "retries_exhausted"
+# Operation detail of a query refused as outside the permitted scope: like a
+# compiler rejection, no warehouse job exists for it.
+SCOPE_REFUSAL = f"{COMPILER_REJECTION_PREFIX}{OUTSIDE_SCOPE}"
+
 _SPECIAL_MESSAGES = {
+    SCOPE_REFUSAL: REFUSED_MESSAGE,
     QUERY_DEADLINE: (
         "The query ran past its time limit and was stopped; narrow it or "
         "aggregate more at the source."
@@ -492,6 +502,7 @@ class QueryExecutionService:
         jobs: QueryJobRepository,
         admission: QueryAdmission | None = None,
         usage: QueryUsageRecorder | None = None,
+        scope_values: ScopeValueCheck | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         monotonic: Callable[[], float] = time.monotonic,
         clock: Callable[[], datetime] = _utc_now,
@@ -505,6 +516,7 @@ class QueryExecutionService:
         self._jobs = jobs
         self._admission = admission
         self._usage = usage
+        self._scope_values = scope_values
         self._sleep = sleep
         self._monotonic = monotonic
         self._clock = clock
@@ -675,10 +687,47 @@ class QueryExecutionService:
         if op.status.is_terminal:
             return await self._replay(op, job, compiled, fingerprint, attempt)
         if job is None:
+            refused = await self._outside_scope(compiled, authority)
+            if refused is not None:
+                await self._move(
+                    op,
+                    _S.FAILED,
+                    attempt.attempt,
+                    error_code=refused.code,
+                    detail=SCOPE_REFUSAL,
+                )
+                return refused
             return await self._new_submission(
                 op, attempt, authority, compiled, fingerprint, 1
             )
         return await self._reconcile(op, attempt, authority, compiled, fingerprint, job)
+
+    async def _outside_scope(
+        self, compiled: CompiledQuery, authority: QueryAuthority
+    ) -> QueryFailed | None:
+        """Refuse, before any job, a query that requires only brands outside
+        the permitted scope: it could only return a misleading zero."""
+        if self._scope_values is None or not compiled.value_filters:
+            return None
+        assessment = await self._scope_values.assess(
+            compiled.value_filters, authority.context.product_scope
+        )
+        if assessment is None or not assessment.refuse:
+            return None
+        telemetry().count(
+            Metric.COMPILER_REJECTIONS,
+            {
+                Label.ERROR_CODE: ToolErrorCode.ACCESS_DENIED.value.lower(),
+                Label.REASON: OUTSIDE_SCOPE,
+                Label.CAUSE_TYPE: "none",
+            },
+        )
+        return QueryFailed(
+            ToolErrorCode.ACCESS_DENIED,
+            OUTSIDE_SCOPE,
+            assessment.refusal(),
+            rejected=True,
+        )
 
     async def _operation(self, attempt: QueryAttempt) -> ToolExecution | None:
         op = await self._operations.get(attempt.operation_id)

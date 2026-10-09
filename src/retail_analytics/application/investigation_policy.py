@@ -29,6 +29,8 @@ from functools import lru_cache
 
 from retail_analytics.application.contracts import sql_dialect
 from retail_analytics.application.contracts.skills import SkillPrompt
+from retail_analytics.application.scope_values import NO_FIGURE_RULE
+from retail_analytics.domain.number_display import DISPLAY_RULE
 
 # Tool names are literals: the application layer does not import capabilities.
 # tests/unit/tools/test_instruction_tool_references.py checks them against the
@@ -286,6 +288,13 @@ def _analytical_rules(tools: frozenset[str], loadable: frozenset[str]) -> str:
         "If a result is incomplete or truncated, say so, do not compute "
         "totals from it and never call results complete; aggregate at the "
         "source or narrow instead.",
+        # Scope (T26-F8): rule text shared with the execute_analysis refusal.
+        "Your data covers only the user's permitted products, so an empty or "
+        "zero result alone proves neither zero sales nor lack of access. A "
+        "permitted brand or product with no sales may be reported as 0, "
+        "cited. When a tool says a requested brand or product is outside the "
+        "user's permitted scope: " + NO_FIGURE_RULE,
+        DISPLAY_RULE,
     ]
     if CONVERT_CURRENCY in tools:
         rules.append(

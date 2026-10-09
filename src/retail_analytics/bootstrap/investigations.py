@@ -36,6 +36,7 @@ from retail_analytics.application.ports.investigations import InvestigationSched
 from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.application.query_execution import QueryExecutionService
 from retail_analytics.application.retrieval import GoldenRetriever
+from retail_analytics.application.scope_values import ScopeValueCheck
 from retail_analytics.application.tool_focus import SkillActivations
 from retail_analytics.application.tool_runner import ToolRunner
 from retail_analytics.application.tools import CapabilityRegistry, CapabilitySpec
@@ -119,6 +120,7 @@ def build_capability_registry(
                 preferences=preferences,
                 budgets=budgets,
                 operations=persistence.tool_executions,
+                scope_values=ScopeValueCheck(persistence.brand_access),
             )
         )
     specs.append(fetch_evidence_capability(context.builder, principals=principals))
