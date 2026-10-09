@@ -138,6 +138,22 @@ product_entitlements = sa.Table(
     _ts("granted_at"),
 )
 
+executive_brands = sa.Table(
+    "executive_brands",
+    metadata,
+    sa.Column("executive_id", sa.Text, primary_key=True),
+    sa.Column("brand", sa.Text, primary_key=True),
+    _ts("assigned_at"),
+)
+
+catalog_product_brands = sa.Table(
+    "catalog_product_brands",
+    metadata,
+    sa.Column("product_id", sa.Text, primary_key=True),
+    sa.Column("brand", sa.Text, nullable=False),
+    _ts("synced_at"),
+)
+
 artifact_versions = sa.Table(
     "artifact_versions",
     metadata,

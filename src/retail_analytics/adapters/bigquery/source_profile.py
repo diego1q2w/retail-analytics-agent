@@ -138,7 +138,8 @@ FROM __D__.products""",
 FROM __D__.users""",
 }
 
-# Product scope of demo executive A (see the dev access provisioning).
+# Profiled product scope: the "Women" department range (1-15989) that demo
+# executive A held before brand-based access (T05-F2); kept as recorded.
 ANALYSIS_SCOPE_PRODUCTS = tuple(range(1, 15990))
 ANALYSIS_START = date(2026, 1, 1)
 ANALYSIS_END = date(2026, 10, 1)

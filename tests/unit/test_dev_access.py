@@ -65,9 +65,15 @@ def test_local_admin_has_every_role_and_an_explicit_full_product_grant() -> None
     assert LOCAL_ADMIN.product_ids == frozenset(str(i) for i in range(1, 29121))
     # Admin status grants no product data: the grant above is what does.
     assert Permission.ANALYSIS_READ not in permissions_for(frozenset({Role.ADMIN}))
-    restricted = [d.product_ids for d in DEMO_EXECUTIVES]
-    assert restricted[0].isdisjoint(restricted[1])
-    assert LOCAL_ADMIN.product_ids == restricted[0] | restricted[1]
+    assert not LOCAL_ADMIN.brands
+
+
+def test_restricted_demo_identities_are_brand_managers_without_explicit_grants() -> (
+    None
+):
+    a, b = DEMO_EXECUTIVES
+    assert a.brands and b.brands and a.brands.isdisjoint(b.brands)
+    assert not a.product_ids and not b.product_ids
 
 
 def test_restricted_demo_identities_are_unchanged_and_still_provisioned() -> None:
@@ -80,6 +86,7 @@ class _RecordingAdmin:
     def __init__(self) -> None:
         self.registered: list[ExecutiveRegistration] = []
         self.products: dict[str, frozenset[str]] = {}
+        self.brands: dict[str, frozenset[str]] = {}
 
     async def register_executive(
         self, registration: ExecutiveRegistration, *, actor_id: str
@@ -92,6 +99,14 @@ class _RecordingAdmin:
         self, executive_id: str, product_ids: frozenset[str], *, actor_id: str
     ) -> ExecutiveAccess:
         self.products[executive_id] = frozenset(product_ids)
+        roles = next(r.roles for r in self.registered if r.executive_id == executive_id)
+        return self._access(executive_id, roles)
+
+    async def replace_brands(
+        self, executive_id: str, brands: frozenset[str], *, actor_id: str
+    ) -> ExecutiveAccess:
+        assert actor_id == dev_access.DEV_ACTOR
+        self.brands[executive_id] = frozenset(brands)
         roles = next(r.roles for r in self.registered if r.executive_id == executive_id)
         return self._access(executive_id, roles)
 
@@ -108,11 +123,27 @@ class _RecordingAdmin:
 @pytest.mark.asyncio
 async def test_provisioning_registers_roles_and_grants_products_explicitly() -> None:
     admin = _RecordingAdmin()
-    await provision_demo_executives(admin, "issuer", LOCAL_EXECUTIVES)  # type: ignore[arg-type]
+    await provision_demo_executives(
+        admin,  # type: ignore[arg-type]
+        "issuer",
+        LOCAL_EXECUTIVES,
+        brands=admin,  # type: ignore[arg-type]
+    )
     first = admin.registered[0]
     assert first.executive_id == ADMIN
     assert first.roles == frozenset(Role)
     assert admin.products[ADMIN] == LOCAL_ADMIN.product_ids
+    assert admin.brands[ADMIN] == frozenset()
+    for demo in DEMO_EXECUTIVES:
+        # Older department ranges are cleared; brands are the scope.
+        assert admin.products[demo.executive_id] == frozenset()
+        assert admin.brands[demo.executive_id] == demo.brands
+
+
+@pytest.mark.asyncio
+async def test_brand_managers_cannot_be_provisioned_without_the_brand_store() -> None:
+    with pytest.raises(ValueError, match="brand access store"):
+        await provision_demo_executives(_RecordingAdmin(), "issuer")  # type: ignore[arg-type]
 
 
 def test_token_defaults_to_the_local_admin() -> None:

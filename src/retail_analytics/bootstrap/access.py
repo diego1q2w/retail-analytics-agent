@@ -15,8 +15,14 @@ from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.application.access_audit import AccessAuditService
 from retail_analytics.application.authentication import Authenticator
 from retail_analytics.application.authorization import AccessResolver, OwnershipGuard
+from retail_analytics.application.brand_access import BrandAccessService
 from retail_analytics.application.ports.authentication import TokenVerifier
-from retail_analytics.bootstrap.config import BackendSettings, ConfigError
+from retail_analytics.application.ports.brand_access import ProductBrandSource
+from retail_analytics.bootstrap.config import (
+    BackendSettings,
+    ConfigError,
+    RuntimeMode,
+)
 from retail_analytics.bootstrap.persistence import Persistence
 
 
@@ -55,3 +61,29 @@ def build_access_audit(
     return AccessAuditService(
         PostgresAccessChangeHistory(Database(persistence.engine)), resolver
     )
+
+
+def product_brand_source(settings: BackendSettings) -> ProductBrandSource | None:
+    """The trusted ``products.brand`` reader: BigQuery in live mode.
+
+    Fixture mode has no warehouse, so there is no source and the brand
+    catalog is not synced (brand-assigned managers then see no products).
+    """
+    if settings.mode is not RuntimeMode.LIVE or settings.bigquery_project is None:
+        return None
+    from retail_analytics.adapters.bigquery.product_brands import (
+        BigQueryProductBrands,
+    )
+    from retail_analytics.adapters.google_access import create_bigquery_client
+
+    project, location = settings.bigquery_project, settings.bigquery_location
+    return BigQueryProductBrands(
+        lambda: create_bigquery_client(project, location), location=location
+    )
+
+
+def build_brand_access(
+    persistence: Persistence, source: ProductBrandSource | None = None
+) -> BrandAccessService:
+    """Operator-only brand assignment and catalog sync (never a model tool)."""
+    return BrandAccessService(persistence.brand_access, persistence.executives, source)

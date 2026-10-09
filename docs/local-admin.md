@@ -16,13 +16,27 @@ is audited with actor `system:dev-access`):
 | Token name | Executive ID | Roles | Products |
 | --- | --- | --- | --- |
 | `local-admin` | `exec-local-admin` | executive, editor, reviewer, admin | 1–29120 (every product), granted explicitly |
-| `demo-a` | `exec-demo-a` | executive, editor | 1–15989 ("Women") |
-| `demo-b` | `exec-demo-b` | executive, reviewer | 15990–29120 ("Men") |
+| `demo-a` | `exec-demo-a` | executive, editor | brands "Calvin Klein", "Levi's" |
+| `demo-b` | `exec-demo-b` | executive, reviewer | brands "Carhartt", "Columbia" |
 
 You are `local-admin`. Roles grant operations; products are a separate
 explicit grant, so the admin role by itself gives no product data. The two
-restricted identities are for showing authorization: their data never
-overlaps, and neither can read the other's reports.
+restricted identities are brand managers for showing authorization: their
+brands resolve to products through the brand catalog that bootstrap syncs from
+BigQuery in live mode (`retail-analytics-dev-access sync-brands`; fixture mode
+has no catalog, so they see nothing). Their data never overlaps, and neither
+can read the other's reports.
+
+Change a manager's brands (exact catalog spelling; each change bumps the
+authorization version and is audited):
+
+```sh
+retail-analytics-dev-access brands list demo-a
+retail-analytics-dev-access brands assign demo-a "Tommy Hilfiger"
+retail-analytics-dev-access brands remove demo-a "Levi's"
+```
+
+See [brand-based access](brand-access.md) for the rules and open questions.
 
 ```sh
 (umask 077; retail-analytics-dev-access token demo-b > ~/.analytics-token-b)

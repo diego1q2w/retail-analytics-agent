@@ -393,6 +393,17 @@ def step_check_credentials(ctx: SetupContext) -> StepResult:
     return StepResult("done", "external credentials verified")
 
 
+def step_brand_catalog(ctx: SetupContext) -> StepResult:
+    if ctx.values.get("APP_MODE", "live") == "fixture":
+        return StepResult(
+            "skipped",
+            "Explicit fixture mode: no warehouse brand catalog; "
+            "demo brand managers see no products.",
+        )
+    ctx.python("-m", "retail_analytics.bootstrap.dev_access", "sync-brands", show=True)
+    return StepResult("done", "brand catalog synced; brand managers resolved")
+
+
 # The single ordered list of bootstrap steps. Later features append their own.
 STEPS: tuple[BootstrapStep, ...] = (
     BootstrapStep(
@@ -430,6 +441,11 @@ STEPS: tuple[BootstrapStep, ...] = (
         "check-credentials",
         "verify BigQuery and Gemini access when configured",
         step_check_credentials,
+    ),
+    BootstrapStep(
+        "brand-catalog",
+        "sync products.brand from the warehouse for the brand managers",
+        step_brand_catalog,
     ),
 )
 

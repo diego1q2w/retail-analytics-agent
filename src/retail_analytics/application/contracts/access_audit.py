@@ -16,6 +16,14 @@ PROFILE_CHANGED = "access.profile_changed"
 ENTITLEMENTS_CHANGED = "access.entitlements_changed"
 ACTIVATED = "access.activated"
 DEACTIVATED = "access.deactivated"
+# Assigned brands changed (details name the brands; brands are not personal).
+BRANDS_CHANGED = "access.brands_changed"
+# A catalog sync changed the products the executive's brands resolve to.
+BRAND_CATALOG_CHANGED = "access.brand_catalog_changed"
+
+# One event per catalog sync that changed the stored product-brand snapshot.
+CATALOG_SUBJECT_TYPE = "product_brand_catalog"
+BRAND_CATALOG_SYNCED = "access.brand_catalog_synced"
 
 ACCESS_ACTIONS = (
     REGISTERED,
@@ -24,6 +32,8 @@ ACCESS_ACTIONS = (
     ENTITLEMENTS_CHANGED,
     ACTIVATED,
     DEACTIVATED,
+    BRANDS_CHANGED,
+    BRAND_CATALOG_CHANGED,
 )
 
 MAX_HISTORY = 200
@@ -33,9 +43,9 @@ MAX_HISTORY = 200
 class AccessChange:
     """One recorded access mutation.
 
-    ``details`` holds the change kind, role names, product counts and
-    digests, and the old/new ``authorization_version``; never raw product
-    lists, labels, identity-provider subjects or tokens.
+    ``details`` holds the change kind, role names, assigned brand names,
+    product counts and digests, and the old/new ``authorization_version``;
+    never raw product lists, labels, identity-provider subjects or tokens.
     """
 
     audit_id: str

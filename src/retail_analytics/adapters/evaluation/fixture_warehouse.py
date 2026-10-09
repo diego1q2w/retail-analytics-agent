@@ -2,7 +2,8 @@
 """An offline warehouse for evaluation: the four source tables in DuckDB.
 
 ``FixtureWarehouse`` implements the same ports as the BigQuery adapters
-(``WarehouseQueryJobs`` and ``SourceMetadataProvider``), so an agent run
+(``WarehouseQueryJobs``, ``SourceMetadataProvider`` and
+``ProductBrandSource``), so an agent run
 against it goes through the identical application path: discovery, the
 restricted compiler with trusted product binding and keyed references,
 durable job records, the result privacy boundary and evidence. Compiled
@@ -31,6 +32,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from retail_analytics.application.access_check import PUBLIC_DATASET
+from retail_analytics.application.contracts.brand_access import ProductBrandCatalog
 from retail_analytics.application.contracts.result_privacy import QueryRows
 from retail_analytics.application.contracts.warehouse_jobs import (
     JobRef,
@@ -41,6 +43,7 @@ from retail_analytics.application.contracts.warehouse_jobs import (
 )
 from retail_analytics.application.discovery import SourceMetadataUnavailable
 from retail_analytics.application.warehouse_jobs import JobAlreadyExists
+from retail_analytics.domain.access import branded_products
 from retail_analytics.domain.catalog import SourceColumn, SourceSchema, SourceType
 
 PROJECT, DATASET = PUBLIC_DATASET.split(".", 1)
@@ -141,6 +144,19 @@ class FixtureWarehouse:
             f"SELECT id, name FROM {_table('products')} WHERE name IS NOT NULL"
         ).fetchall()
         return [(str(i), str(n)) for i, n in rows]
+
+    # ProductBrandSource
+
+    async def read_product_brands(self) -> ProductBrandCatalog:
+        """``products.brand`` of this data (the frozen extract has no brands,
+        so it yields an empty catalog)."""
+        rows = self._db.execute(
+            f"SELECT CAST(id AS VARCHAR), brand FROM {_table('products')}"
+        ).fetchall()
+        brands, skipped = branded_products((str(i), b) for i, b in rows)
+        return ProductBrandCatalog(
+            brands=brands, source_ref=self.data_ref, products_without_brand=skipped
+        )
 
     # SourceMetadataProvider
 

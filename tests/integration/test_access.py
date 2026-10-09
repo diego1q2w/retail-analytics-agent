@@ -121,27 +121,41 @@ async def _owned_records(db: Persistence, executive_id: str) -> tuple[str, str, 
 async def test_demo_provisioning_is_disjoint_and_idempotent(
     stack: Stack, db: Persistence
 ) -> None:
-    first = await provision_demo_executives(db.access_admin, ISSUER)
-    again = await provision_demo_executives(db.access_admin, ISSUER)
+    first = await provision_demo_executives(
+        db.access_admin, ISSUER, brands=db.brand_access
+    )
+    again = await provision_demo_executives(
+        db.access_admin, ISSUER, brands=db.brand_access
+    )
     assert [a.executive_id for a in first] == ["exec-demo-a", "exec-demo-b"]
     assert first == again  # a rerun changes nothing, not even the version
     a, b = first
-    assert len(a.product_ids) == 15989
-    assert len(b.product_ids) == 13131
-    assert not a.product_ids & b.product_ids
+    # Brand managers: no explicit grants; nothing until the catalog is synced.
+    assert not a.product_ids and not b.product_ids
+    assert await db.brand_access.brands_of(a.executive_id) == {
+        "Calvin Klein",
+        "Levi's",
+    }
+    assert await db.brand_access.brands_of(b.executive_id) == {
+        "Carhartt",
+        "Columbia",
+    }
     assert Permission.PERSONA_EDIT in a.permissions
     assert Permission.KNOWLEDGE_REVIEW in b.permissions
     assert all(Permission.ACCESS_ADMIN not in x.permissions for x in first)
     with psycopg.connect(stack.app_dsn) as conn:
-        row = conn.execute("select count(*) from product_entitlements").fetchone()
+        row = conn.execute(
+            "select count(*) from product_entitlements where executive_id in "
+            "('exec-demo-a', 'exec-demo-b')"
+        ).fetchone()
     assert row is not None
-    assert row[0] >= 15989 + 13131
+    assert row[0] == 0
 
 
 async def test_demo_token_authenticates_and_bad_tokens_do_not(
     db: Persistence, services: AccessServices
 ) -> None:
-    await provision_demo_executives(db.access_admin, ISSUER)
+    await provision_demo_executives(db.access_admin, ISSUER, brands=db.brand_access)
     demo = DEMO_EXECUTIVES[0]
     scopes = {p.value for p in Permission}
     token = _authority().issue(demo.subject, scopes, timedelta(minutes=5))
@@ -310,7 +324,10 @@ async def test_dev_command_provisions_and_issues_a_working_token(
         runner.invoke, dev_access.main, ["provision"], env=env
     )
     assert provisioned.exit_code == 0, provisioned.output
-    assert "exec-demo-b: roles=executive,reviewer products=13131" in provisioned.output
+    assert (
+        "exec-demo-b: roles=executive,reviewer products=0 brands=Carhartt,Columbia"
+        in provisioned.output
+    )
     assert stack.app_password not in provisioned.output
 
     issued = await asyncio.to_thread(

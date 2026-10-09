@@ -125,10 +125,10 @@ def test_dev_access_commands_need_explicit_configuration() -> None:
     assert unknown.exit_code == 2
 
 
-def test_demo_executives_have_disjoint_products_and_no_admin() -> None:
+def test_demo_executives_have_disjoint_brands_and_no_admin() -> None:
     a, b = dev_access.DEMO_EXECUTIVES
-    assert a.product_ids and b.product_ids
-    assert not a.product_ids & b.product_ids
+    assert a.brands and b.brands
+    assert not a.brands & b.brands
     assert all(Role.ADMIN not in demo.roles for demo in (a, b))
 
 

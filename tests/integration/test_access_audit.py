@@ -239,16 +239,16 @@ async def test_history_is_admin_only_and_newest_first(
 async def test_dev_provisioning_is_audited_and_rerun_is_silent(
     stack: Stack, db: Persistence
 ) -> None:
-    await provision_demo_executives(db.access_admin, ISSUER)
+    await provision_demo_executives(db.access_admin, ISSUER, brands=db.brand_access)
     first = {d.executive_id: _rows(stack, d.executive_id) for d in DEMO_EXECUTIVES}
     for demo in DEMO_EXECUTIVES:
         rows = first[demo.executive_id]
         assert [r[0] for r in rows][:2] == [
             "access.executive_registered",
-            "access.entitlements_changed",
+            "access.brands_changed",
         ]
         assert {r[1] for r in rows} == {"system:dev-access"}
-    await provision_demo_executives(db.access_admin, ISSUER)
+    await provision_demo_executives(db.access_admin, ISSUER, brands=db.brand_access)
     assert {d.executive_id: _rows(stack, d.executive_id) for d in DEMO_EXECUTIVES} == (
         first
     )

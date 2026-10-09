@@ -44,7 +44,13 @@ def test_seeding_needs_the_demo_executives_then_is_idempotent(
 
     persistence = build_persistence(stack.app_url)
     try:
-        asyncio.run(provision_demo_executives(persistence.access_admin, ISSUER))
+        asyncio.run(
+            provision_demo_executives(
+                persistence.access_admin,
+                ISSUER,
+                brands=persistence.brand_access,
+            )
+        )
     finally:
         persistence.close()
 

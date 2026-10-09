@@ -29,6 +29,7 @@ from retail_analytics.application.ports.authorization import (
     AccessAdministration,
     ExecutiveDirectory,
 )
+from retail_analytics.application.ports.brand_access import BrandAccessStore
 from retail_analytics.application.ports.budgets import RunBudgetStore
 from retail_analytics.application.ports.persistence import (
     QueryJobRepository,
@@ -51,6 +52,8 @@ class Persistence:
     run_events: RunEventStore
     executives: ExecutiveDirectory
     access_admin: AccessAdministration
+    # Brand assignments and the synced product-brand snapshot (T05-F2).
+    brand_access: BrandAccessStore
     preferences: PreferenceStore
     # Evidence records, pins and the preference FindingInvalidator in one store.
     evidence: PostgresEvidenceStore
@@ -76,6 +79,7 @@ def build_persistence(
         run_events=PostgresRunEventStore(db),
         executives=executives,
         access_admin=executives,
+        brand_access=executives,
         preferences=PostgresPreferenceStore(db),
         evidence=PostgresEvidenceStore(db),
         budgets=PostgresRunBudgetStore(db),
