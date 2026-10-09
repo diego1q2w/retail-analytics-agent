@@ -10,16 +10,21 @@ user memory, Golden retrieval, persona management and currency conversion as
 extensions. The system-level learning loop is designed here but deferred.
 
 Evaluation status. Deterministic test suites run in the repository's
-checks. The retrieval benchmark is measured. These evaluations are
-**pending**, and no outcome is claimed for them yet:
+checks. The retrieval benchmark is measured. Further results:
 
-- a compact real-model evaluation with independently checked numbers and a
-  human review of generated reports;
-- a focused security verification pass over privacy, product authorization,
-  malicious input and deletion confirmation;
-- a recovery check and a hands-on human CLI walkthrough.
+- **Measured:** a compact real-model evaluation of ten conversations with
+  independently checked numbers
+  ([evaluation/real-model](../../evaluation/real-model/README.md)).
+- **Pending:** the human review of its generated reports
+  ([human review packet](../../evaluation/real-model/human-review/README.md)).
+- **Done:** a focused security verification pass over privacy, product
+  authorization, malicious input and deletion confirmation; all four release
+  gates are met ([security verification](../security-verification.md)).
+- **Tests done, walkthrough pending:** recovery tests run in the repository
+  checks; the hands-on human CLI walkthrough has not been run by a person
+  yet ([recovery walkthrough](../recovery-walkthrough.md)).
 
-Links to their results will be added when they are published.
+The release audit is in [release verification](../release/verification.md).
 
 ## 1. Hybrid intelligence (Golden Knowledge)
 
@@ -83,9 +88,9 @@ declined, 3 of 28 false declines, and 0 access violations in every variant.
   aggregation, including joins, CTEs and subqueries. Orders count only
   permitted items, and customers are reached only through permitted items.
   An empty scope gets no data.
-- **No PII in output.** The model never sees names, e-mail addresses,
-  street-level addresses, fine location, raw customer, order or item keys,
-  or exact ages. Customers, orders and items appear as per-executive opaque
+- **No PII in output.** Query results never give the model names, e-mail
+  addresses, street-level addresses, fine location, raw customer, order or
+  item keys, or exact ages. Customers, orders and items appear as per-executive opaque
   references (HMAC computed inside BigQuery), and ages as fixed 5-year bands.
   The result boundary withholds any result whose shape or lineage does not
   match the compiled query. The output privacy gate checks every answer,
@@ -101,15 +106,20 @@ declined, 3 of 28 false declines, and 0 access violations in every variant.
 **Status.** Implemented. The SQL compiler tests include about 200
 adversarial queries and property tests. Privacy tests run compiled queries
 over a DuckDB oracle. Context tests cover injection through user text, tool
-results and history. The focused security verification pass is pending.
+results and history. The focused security verification pass is done; all
+four release gates are met ([security verification](../security-verification.md)).
 
 **Limits.**
 
 - This is pseudonymization, not anonymization. Demographic combinations
   (country, state, age band) are allowed, with no minimum group size, and can
   single people out.
-- Names in free text are found by context cues and by exact match against
-  names the user typed. There is no general name detector.
+- Query results never contain person names: the catalog marks them as
+  direct identifiers, the SQL compiler refuses them and the result boundary
+  re-checks. The name detector is only a cue-based second line of defence
+  for text people type (chat messages, Golden examples). A name typed
+  without a cue is not recorded as a protected term, so a model echo of it
+  is not masked. There is no general name detector.
 - A figure is blocked when it matches only evidence the executive lost
   access to. Small integers and years are not compared, and derived figures
   such as percentages cannot be recognized.
@@ -170,8 +180,10 @@ UI. Copies in backups are not erased (see
   zone) invalidates the evidence that depends on it. Presentation changes do
   not. Preferences never override authorization, privacy or source facts.
 
-**Status.** Implemented and tested. Its quality in real conversations is
-part of the pending real-model evaluation.
+**Status.** Implemented and tested. The
+[real-model evaluation](../../evaluation/real-model/README.md) did not
+includes one scoped definition-correction conversation. Preference memory
+across sessions was not measured with a real model.
 
 **Limits.** Charts are not a preference kind yet, because there is no chart
 capability (see [extensions](extensions.md)).
@@ -245,8 +257,9 @@ vocabulary.
 providers. Docker tests kill workers after external effects. The local
 backend tests include a SIGKILL during a warehouse job. A live provider test
 covers a real Gemini-to-GPT fallback; it is reported as skipped, not passed,
-when the free quota is spent. The recovery check and human walkthrough are
-pending.
+when the free quota is spent. The recovery tests run in the repository
+checks. The human CLI walkthrough is written but has not been run by a
+person yet ([recovery walkthrough](../recovery-walkthrough.md)).
 
 **Limits.**
 
@@ -280,10 +293,11 @@ are kept apart.
 recommended actions. Trusted code adds the data basis for each finding:
 definitions, period, date field and truncation. Whether a report answers the
 user's intent is judged by human review of generated reports. That review is
-part of the pending evaluation. Calibrating model judges against human
+pending ([human review packet](../../evaluation/real-model/human-review/README.md)). Calibrating model judges against human
 controls is optional and deferred.
 
-**UX.** UX is assessed in a human CLI walkthrough (pending), plus metrics:
+**UX.** UX is assessed in a human CLI walkthrough (written, not yet run by a
+person; [recovery walkthrough](../recovery-walkthrough.md)), plus metrics:
 time to first progress, time to answer, and completed, partial and failed
 runs.
 
@@ -294,7 +308,11 @@ runs.
 - Expected values were reproduced by two routes, but no named human reviewer
   has signed them off.
 - Retrieval is measured.
-- The end-to-end real-model results are pending.
+- End-to-end real-model results for ten conversations are measured
+  ([evaluation/real-model](../../evaluation/real-model/README.md)): 41/41
+  expected numbers in the released evidence, 40/41 stated in the answer or
+  report, 16/16 expected labels. Judge-scored dimensions stay unscored and
+  the human report review is pending.
 
 ## 7. Observability (prototype requirement)
 

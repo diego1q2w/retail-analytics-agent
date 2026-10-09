@@ -10,14 +10,33 @@ a passing check.
 | System-level learning loop | Versioned, reviewed Golden examples; persona rollback; versioned retrieval configuration; evaluation runner | Automatic candidate generation from interactions, evaluation-gated promotion and monitored rollback (design in [requirements](requirements.md#4b-system-level-planned-implementation-deferred)) |
 | Report-title disclosure after access narrows | Report reads, exports, listings, search and deletion previews withhold the title once the owner's current products no longer cover the report | Not every surface that recorded a title applies that rule. For example, provenance stored when a report's evidence was linked into another conversation keeps the title it had then. After access narrows, a title can still be shown there. **Complete post-revocation protection is not claimed.** Deferred for the local demo. |
 | Multi-period evidence metadata | Evidence records one compiler-derived period, and only when every dated read uses the same window | A query that compares several periods has no single recorded period and no explicit multi-period marker. Reports and answers must name the compared periods themselves. |
-| Two-model judge calibration | Deterministic checks; human review of reports (pending) | Calibrating two model judges against human-reviewed controls, and repeat-consistency checks. Judge-scored results stay blocked unless a judge actually runs. |
+| Two-model judge calibration | Deterministic checks; a human report review packet (review pending) | Calibrating two model judges against human-reviewed controls, and repeat-consistency checks. Judge-scored results stay blocked unless a judge actually runs. |
 | Exhaustive fault matrix | Representative fault-injection tests for queries, providers, workers and the local process | Every combination of faults |
 
-## Pending results
+## Evaluation and verification results
 
-The compact real-model evaluation, the human report review, the focused
-security verification and the human CLI walkthrough are pending. No outcome
-is claimed for them until their results are published in the repository.
+- **Real-model evaluation (measured).** Ten conversations on one day, on
+  the local backend, over the frozen extract and the held-out fixture:
+  [evaluation/real-model](../../evaluation/real-model/README.md). Gemini
+  answered all ten. Judge-scored dimensions stay unscored. It is a
+  measurement of ten conversations, not a quality threshold.
+- **Human report review (pending).** The rubric and verdict sheet are in
+  [evaluation/real-model/human-review](../../evaluation/real-model/human-review/README.md).
+  No person has reviewed the reports yet.
+- **Security verification (done).** All four release gates are met:
+  [security verification](../security-verification.md).
+- **Recovery (tests done; human walkthrough pending).** The recovery tests
+  run in the repository checks. The hands-on CLI walkthrough is written but
+  has not been run by a person yet:
+  [recovery walkthrough](../recovery-walkthrough.md).
+- **Release audit.** What was checked before release, and what remains
+  open: [release verification](../release/verification.md).
+
+Live agent runs before the Gemini schema fix described in the
+[real-model evaluation](../../evaluation/real-model/README.md#gemini-fix-found-by-this-evaluation)
+were answered by the GPT backup, not by Gemini, even where they were taken
+to be Gemini runs. Only the real-model evaluation above is a
+verified Gemini result.
 
 ## Implemented behaviour with known limits
 
@@ -64,8 +83,9 @@ is claimed for them until their results are published in the repository.
     reviewer has signed them off.
   - The public dataset is regenerated regularly, so live runs are smoke
     tests unless a drift report shows no drift.
-  - Whether the sanitized frozen extract may be redistributed is reviewed
-    before any public release.
+  - Whether the sanitized frozen extract may be redistributed has not been
+    confirmed. Public release is blocked until it is (see
+    [release verification](../release/verification.md)).
 - **Persona preview.** The offline renderer shows the layout and the
   instruction block, without a model applying the style.
 - **Progress events.** Model retries and provider switches are visible in

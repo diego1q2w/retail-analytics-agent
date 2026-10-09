@@ -4,9 +4,14 @@ A conversational analytics assistant for retail executives. It investigates busi
 
 ## Project status
 
-The application uses a CLI connected to an HTTP backend, Pydantic AI for the agent, PostgreSQL for application state, and either in-process execution inside the API (the local default) or Temporal for durable execution (opt-in). BigQuery provides read-only retail analysis; model and database credentials stay on the backend.
+Working prototype for local review. The CLI talks to an HTTP backend that runs an adaptive Pydantic AI agent over BigQuery (live mode, the default) or offline fixtures (opt-in wiring check), with authentication, per-user product access, privacy controls, saved reports, confirmed deletion, recovery and telemetry. Investigations run inside the API by default; Temporal is opt-in. Nothing is deployed: the production design is in [docs/architecture](docs/architecture/README.md).
 
-See the architecture and evaluation documentation for verified behavior and remaining limitations.
+Evidence and open items:
+
+- Real-model evaluation of ten conversations: [evaluation/real-model](evaluation/real-model/README.md) (measured; the human report review is pending).
+- Security verification: [docs/security-verification.md](docs/security-verification.md) (all four release gates met).
+- Recovery: [docs/recovery-walkthrough.md](docs/recovery-walkthrough.md) (tests pass; the human CLI walkthrough has not been run yet).
+- Deferred work and known limits: [known limitations](docs/architecture/known-limitations.md). Release audit and open items: [release verification](docs/release/verification.md).
 
 Do not commit credentials, raw query results or private conversation data.
 
@@ -70,7 +75,7 @@ More: [CLI guide](docs/cli.md) (commands, resuming with `analytics chat --resume
 
 **Costs and limits.** Query jobs run in your project; a project without billing uses the BigQuery sandbox. Each query is capped by `QUERY_MAX_BYTES` (1 GiB) and each investigation by `RUN_MAX_BYTES`, `RUN_MAX_QUERIES`, `RUN_MAX_PROVIDER_REQUESTS` and `RUN_MAX_TOKENS` (see `.env.example`). Gemini and OpenAI rate limits and free allowances depend on your key and tier and change over time: check the providers' current pricing and rate-limit pages. This project does not promise any free usage.
 
-**Evaluation.** The offline evaluation runner and its scenario sets are described under [Evaluation runner](#evaluation-runner) and in `evaluation/`. Requirement-by-requirement evidence and pending results: [docs/architecture/requirements.md](docs/architecture/requirements.md) and [known limitations](docs/architecture/known-limitations.md).
+**Evaluation.** The offline evaluation runner and its scenario sets are described under [Evaluation runner](#evaluation-runner) and in `evaluation/`. Requirement-by-requirement evidence and results: [docs/architecture/requirements.md](docs/architecture/requirements.md) and [known limitations](docs/architecture/known-limitations.md).
 
 ### What bootstrap and dev.sh do
 
