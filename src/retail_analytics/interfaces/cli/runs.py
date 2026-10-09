@@ -13,7 +13,7 @@ from retail_analytics.interfaces.cli.follow import (
     follow_run,
 )
 from retail_analytics.interfaces.cli.render import (
-    format_event,
+    EventFormatter,
     format_question,
     format_run_result,
 )
@@ -78,6 +78,7 @@ def drive_run(
     """Follow ``run_id``; answer questions from ``answers`` then ``ask``;
     stop when the run ends or a question has no answer available."""
     pending = list(answers)
+    format_event = EventFormatter()
     given = 0
     last_id = after
     while True:

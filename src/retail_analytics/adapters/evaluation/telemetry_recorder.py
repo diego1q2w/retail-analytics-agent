@@ -3,16 +3,18 @@
 The real-model evaluation installs it (``application.telemetry.use_telemetry``)
 to learn which provider actually answered each run: the ``model.attempt`` spans
 (provider, model, outcome, fallback origin) and the run's root span
-(``answered_by``). It receives only what the telemetry facade already
-sanitized; metrics are ignored. Bounded: older spans are dropped past
-``max_spans``.
+(``answered_by``). It also keeps the captured content of the compiler's
+spans (``query.compile``: the model's SQL and the compiled or rejected
+outcome), so every query attempt can be recorded, including rejected ones. It
+receives only what the telemetry facade already sanitized; metrics are
+ignored. Bounded: older spans are dropped past ``max_spans``.
 """
 
 from __future__ import annotations
 
 import threading
 from collections import deque
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -22,12 +24,15 @@ from retail_analytics.application.contracts.telemetry import (
     CapturedPayload,
     Label,
     Metric,
+    Span,
 )
 
 
 class _Handle:
-    def __init__(self, attributes: Attributes) -> None:
+    def __init__(self, attributes: Attributes, *, keep_content: bool) -> None:
         self.attributes = dict(attributes)
+        self.content: dict[str, object] = {}
+        self._keep_content = keep_content
 
     def set(self, attributes: Attributes) -> None:
         self.attributes.update(attributes)
@@ -39,16 +44,22 @@ class _Handle:
         self.attributes["error_type"] = error_type
 
     def payload(self, payload: CapturedPayload) -> None:
-        # The evaluation reads attribution only; content is not kept.
-        return None
+        if self._keep_content:
+            self.content[payload.side.value] = payload.content
 
 
 class RecordingTelemetrySink:
     """``TelemetrySink`` that records finished spans (thread-safe)."""
 
-    def __init__(self, max_spans: int = 100_000) -> None:
+    def __init__(
+        self,
+        max_spans: int = 100_000,
+        *,
+        keep_content: Collection[str] = (Span.COMPILE.value,),
+    ) -> None:
         self._spans: deque[RecordedSpan] = deque(maxlen=max_spans)
         self._lock = threading.Lock()
+        self._keep_content = frozenset(keep_content)
 
     @contextmanager
     def span(
@@ -60,12 +71,14 @@ class RecordingTelemetrySink:
         start: datetime | None = None,
         root: bool = False,
     ) -> Iterator[_Handle]:
-        handle = _Handle(attributes)
+        handle = _Handle(attributes, keep_content=name in self._keep_content)
         try:
             yield handle
         finally:
             with self._lock:
-                self._spans.append(RecordedSpan(name, run_id, handle.attributes))
+                self._spans.append(
+                    RecordedSpan(name, run_id, handle.attributes, handle.content)
+                )
 
     def count(self, metric: Metric, value: float, labels: dict[Label, str]) -> None:
         return None

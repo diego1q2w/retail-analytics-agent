@@ -37,6 +37,7 @@ from tests.integration.test_agent_runtime import (
     test_fresh_evidence_answers_follow_up_without_query_and_no_example_path,
     test_heldout_manifest_with_scripted_plans,
     test_realdata_manifest_from_frozen_extract,
+    test_rejected_query_is_corrected_and_shown_as_ongoing_progress,
     test_retrieved_instructions_cannot_approve_deletion_or_change_authority,
     test_user_steering_redirects_the_active_analysis,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "test_fresh_evidence_answers_follow_up_without_query_and_no_example_path",
     "test_heldout_manifest_with_scripted_plans",
     "test_realdata_manifest_from_frozen_extract",
+    "test_rejected_query_is_corrected_and_shown_as_ongoing_progress",
     "test_retrieved_instructions_cannot_approve_deletion_or_change_authority",
     "test_user_steering_redirects_the_active_analysis",
 ]

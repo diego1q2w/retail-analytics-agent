@@ -339,7 +339,8 @@ that an answer is right.
 
 **Recorded per run:** run/session/executive IDs, code revision, provider and
 model of every model attempt (failed ones and fallbacks included), input and
-output tokens, successful and failed queries with their SQL, tool sequence,
+output tokens, every query attempt (succeeded, rejected before the warehouse,
+or failed) with its SQL, tool sequence,
 context restarts and their causes, admission decision, active and wall-clock
 seconds, and the targets met. Every repetition is reported, failures
 included. Results contain no thought text or secrets. The data is the
@@ -461,6 +462,44 @@ What the transcripts show:
 One run per complex scenario and three per scalar scenario: these are
 observations, not guarantees. Latency fell in every matched turn, but no
 latency threshold is derived from it.
+
+### Restricted-join guidance check (T39-F5)
+
+The refused first queries above were all one shape: a CTE that found the
+latest year (or latest date) joined to `sales_items`. The compiler only joins
+approved relations on declared joins, so it refused them (`unsupported_join`)
+and the model rewrote the query. The fix is guidance only (the grammar was not
+widened): the `execute_analysis` description, the agent instructions and the
+compiler's correction message now state the join rule and show one
+compiler-tested example that filters the month and matches the year with a
+scalar subquery.
+
+The records now keep every `execute_analysis` attempt. An attempt is
+`rejected` when the compiler or input validation refused it before any
+warehouse job; it is counted apart from successful and failed warehouse
+queries (`queries ok/rejected/failed`), with the SQL the model wrote and the
+reason code. Targets and scoring are unchanged.
+
+Bounded rerun, code `b318902` (this task's commit before these results were added; same code), 2026-10-09 12:40-12:43 UTC, the same suite
+scenarios `scalar-ordinary` and `reuse-evidence` (3 repetitions each), Gemini
+`gemini-3.8-flash` on every request, 84,947 tokens and 15 attempts over 9
+runs. Results: [`efficiency/results/t39f5-candidate.md`](efficiency/results/t39f5-candidate.md),
+[JSON](efficiency/results/t39f5-candidate.json),
+[transcripts](efficiency/results/transcripts/t39f5-candidate.md).
+
+| turn | first query accepted | queries ok/rejected | requests | input tokens (median) | active s (median) |
+| --- | --- | --- | --- | --- | --- |
+| scalar-ordinary | 0/3 -> 3/3 | 1/1 per rep -> 1/0 | 3 -> 2 | 13,915 -> 9,049 | 23 -> 14 |
+| reuse-evidence, cold | 3/3 -> 3/3 | 3 (2-4)/0 -> 1/0 | 4 -> 2 | 18,681 -> 9,318 | 27 -> 16 |
+| reuse-evidence, reuse | no query | 0 -> 0 | 1 -> 1 | 4,505 -> 4,850 | 12 -> 15 |
+
+Every ordinary answer stated 25,105.97 for September 2025 (2025-09-01 to
+2025-09-30), completed item sales, source currency not verified, with the
+documented scalar-subquery pattern as the first and only query. The monthly
+turns answered all three months correctly in one query, so this rerun has no
+extra queries to classify; the earlier run's extra queries cannot be
+classified after the fact. Nine runs on one day: observations, not a
+guarantee that the model always writes supported SQL.
 
 ### Live smoke: HTTP API and real BigQuery
 

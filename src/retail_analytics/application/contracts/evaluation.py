@@ -142,6 +142,9 @@ class RecordedSpan:
     name: str
     run_id: str | None
     attributes: Mapping[str, SpanValue]
+    # Sanitized captured content by side ("inputs"/"outputs"), kept only for
+    # the spans a recorder is asked to keep (for example the compiler's).
+    content: Mapping[str, object] = field(default_factory=dict)
 
 
 # Real-model evaluation results (T37). Identifiers, codes, numbers and the
@@ -302,8 +305,14 @@ class ModelAttemptRecord(ContractModel):
 
 
 class QueryRecord(ContractModel):
-    """One analysis query of a run: outcome and, when it produced evidence,
-    the model's logical SQL (pseudonymized evaluation data only)."""
+    """One ``execute_analysis`` attempt of a run: outcome and, when it
+    produced evidence, the model's logical SQL (pseudonymized evaluation data
+    only).
+
+    ``outcome`` is ``succeeded`` (the warehouse query ran), ``rejected``
+    (refused before reaching the warehouse: compiler or input validation;
+    never counted as a warehouse query) or the failure/status otherwise.
+    """
 
     outcome: str
     error_code: str | None = None
@@ -312,6 +321,17 @@ class QueryRecord(ContractModel):
     sql: str | None = None
     # Bound query parameters (name -> value as text).
     parameters: Mapping[str, str] = {}
+    # A warehouse job was registered for the attempt (None: not recorded).
+    executed: bool | None = None
+    # Durable reason code (e.g. ``compile_unsupported_join``), if any.
+    reason: str | None = None
+    # What the tool call returned to the model (``succeeded``, ``failed`` ...);
+    # can differ from ``outcome`` when a query ran but stored no evidence.
+    tool_result: str | None = None
+    # The SQL as the model wrote it (sanitized telemetry capture), recorded
+    # when the attempt produced no evidence.
+    attempted_sql: str | None = None
+    attempted_parameters: Mapping[str, str] = {}
 
 
 class TurnResult(ContractModel):
@@ -321,7 +341,10 @@ class TurnResult(ContractModel):
     run_status: str
     tools: tuple[str, ...] = ()
     queries_succeeded: int = 0
+    # Executed (or unconfirmed) queries that failed; rejected attempts apart.
     queries_failed: int = 0
+    # Attempts refused before reaching the warehouse (compiler, input).
+    queries_rejected: int = 0
     queries: tuple[QueryRecord, ...] = ()
     queries_before_question: int | None = None
     asked_clarification: bool = False

@@ -64,6 +64,7 @@ from retail_analytics.application.contracts.query_compiler import (
     QueryParameter,
     ScalarValue,
 )
+from retail_analytics.application.contracts.sql_dialect import DERIVED_JOIN_FEEDBACK
 from retail_analytics.application.query_compiler import (
     DEFAULT_MAXIMUM_BYTES_BILLED,
     QueryRejected,
@@ -570,9 +571,7 @@ def _check_joins(scope: Scope, catalog: CatalogView) -> None:
         _leaf(scope, base.alias_or_name) if isinstance(base, exp.Table) else None
     )
     if base_relation is None:
-        raise _join_error(
-            "Joins must start from a logical relation, not a derived query"
-        )
+        raise _join_error(DERIVED_JOIN_FEEDBACK)
     present = {base.alias_or_name: base_relation}
     for join in joins:
         target = join.this
@@ -590,7 +589,7 @@ def _check_joins(scope: Scope, catalog: CatalogView) -> None:
             else None
         )
         if relation is None:
-            raise _join_error("Joins to derived queries are not supported")
+            raise _join_error(DERIVED_JOIN_FEEDBACK)
         if relation in present.values():
             raise _join_error("Each relation can be joined once per query level")
         _check_join_condition(

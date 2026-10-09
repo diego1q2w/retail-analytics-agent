@@ -26,6 +26,8 @@ import hashlib
 from collections.abc import Collection
 from functools import lru_cache
 
+from retail_analytics.application.contracts import sql_dialect
+
 # Tool names are literals: the application layer does not import capabilities.
 # tests/unit/tools/test_instruction_tool_references.py checks them against the
 # real registry for every role combination.
@@ -198,9 +200,10 @@ def _investigate_step(tools: frozenset[str]) -> str:
         parts.append(
             f"Investigate with bounded queries ({query_tools}); aggregate in "
             "SQL and narrow when a limit is hit. The SQL is a restricted "
-            "dialect: use SAFE_DIVIDE(a, b) instead of /, no window functions "
-            "(rank with ORDER BY ... LIMIT in a CTE or scalar subquery), no "
-            "SELECT *, and alias tables and qualify columns when joining."
+            f"dialect ({EXECUTE_ANALYSIS} lists it): use SAFE_DIVIDE(a, b) "
+            "instead of /, no window functions (rank with ORDER BY ... LIMIT "
+            "in a CTE or scalar subquery), no SELECT *, and alias tables and "
+            f"qualify columns. {sql_dialect.SQL_JOIN_RULE}"
         )
     elif query_tools:
         parts.append(
@@ -285,8 +288,10 @@ def _answer_shapes(tools: frozenset[str]) -> list[str]:
         return []
     shapes = [
         '"What was revenue in September?": one query if no current evidence '
-        "answers it (one query can find the latest September in the data and "
-        "total it); then one to three sentences: the figure, the period you "
+        "answers it (filter the month and match the year to a scalar "
+        "subquery for the latest year with that month, as in the "
+        f"{EXECUTE_ANALYSIS} example); then one to three sentences: the "
+        "figure, the period you "
         "took (its dates and whether it is partial), the definition and the "
         "evidence id. No daily or status breakdowns, history or actions.",
         '"And August?" after that: the same metric and definition for '

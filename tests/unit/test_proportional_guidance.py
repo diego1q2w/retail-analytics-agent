@@ -221,3 +221,15 @@ async def test_few_requests_left_asks_for_a_conclusion() -> None:
 
 def test_unknown_budget_stays_unknown() -> None:
     assert _budget_line(None) == "<budget>unknown</budget>"
+
+
+def test_policy_states_the_join_rule_and_points_at_the_documented_example() -> None:
+    from retail_analytics.application.contracts.sql_dialect import SQL_JOIN_RULE
+
+    text = policy.render_investigation_policy(ALL_TOOLS)
+    assert SQL_JOIN_RULE in text
+    assert "scalar subquery for the latest year" in text
+    assert "can find the latest September" not in text
+    assert SQL_JOIN_RULE not in policy.render_investigation_policy(
+        ALL_TOOLS - {policy.EXECUTE_ANALYSIS}
+    )

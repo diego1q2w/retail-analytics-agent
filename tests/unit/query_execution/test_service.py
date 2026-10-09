@@ -43,6 +43,7 @@ from retail_analytics.application.query_execution import (
     QueryOutcomeUnknown,
     QueryPending,
     QuerySucceeded,
+    is_compiler_rejection,
     query_fingerprint,
 )
 from retail_analytics.application.result_privacy import (
@@ -623,6 +624,44 @@ async def test_rejected_query_is_recorded_without_a_job(h: Harness) -> None:
     assert h.jobs.rows == {}
     assert h.status() is S.FAILED
     assert h.warehouse.dry_runs == []
+
+
+# The rejected first attempt seen in real-model runs: a CTE joined to a relation.
+DERIVED_JOIN = (
+    "WITH target_year AS (SELECT MAX(EXTRACT(YEAR FROM ordered_date)) AS yr "
+    "FROM sales_items) SELECT SUM(s.sale_amount) AS revenue FROM sales_items s "
+    "JOIN target_year t ON EXTRACT(YEAR FROM s.ordered_date) = t.yr "
+    "WHERE s.item_status = @status"
+)
+
+
+@pytest.mark.asyncio
+async def test_compiler_rejection_issues_no_warehouse_job_or_query_charge(
+    h: Harness,
+) -> None:
+    admission = RecordingAdmission()
+    h.admission = admission
+
+    outcome = failed(await h.run(query=DERIVED_JOIN))
+
+    assert outcome.code is ToolErrorCode.UNSUPPORTED_SQL and outcome.correctable
+    assert outcome.rejected
+    # Nothing reached the warehouse and nothing was charged as a query.
+    assert h.warehouse.dry_runs == [] and h.warehouse.submit_calls == 0
+    assert h.warehouse.created == [] and h.jobs.rows == {}
+    assert admission.calls is None
+    record = h.operations.records[OP]
+    assert record.status is S.FAILED and is_compiler_rejection(record)
+
+
+@pytest.mark.asyncio
+async def test_warehouse_refusal_is_a_failed_query_not_a_rejection(h: Harness) -> None:
+    h.warehouse.dry_run_faults = ["rejected:invalidQuery"]
+
+    outcome = failed(await h.run())
+
+    assert outcome.code is ToolErrorCode.INVALID_QUERY and not outcome.rejected
+    assert not is_compiler_rejection(h.operations.records[OP])
 
 
 # --- authorization on every attempt -------------------------------------------

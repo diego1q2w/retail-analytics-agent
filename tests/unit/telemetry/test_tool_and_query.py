@@ -14,6 +14,7 @@ from retail_analytics.application.query_execution import QueryFailed, QuerySucce
 from retail_analytics.application.telemetry import use_telemetry
 from tests.unit.privacy.support import MASTER_KEY, customer_database
 from tests.unit.query_execution.test_service import (
+    DERIVED_JOIN,
     TOP_CUSTOMERS,
 )
 from tests.unit.query_execution.test_service import (
@@ -157,3 +158,21 @@ async def test_compiler_rejection_is_counted_by_class_and_exception_type(
     assert "SELEKT" not in sink.metadata() and "DELETE" not in sink.metadata()
     rejected = [s.content("outputs") for s in sink.named(Span.COMPILE)]
     assert all(isinstance(r, dict) and "rejected" in r for r in rejected)
+
+
+async def test_compiler_rejection_is_counted_apart_from_executed_queries(
+    db: Connection,
+) -> None:
+    telemetry, sink = recording()
+    h = QueryHarness(db)
+    with use_telemetry(telemetry):
+        rejected = await h.run(query=DERIVED_JOIN)
+        executed = await h.run(op="op-0002")
+    assert isinstance(rejected, QueryFailed) and rejected.rejected
+    assert isinstance(executed, QuerySucceeded)
+    assert sink.total(Metric.QUERIES, outcome="rejected") == 1
+    assert sink.total(Metric.QUERIES, outcome="failed") == 0
+    assert sink.total(Metric.QUERIES, outcome="succeeded") == 1
+    first, _ = sink.named(Span.QUERY)
+    assert first.attributes["outcome"] == "rejected"
+    assert "job_id" not in first.attributes

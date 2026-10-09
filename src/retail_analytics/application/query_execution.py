@@ -209,6 +209,9 @@ class QueryFailed:
     # The job is being cancelled but has not stopped yet: call
     # ``reconcile_cancel`` (after a delay) until the operation is final.
     stopping: QueryJob | None = None
+    # Refused by the compiler: no warehouse job was created or run. Counted as
+    # a rejected attempt, never as an executed (or failed) warehouse query.
+    rejected: bool = False
 
     @property
     def correctable(self) -> bool:
@@ -244,6 +247,20 @@ _MESSAGES: dict[ToolErrorCode, str] = {
     ToolErrorCode.INVALID_QUERY: "The warehouse rejected the query; reformulate it.",
     ToolErrorCode.INTERNAL_ERROR: "The query failed and produced no result.",
 }
+
+
+# Durable marker of a compiler rejection on the operation's ``error_detail``.
+COMPILER_REJECTION_PREFIX = "compile_"
+
+
+def is_compiler_rejection(execution: ToolExecution) -> bool:
+    """The query operation was refused by the compiler before any warehouse
+    job existed: a rejected attempt, not an executed query."""
+    return (
+        execution.capability == QUERY_CAPABILITY
+        and execution.status is ToolExecutionStatus.FAILED
+        and (execution.error_detail or "").startswith(COMPILER_REJECTION_PREFIX)
+    )
 
 
 QUERY_DEADLINE = "query_deadline"
@@ -438,7 +455,8 @@ def _observe_outcome(
             if outcome.job is not None:
                 attributes["job_id"] = outcome.job.job_id
         case QueryFailed():
-            kind = "failed"
+            # A compiler rejection never reached the warehouse.
+            kind = "rejected" if outcome.rejected else "failed"
             attributes = {
                 "error_code": outcome.code.value.lower(),
                 "reason": outcome.reason,
@@ -452,7 +470,7 @@ def _observe_outcome(
             attributes = {"confirmed": outcome.confirmed}
     attributes["outcome"] = kind
     span.set(attributes)
-    if kind == "failed":
+    if kind in ("failed", "rejected"):
         span.fail(str(attributes["error_code"]))
     telemetry().count(Metric.QUERIES, {Label.OUTCOME: kind, **labels})
     if kind in ("succeeded", "failed"):
@@ -635,17 +653,23 @@ class QueryExecutionService:
                     Label.CAUSE_TYPE: rejected.cause_type or "none",
                 },
             )
+            failed = QueryFailed(
+                rejected.code,
+                rejected.reason,
+                rejected.message,
+                rejected=job is None,
+            )
             if op.status.is_terminal:
-                return QueryFailed(rejected.code, rejected.reason, rejected.message)
+                return failed
             await self._stop_job(job)
             await self._move(
                 op,
                 _S.FAILED,
                 attempt.attempt,
                 error_code=rejected.code,
-                detail=f"compile_{rejected.reason}"[:64],
+                detail=f"{COMPILER_REJECTION_PREFIX}{rejected.reason}"[:64],
             )
-            return QueryFailed(rejected.code, rejected.reason, rejected.message)
+            return failed
         fingerprint = query_fingerprint(compiled)
 
         if op.status.is_terminal:

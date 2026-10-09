@@ -41,10 +41,10 @@ from retail_analytics.interfaces.cli.follow import (
     follow_run,
 )
 from retail_analytics.interfaces.cli.render import (
+    EventFormatter,
     format_definition_notices,
     format_deletion_preview,
     format_error,
-    format_event,
     format_question,
     format_report,
     format_report_list,
@@ -95,6 +95,7 @@ class Chat:
         self.api = api
         self.session_id = session_id
         self._raw_out = out
+        self._format_event = EventFormatter()
         self.out = self._print
         self._terminal = terminal
         self._editor = None if terminal is None else LineEditor(terminal.write)
@@ -282,7 +283,7 @@ class Chat:
             text = (
                 None
                 if event.get("kind") == "deletion.proposed"
-                else (format_event(event))
+                else self._format_event(event)
             )
             if text:
                 self.out(text)

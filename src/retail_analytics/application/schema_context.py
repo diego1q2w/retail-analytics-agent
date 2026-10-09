@@ -224,7 +224,7 @@ def _relation_lines(relation: RelationView, *, detailed: bool) -> list[str]:
             f"{j.field} = {j.target}.{j.target_field} ({j.cardinality.value})"
             for j in relation.joins
         )
-        lines.append(f"  joins: {joins}")
+        lines.append(f"  declared joins (relation to relation only): {joins}")
     if relation.unavailable_fields:
         lines.append(
             "  temporarily unavailable: " + ", ".join(relation.unavailable_fields)

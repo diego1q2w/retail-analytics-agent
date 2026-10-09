@@ -36,6 +36,51 @@ def one_line(text: object) -> str:
 
 # --- events ---
 
+_QUERY_TOOL = "execute_analysis"
+# Query errors the assistant can fix by rewriting the query (wire codes). A
+# budget, access or warehouse failure is never shown as one of these.
+_ADJUSTABLE = frozenset(
+    {"INVALID_QUERY", "UNSUPPORTED_SQL", "FIELD_UNAVAILABLE", "INVALID_INPUT"}
+)
+QUERY_NEEDS_ADJUSTMENT = "That query needs adjustment; the investigation is continuing."
+QUERY_ADJUSTING = "Adjusting the query to a supported form."
+
+
+def _needs_adjustment(kind: str, tool: JsonObject) -> bool:
+    return (
+        kind == "tool.failed"
+        and tool.get("capability") == _QUERY_TOOL
+        and tool.get("error_code") in _ADJUSTABLE
+    )
+
+
+class EventFormatter:
+    """Progress lines for one event stream.
+
+    Remembers a query that needs adjustment, so that the next query the
+    assistant actually starts reads as its correction. Nothing is announced
+    in advance: the assistant may instead ask, answer or stop.
+    """
+
+    def __init__(self) -> None:
+        self._adjusting = False
+
+    def __call__(self, event: JsonObject) -> str | None:
+        kind = str(event.get("kind", ""))
+        tool = event.get("tool") or {}
+        if kind.startswith("run."):
+            self._adjusting = False
+        elif _needs_adjustment(kind, tool):
+            self._adjusting = True
+        elif (
+            kind == "tool.started"
+            and tool.get("capability") == _QUERY_TOOL
+            and self._adjusting
+        ):
+            self._adjusting = False
+            return click.style(f"  > {QUERY_ADJUSTING}", fg="cyan")
+        return format_event(event)
+
 
 def format_event(event: JsonObject) -> str | None:
     """One progress line; None for events shown elsewhere."""
@@ -59,6 +104,9 @@ def format_event(event: JsonObject) -> str | None:
         )
     if kind == "tool.succeeded":
         return click.style(f"  ok {summary}", fg="green")
+    if _needs_adjustment(kind, tool):
+        # The code and details stay in the run's events and traces.
+        return click.style(f"  ~ {QUERY_NEEDS_ADJUSTMENT}", fg="yellow")
     if kind == "tool.failed":
         code = one_line(tool.get("error_code") or "failed")
         return click.style(f"  x {summary} [{code}]", fg="red")

@@ -15,9 +15,18 @@ import pytest
 import sqlglot
 from sqlglot import exp
 
+from retail_analytics.application.contracts.sql_dialect import (
+    DERIVED_JOIN_FEEDBACK,
+    LATEST_MONTH_EXAMPLE,
+    SQL_DIALECT_NOTE,
+    SQL_JOIN_RULE,
+)
+from retail_analytics.application.query_compiler import QueryRejected
+from retail_analytics.domain.operations import ToolErrorCode
 from tests.unit.sql_compiler.support import (
     ALICE,
     BOB,
+    RAW,
     VERSION,
     compile_sql,
     database,
@@ -311,3 +320,51 @@ def test_scope_is_applied_before_aggregation_in_ctes_and_subqueries(
     for query in queries:
         assert run(db, query, ALICE) == [(30.0,)]
         assert run(db, query, BOB) == [(90.0,)]
+
+
+def test_documented_latest_month_pattern_runs_under_approved_scope(
+    db: duckdb.DuckDBPyConnection,
+) -> None:
+    # An older September (product 1, completed) that the pattern must skip.
+    db.execute(
+        f"INSERT INTO {RAW}orders VALUES (104,10,'2025-09-03 10:00:00',1,'Complete')"
+    )
+    db.execute(f"INSERT INTO {RAW}order_items VALUES (1005,104,10,1,'Complete',500)")
+    september = {"month": 9}
+    assert run(db, LATEST_MONTH_EXAMPLE, ALICE, september) == [
+        (date(2026, 9, 10), date(2026, 9, 10), 30.0)
+    ]
+    # Scope applies inside the scalar subquery too: Bob sees only product 2.
+    assert run(db, LATEST_MONTH_EXAMPLE, BOB, september) == [
+        (date(2026, 9, 10), date(2026, 9, 14), 160.0)
+    ]
+    assert run(db, LATEST_MONTH_EXAMPLE, ALICE, {"month": 8}) == [
+        (date(2026, 8, 5), date(2026, 8, 5), 10.0)
+    ]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # The first attempts real models wrote for "latest September".
+        "WITH target_year AS (SELECT MAX(EXTRACT(YEAR FROM ordered_date)) AS yr "
+        "FROM sales_items) SELECT SUM(s.sale_amount) AS revenue FROM sales_items s "
+        "JOIN target_year t ON EXTRACT(YEAR FROM s.ordered_date) = t.yr",
+        "WITH t AS (SELECT MAX(ordered_date) AS d FROM sales_items) "
+        "SELECT SUM(s.sale_amount) AS r FROM t "
+        "JOIN sales_items s ON s.ordered_date = t.d",
+    ],
+)
+def test_derived_joins_stay_rejected_with_actionable_feedback(query: str) -> None:
+    with pytest.raises(QueryRejected) as rejected:
+        compile_sql(query, ALICE)
+    assert rejected.value.code is ToolErrorCode.UNSUPPORTED_SQL
+    assert rejected.value.reason == "unsupported_join"
+    assert rejected.value.message == DERIVED_JOIN_FEEDBACK
+    assert rejected.value.correctable
+
+
+def test_model_guidance_states_the_join_rule_and_the_example() -> None:
+    assert SQL_JOIN_RULE in SQL_DIALECT_NOTE
+    assert LATEST_MONTH_EXAMPLE in SQL_DIALECT_NOTE
+    assert "Never JOIN a CTE or subquery" in SQL_JOIN_RULE

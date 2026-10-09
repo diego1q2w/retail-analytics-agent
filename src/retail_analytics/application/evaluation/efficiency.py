@@ -223,6 +223,54 @@ class RunFacts:
     report_actions: int | None = None
 
 
+# Refused before reaching the warehouse: the tool's input validation.
+_INPUT_REJECTION = "INVALID_INPUT"
+
+
+def query_outcome(
+    *,
+    status: str | None,
+    compiler_rejected: bool,
+    executed: bool,
+    error_code: str | None,
+) -> str:
+    """Outcome of one ``execute_analysis`` attempt for the record.
+
+    ``status`` is the durable operation status (None when the call was
+    refused before an operation existed). A compiler or input rejection is
+    ``rejected``: it cost a model turn but never ran on the warehouse.
+    """
+    if compiler_rejected and not executed:
+        return "rejected"
+    if status is None:
+        return "rejected" if error_code == _INPUT_REJECTION else "failed"
+    return status
+
+
+def attempted_query(
+    spans: Sequence[RecordedSpan], operation_id: str
+) -> tuple[str | None, dict[str, str]]:
+    """The SQL and parameters the model sent for ``operation_id``, from the
+    last compiler span that captured them (sanitized content)."""
+    for span in reversed(spans):
+        if (
+            span.name != Span.COMPILE.value
+            or span.attributes.get("operation_id") != operation_id
+        ):
+            continue
+        inputs = span.content.get("inputs")
+        if isinstance(inputs, Mapping):
+            sql = inputs.get("generated_sql")
+            raw = inputs.get("parameters")
+            parameters = (
+                {str(k): str(v) for k, v in raw.items()}
+                if isinstance(raw, Mapping)
+                else {}
+            )
+            return (sql if isinstance(sql, str) else None), parameters
+    return None, {}
+
+
 def turn_targets(
     turn: EfficiencyTurn,
     *,
@@ -298,6 +346,7 @@ def score_turn(
     output_tokens = sum(a.output_tokens for a in succeeded)
     queries_ok = sum(q.outcome == "succeeded" for q in facts.queries)
     cited = citations(facts.released_text)
+    # Only evidence SQL meets SQL terms (``attempted_sql`` never does).
     sqls = [
         q.sql + " " + " ".join(f"{k}={v}" for k, v in q.parameters.items())
         for q in facts.queries
@@ -325,7 +374,10 @@ def score_turn(
         run_status=facts.run_status,
         tools=facts.tools,
         queries_succeeded=queries_ok,
-        queries_failed=sum(q.outcome != "succeeded" for q in facts.queries),
+        queries_failed=sum(
+            q.outcome not in ("succeeded", "rejected") for q in facts.queries
+        ),
+        queries_rejected=sum(q.outcome == "rejected" for q in facts.queries),
         queries=facts.queries,
         queries_before_question=facts.queries_before_question,
         asked_clarification=facts.asked_clarification,
@@ -519,7 +571,8 @@ def render_summary(run: EfficiencyRun, baseline: EfficiencyRun | None = None) ->
         "",
         "## Every repetition",
         "",
-        "| scenario | rep | turn | run | status | queries ok/failed | requests "
+        "| scenario | rep | turn | run | status | queries ok/rejected/failed "
+        "| requests "
         "(failed, fallback) | tokens in/out | active s | wall s | restarts "
         "| figures | targets | tools |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- "
@@ -535,7 +588,7 @@ def render_summary(run: EfficiencyRun, baseline: EfficiencyRun | None = None) ->
             lines.append(
                 f"| {rep.scenario_id} | {rep.repetition} | {t.turn} | "
                 f"`{t.run_id}` | {t.run_status} | {t.queries_succeeded}/"
-                f"{t.queries_failed} | {t.model_requests} "
+                f"{t.queries_rejected}/{t.queries_failed} | {t.model_requests} "
                 f"({t.model_requests_failed}, {t.fallbacks}) | {t.input_tokens:,}/"
                 f"{t.output_tokens:,} | {t.active_seconds} | {t.wall_seconds} | "
                 f"{len(t.restarts)} | {_figures(t)} | {_targets(t)} | "

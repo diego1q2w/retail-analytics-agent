@@ -57,6 +57,8 @@ from retail_analytics.application.evaluation.agent_observation import observe, s
 from retail_analytics.application.evaluation.efficiency import (
     SCORING_VERSION,
     RunFacts,
+    attempted_query,
+    query_outcome,
     render_summary,
     rescore,
     resolve_figures,
@@ -66,6 +68,7 @@ from retail_analytics.application.evaluation.efficiency import (
     worst_case,
 )
 from retail_analytics.application.evaluation.results import assert_no_sensitive
+from retail_analytics.application.query_execution import is_compiler_rejection
 from retail_analytics.application.telemetry import Telemetry, use_telemetry
 from retail_analytics.bootstrap.agent_evaluation import (
     AgentRuntimeTarget,
@@ -108,6 +111,8 @@ class EfficiencyTarget(AgentRuntimeTarget):
     """The agent_runtime target, driven one request (run) per suite turn."""
 
     _questions: list[str] = field(default_factory=list, init=False)
+    # The run's telemetry recorder: compiler spans give each attempt's SQL.
+    recorder: RecordingTelemetrySink | None = field(default=None, init=False)
 
     def converse(
         self, scenario: EfficiencyScenario, scope: ScopeSpec, case_id: str
@@ -221,26 +226,7 @@ class EfficiencyTarget(AgentRuntimeTarget):
                 for e in evidence.values()
                 if e.run_id == run_id and e.content.kind is EvidenceKind.QUERY
             }
-            queries = []
-            for op in await db.tool_executions.for_run(run_id):
-                if op.capability != QUERY_CAPABILITY:
-                    continue
-                ev = produced.get(op.operation_id)
-                queries.append(
-                    QueryRecord(
-                        outcome=op.status.value,
-                        error_code=op.error_code.value if op.error_code else None,
-                        evidence_id=ev.evidence_id if ev else None,
-                        rows=len(ev.content.table.rows) if ev else None,
-                        sql=ev.content.provenance.logical_sql if ev else None,
-                        parameters={
-                            p.name: str(p.value)
-                            for p in ev.content.provenance.parameters
-                        }
-                        if ev
-                        else {},
-                    )
-                )
+            queries = await self._queries(db, run_id, events, produced)
             linked = session.run_links.get(run_id, frozenset())
             tables = tuple(
                 ObservedTable(
@@ -290,6 +276,72 @@ class EfficiencyTarget(AgentRuntimeTarget):
             )
         return facts
 
+    async def _queries(
+        self,
+        db: Any,
+        run_id: str,
+        events: Sequence[Any],
+        produced: dict[str, Any],
+    ) -> list[QueryRecord]:
+        """Every ``execute_analysis`` call of the run, in call order: its
+        durable operation (if one was created), whether a warehouse job was
+        registered, what the tool returned and, without evidence, the SQL the
+        model wrote (sanitized compiler-span capture)."""
+        operations = {
+            op.operation_id: op
+            for op in await db.tool_executions.for_run(run_id)
+            if op.capability == QUERY_CAPABILITY
+        }
+        results: dict[str, tuple[str, str | None]] = {}
+        for e in events:
+            operation_id = e.correlation.operation_id
+            if (
+                e.tool is None
+                or e.tool.capability != QUERY_CAPABILITY
+                or operation_id is None
+                or e.kind is EventKind.TOOL_STARTED
+            ):
+                continue
+            code = e.tool.error_code.value if e.tool.error_code else None
+            results[operation_id] = (e.kind.value.removeprefix("tool."), code)
+        order = list(dict.fromkeys([*results, *operations]))
+        spans = self.recorder.spans() if self.recorder is not None else ()
+        records = []
+        for operation_id in order:
+            op = operations.get(operation_id)
+            tool_result, tool_code = results.get(operation_id, (None, None))
+            executed = await db.query_jobs.get_job(operation_id) is not None
+            code = op.error_code.value if op and op.error_code else tool_code
+            ev = produced.get(operation_id)
+            attempted, attempted_parameters = (
+                (None, {}) if ev else attempted_query(spans, operation_id)
+            )
+            records.append(
+                QueryRecord(
+                    outcome=query_outcome(
+                        status=op.status.value if op else None,
+                        compiler_rejected=op is not None and is_compiler_rejection(op),
+                        executed=executed,
+                        error_code=code,
+                    ),
+                    error_code=code,
+                    evidence_id=ev.evidence_id if ev else None,
+                    rows=len(ev.content.table.rows) if ev else None,
+                    sql=ev.content.provenance.logical_sql if ev else None,
+                    parameters={
+                        p.name: str(p.value) for p in ev.content.provenance.parameters
+                    }
+                    if ev
+                    else {},
+                    executed=executed,
+                    reason=op.error_detail if op else None,
+                    tool_result=tool_result,
+                    attempted_sql=attempted,
+                    attempted_parameters=attempted_parameters,
+                )
+            )
+        return records
+
 
 def _git(*args: str) -> str:
     return subprocess.run(  # noqa: S603
@@ -331,6 +383,15 @@ def _transcript(
             ]
             if query.sql:
                 lines += ["```sql", query.sql.strip(), "```", ""]
+            elif query.attempted_sql:
+                lines += [
+                    f"Attempted SQL ({query.reason or 'no evidence'}):",
+                    "",
+                    "```sql",
+                    query.attempted_sql.strip(),
+                    "```",
+                    "",
+                ]
             if query.parameters:
                 bound = ", ".join(f"{k}={v}" for k, v in query.parameters.items())
                 lines += [f"Parameters: {bound}", ""]
@@ -418,6 +479,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         turn_timeout=args.turn_timeout,
         backend=ExecutionBackend.LOCAL,
     )
+    target.recorder = sink
     with use_telemetry(Telemetry(sink)):
         try:
             for scenario in scenarios:
@@ -481,7 +543,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     for t in turns:
                         print(
                             f"  turn {t.turn} {t.run_status} q={t.queries_succeeded}"
-                            f"/{t.queries_failed} req={t.model_requests} "
+                            f"/{t.queries_rejected}r/{t.queries_failed}f "
+                            f"req={t.model_requests} "
                             f"tok={t.input_tokens}+{t.output_tokens} "
                             f"targets={dict(t.targets_met)} "
                             f"fig={[f.in_answer for f in t.figures]}",

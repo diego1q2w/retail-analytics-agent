@@ -24,6 +24,8 @@ from retail_analytics.application.evaluation.efficiency import (
     RunFacts,
     SuiteError,
     aggregate,
+    attempted_query,
+    query_outcome,
     render_summary,
     rescore,
     resolve_figures,
@@ -334,3 +336,108 @@ def test_unanswered_turns_never_meet_targets_and_saved_runs_rescore() -> None:
     fresh = rescore(stale, suite)
     assert fresh.scoring_version == SCORING_VERSION
     assert "completed" in fresh.repetitions[0].turns[0].targets_met
+
+
+def test_rejected_attempts_are_counted_apart_from_warehouse_queries() -> None:
+    rejected = QueryRecord(
+        outcome=query_outcome(
+            status="failed",
+            compiler_rejected=True,
+            executed=False,
+            error_code="UNSUPPORTED_SQL",
+        ),
+        error_code="UNSUPPORTED_SQL",
+        executed=False,
+        reason="compile_unsupported_join",
+        tool_result="failed",
+        attempted_sql="WITH t AS (SELECT 1 AS complete) SELECT 2025-08 FROM s JOIN t",
+    )
+    warehouse_failure = QueryRecord(
+        outcome=query_outcome(
+            status="failed",
+            compiler_rejected=False,
+            executed=True,
+            error_code="TEMPORARY_FAILURE",
+        ),
+        executed=True,
+    )
+    assert rejected.outcome == "rejected"
+    assert warehouse_failure.outcome == "failed"
+    # Refused by input validation before any operation existed.
+    assert (
+        query_outcome(
+            status=None,
+            compiler_rejected=False,
+            executed=False,
+            error_code="INVALID_INPUT",
+        )
+        == "rejected"
+    )
+    assert (
+        query_outcome(
+            status=None,
+            compiler_rejected=False,
+            executed=False,
+            error_code="BUDGET_EXCEEDED",
+        )
+        == "failed"
+    )
+    result = score_turn(
+        1,
+        turn(sql_terms=[["join"]]),
+        resolve_figures(turn(), VALUES),
+        facts("x", rejected, OK_QUERY, warehouse_failure),
+        [attempt("run_1", "succeeded")],
+    )
+    assert (
+        result.queries_succeeded,
+        result.queries_rejected,
+        result.queries_failed,
+    ) == (1, 1, 1)
+    assert result.targets_met["queries"]  # one warehouse query: within target
+    # A rejected attempt's SQL never meets SQL terms.
+    assert result.sql_terms_met == (False,)
+    run = _run("candidate", 10)
+    first = run.repetitions[0].model_copy(update={"turns": (result,)})
+    summary = render_summary(run.model_copy(update={"repetitions": (first,)}), None)
+    assert "| 1/1/1 |" in summary
+
+
+def test_attempted_query_reads_the_compiler_span_of_the_operation() -> None:
+    def compile_span(op: str, sql: str) -> RecordedSpan:
+        return RecordedSpan(
+            Span.COMPILE.value,
+            "run_1",
+            {"operation_id": op, "outcome": "rejected"},
+            {"inputs": {"generated_sql": sql, "parameters": {"month": 9}}},
+        )
+
+    spans = [compile_span("op1", "SELECT a"), compile_span("op2", "SELECT b")]
+    assert attempted_query(spans, "op2") == ("SELECT b", {"month": "9"})
+    assert attempted_query(spans, "op3") == (None, {})
+
+
+def test_recorder_keeps_sanitized_compiler_content_only() -> None:
+    from retail_analytics.adapters.evaluation.telemetry_recorder import (
+        RecordingTelemetrySink,
+    )
+    from retail_analytics.application.telemetry import (
+        Telemetry,
+        telemetry,
+        use_telemetry,
+    )
+
+    sink = RecordingTelemetrySink()
+    with use_telemetry(Telemetry(sink)):
+        for name in (Span.COMPILE, Span.TOOL):
+            with telemetry().span(
+                name, run_id="run_1", attributes={"operation_id": "op1"}
+            ) as span:
+                span.inputs(
+                    {"generated_sql": "SELECT 'jane@example.com'", "parameters": {}}
+                )
+    compiled, tool = sink.spans()
+    sql, _ = attempted_query([compiled], "op1")
+    assert sql is not None and sql.startswith("SELECT")
+    assert "jane@example.com" not in sql  # sanitized by the facade
+    assert tool.content == {}
