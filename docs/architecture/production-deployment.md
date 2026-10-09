@@ -396,7 +396,8 @@ backend still has active runs.
 
 **Implemented:** BM25 and exact cosine similarity run in process over a small
 corpus. Vectors are stored in PostgreSQL, keyed by content digest, model and
-dimensions, so restarts make no embedding calls. Authorization and
+dimensions, so restarts reuse unchanged document vectors. New search questions
+still need query embeddings unless cached. Authorization and
 applicability filters run *before* scoring. pgvector is not used: the pinned
 local PostgreSQL image does not include it, and exact search over tens of
 examples is cheap. Live mode embeds with `gemini-embedding-2` at 768
@@ -423,6 +424,25 @@ grows to thousands of examples or memory per process becomes a concern:
    requested.
 4. Keyword search can move to PostgreSQL full-text search. Fusion
    (weighted reciprocal rank) and delivery rechecks stay in application code.
+
+**Reranking is conditional, not part of the initial deployment.** The
+[retrieval benchmark](../../evaluation/retrieval/README.md) compares keyword,
+semantic and fused retrieval on a separate tuning/held-out split. It reports
+precision, recall, MRR, nDCG, no-match behavior and access violations. A learned
+reranker has not been evaluated; the current small corpus and observed
+threshold-related declines do not justify its extra latency, model dependency
+and cost. Rank fusion is implemented; it is not a learned reranker.
+
+Revisit reranking when reviewed failures show relevant candidates are retrieved
+but ordered poorly, or corpus growth materially lowers ranking quality. Compare
+against the existing retriever on an enriched, versioned held-out set, recording
+end-to-end answer quality as well as retrieval quality, added latency and cost.
+Preserve authorization filtering before reranking and delivery checks afterwards.
+Adopt it only for a measured improvement within the question's time and cost
+budgets. If relevant candidates are missing, first investigate corpus coverage,
+query formulation and thresholds; reranking alone cannot recover them. Production
+metrics and sampled human relevance reviews should drive this decision, rather
+than assuming a reranker is required for a larger deployment.
 
 ## Security and network (proposed)
 

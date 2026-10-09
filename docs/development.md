@@ -12,7 +12,7 @@ Reference for people changing or operating the project locally. The short review
 4. starts the local telemetry stack (MLflow, Prometheus, Grafana; on by default, `--no-telemetry` skips it);
 5. runs `alembic upgrade head`;
 6. provisions the local admin and the two restricted demo brand managers;
-7. seeds the Golden knowledge library and stores its embeddings in PostgreSQL (the embedding step only warns if it fails);
+7. seeds the Golden knowledge library, generates embeddings and reads them back from PostgreSQL to verify persistence; bootstrap stops if warm-up fails or does not confirm stored embeddings;
 8. validates the configuration and, when BigQuery and Gemini are configured, checks that access;
 9. syncs the brand catalog for the brand managers: from BigQuery in live mode, from the synthetic fixture brands in fixture mode.
 

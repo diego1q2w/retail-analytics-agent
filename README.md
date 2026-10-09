@@ -62,7 +62,13 @@ Questions to try in `analytics chat`. The assistant's wording and figures depend
 ```mermaid
 flowchart LR
     cli["analytics CLI<br/>(host process)"] -- "HTTP + SSE, bearer token" --> api["API + local investigation manager<br/>(host process, started by dev.sh)"]
-    api --> pg[("PostgreSQL<br/>(Docker Compose)")]
+    api --> pg[("PostgreSQL<br/>app state, Golden examples + embeddings")]
+    api -- "find analytical examples" --> retrieval["Golden retrieval inside API<br/>scope filter, keyword + semantic search"]
+    pg -- "reviewed examples + stored vectors" --> retrieval
+    retrieval -- "embed search question" --> embeddings["Gemini embeddings API"]
+    retrieval -- "up to 3 applicable methods" --> api
+    seed["Bootstrap: 10 reviewed examples"] -- "seed + store embeddings" --> pg
+    seed -- "embed example questions + methods" --> embeddings
     api --> files[("report files<br/>data/local/artifacts")]
     api -- "compiled, product-scoped SQL" --> bq[("BigQuery")]
     api -- "model requests" --> llm["Gemini, GPT backup"]
@@ -71,6 +77,7 @@ flowchart LR
 
 - **Live mode is the normal mode.** It analyzes real BigQuery data with real models. Fixture mode (`APP_MODE=fixture`) exists for automated tests and an offline wiring check; it returns a fixed response and does not analyze anything.
 - **Investigations run inside the API process** (local execution, the default). Setup and `dev.sh` start PostgreSQL and, unless you pass `--no-telemetry`, the telemetry stack. They start no Temporal service. A bare `docker compose up` starts every service in `compose.yaml`, Temporal included, and containers left from an earlier Temporal setup keep running; neither changes how investigations execute. Durable execution on Temporal is an [opt-in mode](docs/development.md#temporal-execution-opt-in).
+- **Golden Knowledge guides the method.** Bootstrap seeds ten reviewed analytical examples and verifies their stored embeddings. Retrieval combines keyword and semantic matches, checks access and compatibility, and returns applicable methods and SQL—not historical figures to reuse as current results. See [retrieval design](docs/components.md#golden-retrieval) and [measured evaluation](evaluation/retrieval/README.md).
 - **The local administrator is provisioned explicitly.** Bootstrap creates one identity with every role and an explicit grant of every product; the admin role alone grants no data. Two demo brand managers, each assigned two brands, show brand-based access. See [local administration](docs/local-admin.md) and [brand-based access](docs/brand-access.md).
 
 ## Architecture

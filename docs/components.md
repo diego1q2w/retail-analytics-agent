@@ -212,11 +212,45 @@ Tests: `tests/unit/lifecycle/` (rules, authorization, cleanup order, bounds, dry
 
 ## Golden seed library
 
-Ten project-authored, reviewed example trios (question, SQL, report) live in `retail_analytics.application.golden_seed_library`. After the demo executives exist, `python -m retail_analytics.bootstrap.seed_knowledge` loads them through the normal submit and review lifecycle (author `demo-a`, reviewer `demo-b`) and is safe to rerun. Retrieval embeddings are stored in PostgreSQL (`golden_embeddings`, keyed by content digest, model and dimensions; vectors only, deleted when an example is erased); `python -m retail_analytics.bootstrap.warm_embeddings` fills them (a bootstrap step) so restarts make no provider calls. See [docs/golden-seeds.md](golden-seeds.md) for the corpus, validation and the manual review checklist.
+Ten project-authored, reviewed example trios (question, SQL, report) live in `retail_analytics.application.golden_seed_library`. After the demo executives exist, `python -m retail_analytics.bootstrap.seed_knowledge` loads them through the normal submit and review lifecycle (author `demo-a`, reviewer `demo-b`) and is safe to rerun. Retrieval embeddings are stored in PostgreSQL (`golden_embeddings`, keyed by content digest, model and dimensions; vectors only, deleted when an example is erased); `python -m retail_analytics.bootstrap.warm_embeddings` fills and verifies them as a required bootstrap step. Restarts reuse unchanged document vectors; new search questions still require query embeddings unless cached. See [docs/golden-seeds.md](golden-seeds.md) for the corpus, validation and the manual review checklist.
 
 ## Golden retrieval
 
 `bootstrap.retrieval.build_retrieval` returns a `GoldenRetriever`: eligibility prefilter on index entries (product scope, schema/metric applicability) before any scoring, then BM25 and vector channels fused by weighted reciprocal rank (k=60, semantic weight 2, keyword weight 1), at most 3 examples, none when no channel clears its threshold. Delivery goes only through `GoldenKnowledgeReader.deliver`, so stale index entries (retired, suspended, erased, changed) are refused and the next-ranked candidate is used. The index is in-process and rebuilt from `KnowledgeIndexSource` when the invalidation feed moves; vectors are cached by content digest. pgvector is not used: the pinned `postgres:17.11-alpine` image does not ship it and the corpus is tens of examples, so exact brute-force cosine is enough. Embeddings sit behind the `TextEmbedder` port: `hashing` (offline, deterministic, lexical only; the fixture default) or `gemini` (`gemini-embedding-2`, free-tier retries with backoff; the live default, so live mode uses the embedder the thresholds were measured with and never falls back to `hashing` on its own; `EMBEDDING_PROVIDER=hashing` in live mode is an explicit opt-in). Stored vectors are keyed by model id and dimensions, so vectors from another provider, model or dimension count are never compared with live queries (they are re-embedded and written alongside). Using another Gemini model or dimension count requires setting both thresholds; the defaults are rejected for it. Settings: `EMBEDDING_*` and `RETRIEVAL_*`. The default thresholds were measured for `gemini-embedding-2` at 768 dimensions (min similarity 0.70, min lexical coverage 0.75, semantic weight 2; see [evaluation/retrieval](../evaluation/retrieval/README.md)); with the offline `hashing` embedder, unset thresholds keep the unmeasured 0.55 / 0.5 because cosine scales differ by model. Override with `RETRIEVAL_MIN_SIMILARITY`, `..._MIN_LEXICAL_COVERAGE` and `..._SEMANTIC_WEIGHT`.
+
+### What is embedded and what the agent receives
+
+The embedded text is the example question plus its analytical method summary.
+SQL and the report remain part of the reviewed trio, but are not concatenated
+into the embedding input. When the agent requests examples, the backend loads
+the approved corpus and stored vectors into an in-process index, embeds the
+search question, and filters eligible examples before keyword and cosine
+scoring. Thresholds and weighted rank fusion select up to three candidates;
+a final delivery check rejects examples withdrawn or no longer authorized.
+The agent receives applicable methods and SQL, not historical report figures
+as evidence for today's answer.
+
+Publishing a changed version invalidates the index. Missing document vectors
+are generated and persisted during synchronization; unchanged versions reuse
+stored vectors. Search-time embedding failures are surfaced as retrieval
+unavailable, not disguised as a successful no-match result.
+
+### How retrieval quality is evaluated
+
+The [retrieval benchmark](../evaluation/retrieval/README.md) compares keyword,
+semantic and fused variants using separate tuning and held-out questions. It
+measures precision/recall at k, MRR, nDCG, correct no-match responses, false
+declines and access violations. Its evaluation corpus is distinct from the ten
+bootstrap seeds. Current shipped settings measured P@3 0.65 and R@3 0.76, with
+7/7 no-match questions correctly declined and zero measured access violations.
+The small corpus and agent-authored labels limit these results; they are not
+proof of production quality. Runtime hit/no-match counts and latency diagnose
+operations, but live precision requires reviewed relevance labels.
+
+There is no learned reranker today. The benchmark did not establish a need for
+one, and most remaining misses were threshold declines. A reranker only
+reorders retrieved candidates; it cannot recover examples already excluded.
+See the [production evolution criteria](architecture/production-deployment.md#golden-retrieval-at-scale).
 
 ## Currency conversion
 

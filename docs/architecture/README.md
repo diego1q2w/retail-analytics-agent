@@ -54,7 +54,7 @@ flowchart TB
     subgraph ext["External APIs, with your credentials"]
         direction LR
         bq[("BigQuery<br/>thelook_ecommerce, read-only")]
-        gem["Gemini API<br/>chat; embeddings optional"]
+        gem["Gemini API<br/>chat + live embeddings"]
         oai["OpenAI API<br/>optional fallback"]
         fx["Frankfurter<br/>ECB reference rates"]
     end
