@@ -213,3 +213,175 @@ class RealModelEvaluation(ContractModel):
     # manifest id -> manifest version; plus data references (extract digest).
     datasets: Mapping[str, str] = {}
     conversations: tuple[ConversationOutcome, ...]
+
+
+# Conversational efficiency suite (T39-F3): what a request costs and whether
+# its answer is right. Suite definitions are fixed before any run; results
+# hold identifiers, codes, counts, expected figures and (separately written)
+# released text of pseudonymized evaluation data only. Never thought text.
+
+TurnKind = Literal["cold", "follow_up", "reuse", "clarification", "investigation"]
+
+
+class EfficiencyTargets(ContractModel):
+    """Evaluation targets of one turn (not production caps); None = no target."""
+
+    max_queries: int | None = Field(default=None, ge=0)
+    max_model_requests: int | None = Field(default=None, ge=1)
+    # Successful queries allowed before a clarification question is asked.
+    max_queries_before_question: int | None = Field(default=None, ge=0)
+
+
+class ExpectedFigureRef(ContractModel):
+    """An expected figure taken from the independent reference values.
+
+    ``ref`` is ``<query>.<output>`` in the frozen extract's ``expected.json``;
+    ``minus`` (optional) subtracts another reference (a derived difference).
+    """
+
+    name: Identifier
+    ref: str
+    minus: str | None = None
+    kind: Literal["number", "label"] = "number"
+
+
+class EfficiencyTurn(ContractModel):
+    text: Annotated[str, Field(min_length=1, max_length=1000)]
+    kind: TurnKind
+    targets: EfficiencyTargets = EfficiencyTargets()
+    figures: tuple[ExpectedFigureRef, ...] = ()
+    # Each group: at least one of its words must appear in the released text
+    # (period, definition wording). Case-insensitive.
+    text_terms: tuple[tuple[str, ...], ...] = ()
+    # Each group: at least one of its fragments must appear in some SQL the
+    # turn executed (whitespace- and case-insensitive).
+    sql_terms: tuple[tuple[str, ...], ...] = ()
+    expect_clarification: bool = False
+    # Sent as the answer when the run asks a clarification question.
+    clarification_reply: str | None = None
+    expect_report: bool = False
+
+
+class EfficiencyScenario(ContractModel):
+    id: Identifier
+    title: str
+    category: Identifier
+    # Executive scope name in the frozen extract's spec (``women``/``men``).
+    scope: Identifier
+    repeats: int = Field(ge=1, le=10)
+    turns: tuple[EfficiencyTurn, ...] = Field(min_length=1)
+
+
+class SpendCeiling(ContractModel):
+    """Declared before the run; the runner refuses work beyond it."""
+
+    max_total_tokens: int = Field(ge=1)
+    max_model_attempts: int = Field(ge=1)
+    # Worst case one run may add (the per-run budget limits).
+    run_tokens_limit: int = Field(ge=1)
+    run_requests_limit: int = Field(ge=1)
+
+
+class EfficiencySuite(ContractModel):
+    schema_version: Literal[1] = 1
+    suite_id: Identifier
+    suite_version: Identifier
+    declared_on: str
+    spend: SpendCeiling
+    scenarios: tuple[EfficiencyScenario, ...] = Field(min_length=1)
+
+
+class ModelAttemptRecord(ContractModel):
+    provider: str
+    model: str
+    outcome: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    fallback_from: str = "none"
+    reason_class: str = "none"
+
+
+class QueryRecord(ContractModel):
+    """One analysis query of a run: outcome and, when it produced evidence,
+    the model's logical SQL (pseudonymized evaluation data only)."""
+
+    outcome: str
+    error_code: str | None = None
+    evidence_id: str | None = None
+    rows: int | None = None
+    sql: str | None = None
+    # Bound query parameters (name -> value as text).
+    parameters: Mapping[str, str] = {}
+
+
+class TurnResult(ContractModel):
+    turn: int
+    kind: TurnKind
+    run_id: str
+    run_status: str
+    tools: tuple[str, ...] = ()
+    queries_succeeded: int = 0
+    queries_failed: int = 0
+    queries: tuple[QueryRecord, ...] = ()
+    queries_before_question: int | None = None
+    asked_clarification: bool = False
+    attempts: tuple[ModelAttemptRecord, ...] = ()
+    model_requests: int = 0
+    model_requests_failed: int = 0
+    fallbacks: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    budget_tokens: int = 0
+    active_seconds: float = 0.0
+    wall_seconds: float = 0.0
+    restarts: tuple[str, ...] = ()
+    admission: str | None = None
+    stop_reason: str | None = None
+    figures: tuple[FigureCheck, ...] = ()
+    text_terms_met: tuple[bool, ...] = ()
+    sql_terms_met: tuple[bool, ...] = ()
+    citations: int = 0
+    cited_unknown: int = 0
+    report_saved: bool | None = None
+    report_actions: int | None = None
+    max_evidence_rows: int = 0
+    targets_met: Mapping[str, bool] = {}
+    # True when the turn used more queries than its target.
+    extra_queries: int = 0
+
+
+class RepetitionResult(ContractModel):
+    scenario_id: Identifier
+    repetition: int = Field(ge=1)
+    session_id: str
+    executive_id: str
+    started_at: str
+    code_revision: str
+    turns: tuple[TurnResult, ...] = ()
+    error: str | None = None
+    safety_flags: Mapping[Identifier, bool] = {}
+    transcript: str | None = None
+
+
+class EfficiencyRun(ContractModel):
+    schema_version: Literal[1] = 1
+    label: Identifier
+    suite_id: Identifier
+    suite_version: Identifier
+    # Version of the target scoring applied (results may be rescored later).
+    scoring_version: int = 1
+    recorded_at: str
+    code_revision: str
+    target_id: str
+    execution_backend: str
+    warehouse: str
+    data_ref: str
+    extract_digest: str
+    primary_provider: str
+    configured_models: Mapping[str, str] = {}
+    settings: Mapping[str, float | str] = {}
+    spend: SpendCeiling
+    spend_used: Mapping[str, int] = {}
+    stopped_by_ceiling: bool = False
+    repetitions: tuple[RepetitionResult, ...] = ()

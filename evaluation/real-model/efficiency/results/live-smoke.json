@@ -1,0 +1,125 @@
+{
+  "code_revision": "7ab8f32",
+  "configured_models": {
+    "google-interactions": "gemini-3.8-flash",
+    "openai": "gpt-5-mini"
+  },
+  "execution_backend": "local",
+  "label": "live-smoke",
+  "mode": "live",
+  "principal": "exec-local-admin (every product)",
+  "reference": {
+    "computed_at": "2026-10-09T12:10:55+00:00",
+    "revenue_by_month": {
+      "2026-08": 110644.81,
+      "2026-09": 141190.75
+    }
+  },
+  "runs": [
+    {
+      "attempts": [
+        {
+          "fallback_from": "none",
+          "input_tokens": 3884,
+          "model": "gemini-3.8-flash",
+          "outcome": "succeeded",
+          "output_tokens": 562,
+          "provider": "google-interactions"
+        },
+        {
+          "fallback_from": "none",
+          "input_tokens": 4635,
+          "model": "gemini-3.8-flash",
+          "outcome": "succeeded",
+          "output_tokens": 1401,
+          "provider": "google-interactions"
+        }
+      ],
+      "client_seconds": 27.2,
+      "content_visible": {
+        "prompt": true,
+        "sql": true,
+        "tool_arguments": true
+      },
+      "expected_month": "2026-09",
+      "expected_revenue": 141190.75,
+      "input_tokens": 8519,
+      "jobs": [
+        {
+          "bytes_billed": "20971520",
+          "bytes_processed": "8215134",
+          "job_id": "ra_6feb777b1fd06309fb7aa1b0a8ef39178d9e426b_1",
+          "outcome": "succeeded"
+        }
+      ],
+      "model_requests": 2,
+      "output_tokens": 1963,
+      "queries": 1,
+      "question": null,
+      "restarts": [],
+      "run_id": "run_55f0263f3b0c8ee47b87096cb778bf21",
+      "spans": 12,
+      "stated": true,
+      "status": "completed",
+      "tools": [
+        "execute_analysis"
+      ],
+      "trace_id": "tr-1d58bac503e79b0909738a6c134d79b9",
+      "withheld": false
+    },
+    {
+      "attempts": [
+        {
+          "fallback_from": "none",
+          "input_tokens": 4167,
+          "model": "gemini-3.8-flash",
+          "outcome": "succeeded",
+          "output_tokens": 410,
+          "provider": "google-interactions"
+        },
+        {
+          "fallback_from": "none",
+          "input_tokens": 4794,
+          "model": "gemini-3.8-flash",
+          "outcome": "succeeded",
+          "output_tokens": 742,
+          "provider": "google-interactions"
+        }
+      ],
+      "client_seconds": 21.1,
+      "content_visible": {
+        "prompt": true,
+        "sql": true,
+        "tool_arguments": true
+      },
+      "expected_month": "2026-08",
+      "expected_revenue": 110644.81,
+      "input_tokens": 8961,
+      "jobs": [
+        {
+          "bytes_billed": "20971520",
+          "bytes_processed": "8215134",
+          "job_id": "ra_8e4d54aa9e819406fef2ea17054b017da5124da2_1",
+          "outcome": "succeeded"
+        }
+      ],
+      "model_requests": 2,
+      "output_tokens": 1152,
+      "queries": 1,
+      "question": null,
+      "restarts": [],
+      "run_id": "run_fb6b8459207f6ba20adeb0a85e36b2e4",
+      "spans": 12,
+      "stated": true,
+      "status": "completed",
+      "tools": [
+        "execute_analysis"
+      ],
+      "trace_id": "tr-2239639bb4cca9d80b342fa609799575",
+      "withheld": false
+    }
+  ],
+  "session_id": "ses_b9d47201bc0c9de94f41bd700f2006d1",
+  "started_at": "2026-10-09T12:10:04+00:00",
+  "warehouse": "BigQuery bigquery-public-data.thelook_ecommerce (live)"
+}

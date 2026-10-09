@@ -292,6 +292,235 @@ requirements as the discovery walkthrough): `python
 evaluation/real-model/focus_walkthrough.py [--only scalar complex mixed]
 [--show-answers]`.
 
+## Conversation efficiency (T39-F3)
+
+`efficiency.py` measures what ordinary analytical requests cost and whether
+their answers are right, on the same harness as above (agent runtime, local
+backend, offline DuckDB over the frozen extract, live provider chain, a
+throwaway PostgreSQL). The suite, `efficiency/suite.json`, was fixed before
+any run. It sets the scenarios, the repetitions, the targets and a spend
+ceiling:
+
+| scenario | turns (kind) | reps | declared targets |
+| --- | --- | --- | --- |
+| `scalar-ordinary` | "What's the latest revenue of September?" (cold) | 3 | <= 2 queries (the period may need data), <= 5 model requests |
+| `scalar-typo` | "hw much revenu did we make in septmber 2025" (cold) | 3 | <= 1 query, <= 4 requests |
+| `scalar-explicit` | September 2025, default definition, total only (cold) | 3 | <= 1 query, <= 4 requests |
+| `followup-context` | September 2025 (cold), then "And August?" | 3 | each <= 1 query, <= 4 requests |
+| `reuse-evidence` | July-September by month (cold), then "Which of those months was highest, and by how much did it beat the lowest?" | 3 | cold <= 1 query, <= 4 requests; reuse 0 queries, <= 2 requests |
+| `clarify-missing-month` | "What was revenue in that month?", reply "September 2025" | 1 | asks first, 0 queries before asking, <= 1 query |
+| `why-category-change` | why Q3 to Q4 2025 revenue changed, by category | 1 | correctness and completeness only |
+| `report-concentration` | saved report on Q4 2025 customer concentration with actions | 1 | report saved with actions; correctness |
+
+Every turn must also complete (a partial, cancelled or failed run has not
+answered) and must not ask a question it was not expected to ask. These are
+evaluation targets, not production limits. They are not changed after seeing
+results: a target that proves wrong is flagged here instead.
+
+**Spend ceiling**, declared before the run, per suite run: 3,000,000 model
+tokens and 500 model attempts. The runner refuses to start a conversation
+whose worst case (per-run budget: 100,000 tokens, 20 requests) could cross
+the ceiling. The full suite's worst case is 24 runs = 2.4M tokens and 480
+attempts.
+
+**Correctness.** Expected figures are taken at run time from the frozen
+extract's independent reference values (`../realdata/expected.json`, two
+SQL routes), never from the agent. For example, September 2025 revenue for the
+women's scope is `monthly_trend.month_3_revenue`. Each figure is checked in
+the released text ("figures right") and, separately, in the evidence the run
+produced or reused. Reuse turns cite earlier runs' evidence, and a derived
+difference has no evidence cell, so the evidence match is reported but not
+required. The checks also record period and definition words in the text,
+SQL fragments (status filter, period) in the executed logical SQL and its
+bound parameters, and whether the cited evidence IDs exist in the session.
+A reviewer reads the transcripts (released text, clarification questions and
+every query's SQL) as well: citations and nonempty output alone do not show
+that an answer is right.
+
+**Recorded per run:** run/session/executive IDs, code revision, provider and
+model of every model attempt (failed ones and fallbacks included), input and
+output tokens, successful and failed queries with their SQL, tool sequence,
+context restarts and their causes, admission decision, active and wall-clock
+seconds, and the targets met. Every repetition is reported, failures
+included. Results contain no thought text or secrets. The data is the
+pseudonymized frozen extract. MLflow trace IDs are not recorded: these runs
+use the in-process telemetry recorder. The run IDs identify each run.
+
+### Baseline
+
+Before the agent-instruction, schema-context and focused-tool changes. Code
+`12373a0` (the runtime as committed; only this suite's evaluation files were
+uncommitted), 2026-10-09 11:14-11:31 UTC. Every request was served by Gemini
+`gemini-3.8-flash`, with no failed attempts, no fallback and no context
+restarts. Used 1,013,048 tokens and 159 attempts over 24 runs (within the
+ceiling). Results: [`efficiency/results/baseline.md`](efficiency/results/baseline.md),
+[JSON](efficiency/results/baseline.json),
+[transcripts](efficiency/results/transcripts/baseline.md).
+
+| turn | targets met | figures right | queries | requests | input tokens (median, range) | active s |
+| --- | --- | --- | --- | --- | --- | --- |
+| scalar-ordinary | 0/3 | 3/3 | 4 (4-5) | 9 (7-11) | 50,593 (36,956-67,570) | 54 |
+| scalar-typo | 0/3 | 0/3 | 0 | 0 | 0 | 0 |
+| scalar-explicit | 0/3 | 3/3 | 1 | 7 (6-7) | 35,009 (29,288-36,053) | 30 |
+| followup-context, cold | 0/3 | 3/3 | 2 | 8 (7-8) | 40,672 (35,748-41,875) | 44 |
+| followup-context, "And August?" | 0/3 | 3/3 | 2 | 6 | 38,615 (38,477-40,749) | 39 |
+| reuse-evidence, cold | 0/3 | 3/3 | 5 | 11 (10-11) | 60,405 (58,176-60,674) | 66 |
+| reuse-evidence, reuse | 3/3 | 3/3 | 0 | 1 | 5,716 (5,693-5,963) | 16 |
+| clarify-missing-month | 0/1 | 1/1 | 3 | 15 | 80,096 | 70 |
+| why-category-change | 0/1 (partial) | 0/1 | 6 (+1 failed) | 11 | 81,172 | 83 |
+| report-concentration | 1/1 | 1/1 | 5 (+1 failed) | 10 | 75,240 | 96 |
+
+What the transcripts show:
+
+- **Ordinary September question:** the agent resolved "latest September" to
+  September 2025 from the data and stated 25,105.97 every time. It also
+  answered the latest single day and added an unrequested status breakdown
+  (4-5 queries). This is the over-work seen in the earlier live probe. One
+  answer put "1,261 orders" next to 469 completed items, which looks like an
+  all-status order count attached to completed revenue (reviewer note).
+- **Typos:** request admission asked "What would you like to analyze?"
+  before any model call, all three times. The suite does not answer
+  unexpected questions, so the runs were cancelled and scored as misses.
+- **Explicit scalar:** one query every time, but 6-7 model requests, spent
+  on schema discovery, example search and preference inspection.
+- **Follow-up and reuse:** "And August?" ran two queries. The reuse question
+  needed no query and one model request, and stated August and the
+  2,523.34 difference correctly.
+- **Clarification:** the agent asked one focused question before any query.
+  After the reply it ran three queries (total, statuses, categories) for a
+  one-number question.
+- **Why question:** the right quarter and category evidence existed (Q3
+  89,156.88, Q4 88,611.08 stated), but the run hit the token budget before
+  writing an answer. The partial answer showed product-level rows instead of
+  the category drivers, so it is incomplete.
+- **Report:** saved, with recommended actions. Total, top-10 share and
+  customer count all matched the references.
+
+### Candidate (after the fixes) and comparison
+
+Code `7ab8f32`, a pre-squash commit of this task: the runtime of main at `1ea43de` plus this suite's evaluation files. Since the baseline, main
+gained content capture, approved schema context reused across follow-ups,
+proportional answers with the remaining token budget shown to the model,
+focused tool exposure, a report currency rule, normal conclusion near the
+budget, and typo-tolerant request admission. Run 2026-10-09 12:07-12:16 UTC
+with the same suite, the same scoring (v2) and the same targets. Gemini
+`gemini-3.8-flash` answered every request, with no failed attempts, no
+fallback and no context restarts. Used 360,876 tokens and 63 attempts over
+24 runs, within the ceiling. Results:
+[`efficiency/results/candidate.md`](efficiency/results/candidate.md),
+[JSON](efficiency/results/candidate.json),
+[transcripts](efficiency/results/transcripts/candidate.md).
+
+| turn | targets met before -> after | figures right | queries | requests | input tokens (median) | active s |
+| --- | --- | --- | --- | --- | --- | --- |
+| scalar-ordinary | 0/3 -> 3/3 | 3/3 -> 3/3 | 4 -> 1 (1-2) | 9 -> 3 (3-4) | 50,593 -> 13,915 (-72%) | 54 -> 23 |
+| scalar-typo | 0/3 -> 3/3 | 0/3 -> 3/3 | 0 (stopped) -> 1 | 0 -> 2 | stopped -> 8,375 | - -> 13 |
+| scalar-explicit | 0/3 -> 3/3 | 3/3 -> 3/3 | 1 -> 1 | 7 -> 2 | 35,009 -> 8,331 (-76%) | 30 -> 12 |
+| followup-context, cold | 0/3 -> 3/3 | 3/3 -> 3/3 | 2 -> 1 | 8 -> 2 | 40,672 -> 8,355 (-79%) | 44 -> 12 |
+| followup-context, "And August?" | 0/3 -> 3/3 | 3/3 -> 3/3 | 2 -> 1 | 6 -> 2 | 38,615 -> 9,010 (-77%) | 39 -> 12 |
+| reuse-evidence, cold | 0/3 -> **0/3** | 3/3 -> 3/3 | 5 -> 3 (2-4) | 11 -> 4 (3-6) | 60,405 -> 18,681 (-69%) | 66 -> 27 |
+| reuse-evidence, reuse | 3/3 -> 3/3 | 3/3 -> 3/3 | 0 -> 0 | 1 -> 1 | 5,716 -> 4,505 (-21%) | 16 -> 12 |
+| clarify-missing-month | 0/1 -> 1/1 | 1/1 -> 1/1 | 3 -> 1 | 15 -> 3 | 80,096 -> 12,246 (-85%) | 70 -> 25 |
+| why-category-change | 0/1 -> 1/1 | 0/1 -> 1/1 | 6 -> 3 | 11 -> 4 | 81,172 -> 25,227 (-69%) | 83 -> 64 |
+| report-concentration | 1/1 -> 1/1 | 1/1 -> 1/1 | 5 -> 4 | 10 -> 6 | 75,240 -> 46,258 (-39%) | 96 -> 70 |
+
+Per-repetition input tokens for the matched scalar turns (baseline ->
+candidate): ordinary 50,593 / 36,956 / 67,570 -> 13,915 / 13,318 / 19,551;
+explicit 29,288 / 36,053 / 35,009 -> 8,449 / 8,311 / 8,331. The typo turns
+have no baseline token figure to compare: admission stopped them before any
+model call, which never counts as efficient.
+
+What the transcripts show:
+
+- **Ordinary September question:** each answer states 25,105.97 for
+  September 2025, the definition (completed items) and the period, with one
+  citation, and no unrequested day or status breakdown. In every repetition
+  the model's first query was refused by the compiler (`UNSUPPORTED_SQL`).
+  It then resolved the latest September and the amount in one query (two in
+  repetition 3). A refused query still counts as a failed query.
+- **Typos:** admitted. The amount and the period are correct, in one query
+  and two model requests.
+- **Explicit scalar and follow-up:** one query and two model requests each.
+  "And August?" kept the period from context and answered 25,291.09.
+- **Miss: reuse-evidence, cold turn.** "Show me monthly revenue for July,
+  August and September 2025" took 2-4 queries against the declared target of
+  1, and 6 requests in one repetition (target 4). The figures were correct
+  each time. The extra queries were not needed for the request. Some of them
+  succeeded without creating stored evidence, so this harness has no SQL for
+  them (see limitations). The target stays as declared; this is a miss.
+- **Reuse turn:** no query, one request, correct highest month and difference.
+- **Clarification:** one focused question before any query. After the reply,
+  one query and the right amount.
+- **Why question:** completed, with all seven reference figures stated: Q3
+  89,156.88, Q4 88,611.08, change -545.80, Tops & Tees +2,674.82 as the
+  largest gain and Sweaters -2,169.10 as the largest loss. It used category
+  evidence and explained volume against price.
+- **Report:** saved with recommended actions. Total, top-10 share and
+  customer count match the references.
+
+One run per complex scenario and three per scalar scenario: these are
+observations, not guarantees. Latency fell in every matched turn, but no
+latency threshold is derived from it.
+
+### Live smoke: HTTP API and real BigQuery
+
+`live_smoke.py` ran once against the shipped local default: a live-mode API
+(local execution) on a throwaway PostgreSQL and MLflow, real BigQuery
+(`bigquery-public-data.thelook_ecommerce`), the local administrator's token
+(every product), code `7ab8f32` (runtime of `1ea43de`), 2026-10-09 12:10 UTC. It asked "What's the
+latest revenue of September?" and then "And August?". The expected amounts
+were computed right after the conversation by the script's own BigQuery SQL
+(completed items, `orders.created_at`), independently of the agent. Results:
+[`efficiency/results/live-smoke.json`](efficiency/results/live-smoke.json),
+[transcript](efficiency/results/transcripts/live-smoke.md).
+
+| turn | run | answer | reference | queries | requests | tokens in/out | client s |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| September | `run_55f0263f3b0c8ee47b87096cb778bf21` | 141,190.75 (September 2026) | 141,190.75 | 1 | 2 | 8,519 / 1,963 | 27.2 |
+| August | `run_fb6b8459207f6ba20adeb0a85e36b2e4` | 110,644.81 (August 2026) | 110,644.81 | 1 | 2 | 8,961 / 1,152 | 21.1 |
+
+Both runs were answered by Gemini `gemini-3.8-flash`, with no restarts, one
+BigQuery job each (20 MiB billed) and status completed. The MLflow traces
+(`tr-1d58bac503e79b0909738a6c134d79b9`, `tr-2239639bb4cca9d80b342fa609799575`)
+show the sanitized prompt on every model attempt, the tool arguments, and
+the model's SQL next to the executed SQL. In the executed SQL the scope
+filter value is withheld (`@[withheld]`). The SQL resolves "latest
+September" in the same query that computes its amount, and the August query
+uses the period from context. The earlier live probe of the same two
+requests on code `419bb9e` took 4 queries / 11 calls / 69,353 tokens and
+2 queries / 7 calls / 58,770 tokens (historical single observations, not a
+controlled baseline). The amounts are identical. This is one bounded
+conversation, not a measurement of variance.
+
+The scoring was changed once after this run and before any comparison. The
+"completed" and "no unexpected question" targets were added, because the
+cancelled typo runs had counted as meeting their query limits. "Figures right"
+now uses the released text only. The saved baseline was rescored from its
+recorded data (`--rescore`). Nothing was rerun, and no declared limit
+changed.
+
+Reproduce from the repository root (`.env` with the provider keys; a
+migrated PostgreSQL with no local-execution API attached):
+`python evaluation/real-model/efficiency.py --label <name> [--baseline
+evaluation/real-model/efficiency/results/baseline.json] [--only <scenario>...]`.
+`--rescore` recomputes the targets of a saved run without running anything.
+The live smoke needs a live-mode API on a throwaway database and a token
+file: `python evaluation/real-model/live_smoke.py --api <url> --token-file
+<file> --revision <sha>` (`--rescan` re-reads the answers and traces of a
+saved smoke). The script never prints the token, and its reference month
+pair is fixed in the script (`MONTHS`). Unit tests:
+`pytest tests/unit/evaluation/test_efficiency.py`.
+
+Limitations of the efficiency suite: it is small (8 scenarios; 3
+repetitions only for scalar and reuse); one model and provider (no fallback
+occurred, so fallback cost is unmeasured); the offline warehouse has no
+BigQuery latency; figure checks show a number is stated, not that it is
+stated in the right place (the transcripts are for that); the harness
+records SQL only for queries that created evidence (the in-process recorder
+keeps no content payloads), so a successful query without stored evidence
+shows its outcome but not its SQL; targets are evaluation targets, not
+production caps.
+
 ## Limitations
 
 - Ten conversations, one run each, one day: no variance estimate, and no

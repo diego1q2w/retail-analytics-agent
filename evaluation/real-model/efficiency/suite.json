@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "suite_id": "conversation-efficiency",
+  "suite_version": "1",
+  "declared_on": "2026-10-09",
+  "spend": {
+    "max_total_tokens": 3000000,
+    "max_model_attempts": 500,
+    "run_tokens_limit": 100000,
+    "run_requests_limit": 20
+  },
+  "scenarios": [
+    {
+      "id": "scalar-ordinary",
+      "title": "Ordinary scalar question, period resolved from data",
+      "category": "scalar",
+      "scope": "women",
+      "repeats": 3,
+      "turns": [
+        {
+          "text": "What's the latest revenue of September?",
+          "kind": "cold",
+          "targets": {"max_queries": 2, "max_model_requests": 5},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"], ["2025"]],
+          "sql_terms": [["complete"], ["2025-09", "= 9", "=9"]]
+        }
+      ]
+    },
+    {
+      "id": "scalar-typo",
+      "title": "Scalar question with typos",
+      "category": "scalar",
+      "scope": "women",
+      "repeats": 3,
+      "turns": [
+        {
+          "text": "hw much revenu did we make in septmber 2025",
+          "kind": "cold",
+          "targets": {"max_queries": 1, "max_model_requests": 4},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"], ["2025"]],
+          "sql_terms": [["complete"], ["2025-09", "= 9", "=9"]]
+        }
+      ]
+    },
+    {
+      "id": "scalar-explicit",
+      "title": "Explicit scalar question",
+      "category": "scalar",
+      "scope": "women",
+      "repeats": 3,
+      "turns": [
+        {
+          "text": "What was total revenue in September 2025 under the default revenue definition? Just the total, please.",
+          "kind": "cold",
+          "targets": {"max_queries": 1, "max_model_requests": 4},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"], ["2025"], ["complete"]],
+          "sql_terms": [["complete"], ["2025-09", "= 9", "=9"]]
+        }
+      ]
+    },
+    {
+      "id": "followup-context",
+      "title": "Scalar question, then a context-following request",
+      "category": "follow_up",
+      "scope": "women",
+      "repeats": 3,
+      "turns": [
+        {
+          "text": "What was our revenue in September 2025?",
+          "kind": "cold",
+          "targets": {"max_queries": 1, "max_model_requests": 4},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"], ["2025"]],
+          "sql_terms": [["complete"], ["2025-09", "= 9", "=9"]]
+        },
+        {
+          "text": "And August?",
+          "kind": "follow_up",
+          "targets": {"max_queries": 1, "max_model_requests": 4},
+          "figures": [{"name": "august_revenue", "ref": "monthly_trend.month_2_revenue"}],
+          "text_terms": [["august"]],
+          "sql_terms": [["complete"], ["2025-08", "= 8", "=8"]]
+        }
+      ]
+    },
+    {
+      "id": "reuse-evidence",
+      "title": "Monthly figures, then a question the evidence already answers",
+      "category": "reuse",
+      "scope": "women",
+      "repeats": 3,
+      "turns": [
+        {
+          "text": "Show me monthly revenue for July, August and September 2025.",
+          "kind": "cold",
+          "targets": {"max_queries": 1, "max_model_requests": 4},
+          "figures": [
+            {"name": "july_revenue", "ref": "monthly_trend.month_1_revenue"},
+            {"name": "august_revenue", "ref": "monthly_trend.month_2_revenue"},
+            {"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}
+          ],
+          "text_terms": [["july"], ["august"], ["september"]],
+          "sql_terms": [["complete"]]
+        },
+        {
+          "text": "Which of those months was highest, and by how much did it beat the lowest?",
+          "kind": "reuse",
+          "targets": {"max_queries": 0, "max_model_requests": 2},
+          "figures": [
+            {"name": "august_revenue", "ref": "monthly_trend.month_2_revenue"},
+            {"name": "august_minus_july", "ref": "monthly_trend.month_2_revenue", "minus": "monthly_trend.month_1_revenue"}
+          ],
+          "text_terms": [["august"], ["july"]]
+        }
+      ]
+    },
+    {
+      "id": "clarify-missing-month",
+      "title": "Missing period: one focused question, then the answer",
+      "category": "clarification",
+      "scope": "women",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "What was revenue in that month?",
+          "kind": "clarification",
+          "expect_clarification": true,
+          "clarification_reply": "September 2025",
+          "targets": {"max_queries_before_question": 0, "max_queries": 1},
+          "figures": [{"name": "september_revenue", "ref": "monthly_trend.month_3_revenue"}],
+          "text_terms": [["september"]],
+          "sql_terms": [["complete"], ["2025-09", "= 9", "=9"]]
+        }
+      ]
+    },
+    {
+      "id": "why-category-change",
+      "title": "Multi-step why/comparison question",
+      "category": "investigation",
+      "scope": "men",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "Why did revenue change between the third and fourth quarter of 2025? Which product categories drove the change?",
+          "kind": "investigation",
+          "figures": [
+            {"name": "q3_revenue", "ref": "category_change.first_period_revenue"},
+            {"name": "q4_revenue", "ref": "category_change.second_period_revenue"},
+            {"name": "revenue_change", "ref": "category_change.revenue_change"},
+            {"name": "top_gain_category", "ref": "category_change.gain_1_category", "kind": "label"},
+            {"name": "top_gain_delta", "ref": "category_change.gain_1_delta"},
+            {"name": "weakest_category", "ref": "category_change.weakest_category", "kind": "label"},
+            {"name": "weakest_delta", "ref": "category_change.weakest_delta"}
+          ],
+          "sql_terms": [["complete"], ["category"]]
+        }
+      ]
+    },
+    {
+      "id": "report-concentration",
+      "title": "Explicit saved report with recommended actions",
+      "category": "report",
+      "scope": "men",
+      "repeats": 1,
+      "turns": [
+        {
+          "text": "Write and save a short report on how concentrated our customer revenue was in the fourth quarter of 2025, including the share from our ten biggest customers, with recommended actions.",
+          "kind": "investigation",
+          "expect_report": true,
+          "figures": [
+            {"name": "q4_revenue", "ref": "customer_concentration.total_revenue"},
+            {"name": "top10_share", "ref": "customer_concentration.top10_share"},
+            {"name": "customers", "ref": "customer_concentration.customers_total"}
+          ],
+          "sql_terms": [["complete"]]
+        }
+      ]
+    }
+  ]
+}
