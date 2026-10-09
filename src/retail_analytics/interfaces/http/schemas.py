@@ -33,6 +33,7 @@ from retail_analytics.application.investigations import (
 )
 from retail_analytics.domain.conversation import Session
 from retail_analytics.domain.investigations import MAX_INPUT_CHARS
+from retail_analytics.domain.report_definitions import DefinitionNotice
 from retail_analytics.domain.runs import Run
 
 API_VERSION = 1
@@ -273,6 +274,34 @@ class CitedEvidenceOut(_Response):
     rows: list[list[str]]
 
 
+# Export response header carrying the report's definition notices as a JSON
+# list of ``DefinitionNoticeOut`` (ASCII), because the body is the file itself.
+NOTICES_HEADER = "X-Report-Definition-Notices"
+
+
+class DefinitionNoticeOut(_Response):
+    """Shown with a report (never part of it): a definition it used differs
+    from the reader's current one, or its definitions were not recorded."""
+
+    kind: str
+    message: str
+    subject: str | None
+    report_definition: str | None
+    current_definition: str | None
+    recalculation_required: bool
+
+    @classmethod
+    def of(cls, notice: DefinitionNotice) -> DefinitionNoticeOut:
+        return cls(
+            kind=notice.kind.value,
+            message=notice.message,
+            subject=notice.subject,
+            report_definition=notice.report_definition,
+            current_definition=notice.current_definition,
+            recalculation_required=notice.recalculation_required,
+        )
+
+
 class ReportDocumentOut(_Response):
     report_id: str
     version: int
@@ -282,6 +311,7 @@ class ReportDocumentOut(_Response):
     run_id: str | None
     markdown: str
     evidence: list[CitedEvidenceOut]
+    definition_notices: list[DefinitionNoticeOut]
 
     @classmethod
     def of(cls, document: ReportDocument) -> ReportDocumentOut:
@@ -307,6 +337,7 @@ class ReportDocumentOut(_Response):
                 )
                 for e in document.evidence
             ],
+            definition_notices=[DefinitionNoticeOut.of(n) for n in document.notices],
         )
 
 

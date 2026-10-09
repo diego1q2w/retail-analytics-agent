@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 
+from retail_analytics.domain.report_definitions import DefinitionNotice
 from retail_analytics.domain.reports import ReportVersion
 
 
@@ -92,11 +93,16 @@ class ReportDocument:
     version: ReportVersion
     markdown: str
     evidence: tuple[CitedEvidence, ...]
+    # Display-time only (never part of the saved Markdown): the report's
+    # definitions differ from the reader's current ones, or were not recorded.
+    notices: tuple[DefinitionNotice, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class ExportedReport:
     filename: str
     media_type: str
+    # The saved report plus its evidence appendix; notices are not inside it.
     content: bytes
     version: ReportVersion
+    notices: tuple[DefinitionNotice, ...] = ()

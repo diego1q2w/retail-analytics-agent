@@ -51,6 +51,7 @@ from retail_analytics.application.tools import (
 from retail_analytics.capabilities.principal import run_principal
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.operations import RecoveryMode, SideEffect, ToolErrorCode
+from retail_analytics.domain.report_definitions import DefinitionNotice
 from retail_analytics.domain.reports import (
     MAX_FINDINGS,
     MAX_ITEM,
@@ -89,7 +90,8 @@ _SNAPSHOT_NOTE = (
     "cited for what the report found: always state its source line (report, "
     "computation date, period, definitions) and never present it as current. "
     "For current figures, or evidence not reusable, query again and cite the "
-    "new evidence."
+    "new evidence. Tell the user every definition notice in plain words: the "
+    "report's figures were not recalculated."
 )
 
 EvidenceRef = Annotated[str, StringConstraints(pattern=r"^evd_[0-9a-z]{1,40}$")]
@@ -201,6 +203,29 @@ class CitedEvidenceSummary(ContractModel):
     not_reusable_reason: str | None = None
 
 
+class DefinitionNoticeOutput(ContractModel):
+    """The report's definitions differ from the user's current ones, or were
+    not recorded (display-time; the saved report is unchanged)."""
+
+    kind: str
+    message: str
+    subject: str | None = None
+    report_definition: str | None = None
+    current_definition: str | None = None
+    recalculation_required: bool
+
+    @classmethod
+    def of(cls, notice: DefinitionNotice) -> DefinitionNoticeOutput:
+        return cls(
+            kind=notice.kind.value,
+            message=notice.message,
+            subject=notice.subject,
+            report_definition=notice.report_definition,
+            current_definition=notice.current_definition,
+            recalculation_required=notice.recalculation_required,
+        )
+
+
 class ReadReportOutput(ToolOutput):
     report_id: str
     version: int
@@ -208,6 +233,7 @@ class ReadReportOutput(ToolOutput):
     markdown: str
     markdown_truncated: bool
     evidence: tuple[CitedEvidenceSummary, ...]
+    definition_notices: tuple[DefinitionNoticeOutput, ...] = ()
     note: str
 
 
@@ -222,6 +248,7 @@ class ExportReportOutput(ToolOutput):
     filename: str
     media_type: str
     size_bytes: int
+    definition_notices: tuple[DefinitionNoticeOutput, ...] = ()
     note: str
 
 
@@ -390,7 +417,12 @@ def report_capabilities(
         if principal is None:
             return ToolFailed(code=ToolErrorCode.ACCESS_DENIED, message=_ACCESS)
         try:
-            document = await service.read(principal, args.report_id, args.version)
+            document = await service.read(
+                principal,
+                args.report_id,
+                args.version,
+                session_id=ctx.execution.correlation.session_id,
+            )
         except AccessDenied:
             return ToolFailed(code=ToolErrorCode.FIELD_UNAVAILABLE, message=_NOT_FOUND)
         except ReportError as error:
@@ -425,6 +457,9 @@ def report_capabilities(
                     )
                     for e in document.evidence
                 ),
+                definition_notices=tuple(
+                    DefinitionNoticeOutput.of(n) for n in document.notices
+                ),
                 note=_SNAPSHOT_NOTE,
             )
         )
@@ -436,7 +471,12 @@ def report_capabilities(
         if principal is None:
             return ToolFailed(code=ToolErrorCode.ACCESS_DENIED, message=_ACCESS)
         try:
-            exported = await service.export(principal, args.report_id, args.version)
+            exported = await service.export(
+                principal,
+                args.report_id,
+                args.version,
+                session_id=ctx.execution.correlation.session_id,
+            )
         except AccessDenied:
             return ToolFailed(code=ToolErrorCode.FIELD_UNAVAILABLE, message=_NOT_FOUND)
         except ReportError as error:
@@ -448,6 +488,9 @@ def report_capabilities(
                 filename=exported.filename,
                 media_type=exported.media_type,
                 size_bytes=len(exported.content),
+                definition_notices=tuple(
+                    DefinitionNoticeOutput.of(n) for n in exported.notices
+                ),
                 note=_EXPORT_NOTE,
             )
         )
@@ -492,7 +535,8 @@ def report_capabilities(
                 "evidence it cites. Evidence marked reusable becomes citable "
                 "in this investigation as a dated historical snapshot (state "
                 "its source line; never present it as current). Questions "
-                "about current figures need a new query."
+                "about current figures need a new query. Definition notices "
+                "say where its definitions differ from the user's current ones."
             ),
             progress_label="Opening the saved report.",
             input_model=ReadReportInput,

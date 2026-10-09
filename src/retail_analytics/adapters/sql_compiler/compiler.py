@@ -15,7 +15,8 @@ Sequence (each step fails closed with a :class:`QueryRejected`):
    unqualified (SQLGlot alone accepts unresolved HAVING references).
 7. Reject correlation, duplicate output names and any join not declared in
    the catalog (many-to-one equality from a joined leaf to a new leaf).
-8. Record output lineage, then replace literals with typed parameters.
+8. Record output lineage and the query's exact date window (if any), then
+   replace literals with typed parameters.
 9. Replace each leaf with a trusted, product-scoped projection of exactly the
    referenced fields (``bindings``).
 10. Postconditions: every remaining table is a trusted physical source, every
@@ -30,8 +31,9 @@ import math
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+from typing import TypeGuard
 
 import sqlglot
 from sqlglot import exp
@@ -69,6 +71,7 @@ from retail_analytics.application.query_compiler import (
 from retail_analytics.domain.access import ProductScope, is_valid_product_id
 from retail_analytics.domain.catalog import CatalogView, FieldType
 from retail_analytics.domain.operations import ToolErrorCode
+from retail_analytics.domain.periods import DateWindow
 
 _DIALECT = "bigquery"
 _SCHEMA_TYPES: Mapping[FieldType, str] = {
@@ -173,6 +176,7 @@ class SqlglotQueryCompiler:
         for scope in scopes:
             _check_scope(scope, catalog)
         outputs = _lineage(tree, scopes)
+        window = _date_window(scopes, catalog, values)
         literal_parameters = _parameterize(tree, len(values))
         logical_sql = tree.sql(dialect=_DIALECT)
         relations, fields = self._bind(scopes, catalog)
@@ -194,6 +198,7 @@ class SqlglotQueryCompiler:
             catalog_version=catalog.catalog_version,
             entitlement_version=catalog.entitlement_version,
             maximum_bytes_billed=self._limits.maximum_bytes_billed,
+            date_window=window,
         )
 
     def _bind(
@@ -680,6 +685,153 @@ def _same_scope_nodes(node: exp.Expr) -> Iterator[exp.Expr]:
         if isinstance(current, exp.Select):
             continue
         stack.extend(current.iter_expressions())
+
+
+# --- date window ---------------------------------------------------------------------
+
+# Logical field rows are dated by (a UTC calendar date).
+DATED_FIELD = "ordered_date"
+_LOWER: Mapping[type[exp.Expr], int] = {exp.GTE: 0, exp.GT: 1}
+_UPPER: Mapping[type[exp.Expr], int] = {exp.LT: 0, exp.LTE: 1}
+_FLIPPED: Mapping[type[exp.Expr], type[exp.Expr]] = {
+    exp.GTE: exp.LTE,
+    exp.GT: exp.LT,
+    exp.LTE: exp.GTE,
+    exp.LT: exp.GT,
+    exp.EQ: exp.EQ,
+}
+
+
+def _date_window(
+    scopes: list[Scope], catalog: CatalogView, values: Mapping[str, QueryParameter]
+) -> DateWindow | None:
+    """The single half-open window every dated read is filtered to.
+
+    Conservative by design: each scope that reads a dated relation directly
+    must bound its date field with constant top-level WHERE conjuncts
+    (>=, >, <, <=, =, BETWEEN against DATE literals or DATE values), every
+    such scope must give the same window, and the date field may not appear
+    in any other filter (OR, NOT, CASE, JOIN ON or HAVING). Anything else,
+    including comparisons of several periods, yields None: the period is then
+    reported as not recorded rather than guessed.
+    """
+    windows: set[DateWindow] = set()
+    for scope in scopes:
+        dated = {
+            alias
+            for alias in scope.selected_sources
+            if _is_dated(_leaf(scope, alias), catalog)
+        }
+        date_columns = [c for c in scope.columns if c.name == DATED_FIELD]
+        if not dated:
+            if any(_in_filter(c) for c in date_columns):
+                return None  # filtering a derived date: not a source window
+            continue
+        window = _scope_window(scope, dated, date_columns, values)
+        if window is None:
+            return None
+        windows.add(window)
+    return windows.pop() if len(windows) == 1 else None
+
+
+def _is_dated(relation: str | None, catalog: CatalogView) -> bool:
+    view = None if relation is None else catalog.relation(relation)
+    return view is not None and view.field(DATED_FIELD) is not None
+
+
+def _in_filter(column: exp.Column) -> bool:
+    owner = column.find_ancestor(exp.Where, exp.Join, exp.Having, exp.Select)
+    return not isinstance(owner, exp.Select)
+
+
+def _scope_window(
+    scope: Scope,
+    dated: set[str],
+    date_columns: list[exp.Column],
+    values: Mapping[str, QueryParameter],
+) -> DateWindow | None:
+    select = scope.expression
+    where = select.args.get("where") if isinstance(select, exp.Select) else None
+    lower: set[date] = set()
+    upper: set[date] = set()
+    understood: set[int] = set()
+    conjuncts = list(where.this.flatten()) if isinstance(where, exp.Where) else []
+    for node in conjuncts:
+        bound = _bound(node, dated, values)
+        if bound is None:
+            continue
+        column, low, high = bound
+        understood.add(id(column))
+        lower.update([low] if low is not None else [])
+        upper.update([high] if high is not None else [])
+    if any(_in_filter(c) and id(c) not in understood for c in date_columns):
+        return None
+    if len(lower) != 1 or len(upper) != 1:
+        return None
+    start, end = lower.pop(), upper.pop()
+    return DateWindow(start, end) if start <= end else None
+
+
+def _bound(
+    node: exp.Expr, dated: set[str], values: Mapping[str, QueryParameter]
+) -> tuple[exp.Column, date | None, date | None] | None:
+    """(column, inclusive start, exclusive end) for one date comparison."""
+    if isinstance(node, exp.Between):
+        column, low, high = node.this, node.args.get("low"), node.args.get("high")
+        if not _dated_column(column, dated):
+            return None
+        start, last = _constant_date(low, values), _constant_date(high, values)
+        if start is None or last is None:
+            return None
+        return column, start, last + timedelta(days=1)
+    kind = type(node)
+    if kind not in _FLIPPED:
+        return None
+    left, right = node.args.get("this"), node.args.get("expression")
+    if not _dated_column(left, dated):
+        left, right, kind = right, left, _FLIPPED[kind]
+    if not _dated_column(left, dated):
+        return None
+    day = _constant_date(right, values)
+    if day is None:
+        return None
+    if kind is exp.EQ:
+        return left, day, day + timedelta(days=1)
+    if kind in _LOWER:
+        return left, day + timedelta(days=_LOWER[kind]), None
+    return left, None, day + timedelta(days=_UPPER[kind])
+
+
+def _dated_column(node: object, dated: set[str]) -> TypeGuard[exp.Column]:
+    return (
+        isinstance(node, exp.Column)
+        and node.name == DATED_FIELD
+        and node.table in dated
+    )
+
+
+def _constant_date(node: object, values: Mapping[str, QueryParameter]) -> date | None:
+    if isinstance(node, exp.Cast) and node.to.this == exp.DataType.Type.DATE:
+        inner = node.this
+        if isinstance(inner, exp.Literal) and inner.is_string:
+            return _iso_date(inner.this)
+        node = inner
+    if isinstance(node, exp.Parameter):
+        parameter = values.get(node.name)
+        if parameter is None:
+            return None
+        value = parameter.value
+        if isinstance(value, date):
+            return value
+        return _iso_date(value) if isinstance(value, str) else None
+    return None
+
+
+def _iso_date(text: str) -> date | None:
+    try:
+        return date.fromisoformat(text) if len(text) == 10 else None
+    except ValueError:
+        return None
 
 
 # --- value extraction ----------------------------------------------------------------

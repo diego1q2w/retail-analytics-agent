@@ -33,6 +33,7 @@ from retail_analytics.interfaces.cli.deletion import confirm_deletion
 from retail_analytics.interfaces.cli.follow import DEFAULT_STALL_SECONDS, StreamLost
 from retail_analytics.interfaces.cli.render import (
     confirmation_phrase,
+    format_definition_notices,
     format_deletion_preview,
     format_error,
     format_question,
@@ -488,13 +489,17 @@ def reports_versions(api: ApiClient, report_id: str) -> None:
 @guarded
 def reports_export(api: ApiClient, report_id: str, output: Path | None) -> None:
     """Export a report as one Markdown file with its evidence appendix."""
-    name, content = api.export_report(report_id)
+    name, content, notices = api.export_report(report_id)
     if output is not None and str(output) == "-":
         sys.stdout.buffer.write(content)
+        if notices:
+            click.echo(format_definition_notices(notices), err=True)
         return
     target = output or Path(Path(name).name)
     target.write_bytes(content)
     click.echo(f"Saved {len(content)} bytes to {target}")
+    if notices:
+        click.echo(format_definition_notices(notices))
 
 
 # --- deletion ---

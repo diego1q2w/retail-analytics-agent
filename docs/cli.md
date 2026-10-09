@@ -132,7 +132,7 @@ exit 1; usage errors exit 2.
 | `steer RUN TEXT`, `queue SESSION TEXT` | Refine the active run / queue a separate question |
 | `cancel RUN [--wait]` | Cancel |
 | `show RUN`, `runs SESSION`, `sessions` | Inspect state (`--json`) |
-| `reports list\|search Q\|show ID [--version N]\|versions ID\|export ID [-o FILE]` | Saved reports |
+| `reports list\|search Q\|show ID [--version N]\|versions ID\|export ID [-o FILE]` | Saved reports; `show` and `export` print a `DEFINITIONS:` line when a report's definitions differ from your current ones or were not recorded (the saved report is unchanged) |
 | `deletion list` | Your pending, unexpired proposals (`--json`) |
 | `deletion show\|confirm\|cancel PROPOSAL` | Review and decide on a proposal |
 | `status` | Backend health |

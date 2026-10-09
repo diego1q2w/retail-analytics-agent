@@ -259,14 +259,26 @@ def format_report_search(result: JsonObject) -> str:
     return "\n".join(lines)
 
 
+def format_definition_notices(notices: list[JsonObject]) -> str:
+    """Display-time notices (not part of the saved report), one per line."""
+    return "\n".join(
+        click.style("DEFINITIONS: ", fg="yellow", bold=True)
+        + one_line(str(n.get("message", "")))
+        for n in notices
+    )
+
+
 def format_report(doc: JsonObject) -> str:
     out = [
         click.style(one_line(doc["title"]), bold=True)
         + f"  (report {doc['report_id']}, version {doc['version']}, "
         f"saved {one_line(doc['created_at'])})",
         "",
-        render_markdown(str(doc.get("markdown", ""))),
     ]
+    notices = doc.get("definition_notices") or []
+    if notices:
+        out += [format_definition_notices(notices), ""]
+    out.append(render_markdown(str(doc.get("markdown", ""))))
     evidence = doc.get("evidence") or []
     if evidence:
         out += ["", click.style("EVIDENCE", bold=True)]

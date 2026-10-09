@@ -7,6 +7,7 @@ records raise ``AccessDenied``); the real services run in the Docker tests.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -57,6 +58,11 @@ from retail_analytics.application.investigations import (
 )
 from retail_analytics.domain.conversation import Session
 from retail_analytics.domain.investigations import InputKind
+from retail_analytics.domain.report_definitions import (
+    UNRECORDED_MESSAGE,
+    DefinitionNotice,
+    DefinitionNoticeKind,
+)
 from retail_analytics.domain.report_deletion import (
     DeletionError,
     DeletionErrorCode,
@@ -238,6 +244,8 @@ class Investigations:
 
 class Reports:
     error: Exception | None = None
+    document: ReportDocument | None = None
+    notices: tuple[DefinitionNotice, ...] = ()
 
     def _check(self, principal: Principal, report_id: str = "rep-1") -> None:
         if self.error is not None:
@@ -265,28 +273,21 @@ class Reports:
         self, principal: Principal, report_id: str, version: int | None = None
     ) -> ReportDocument:
         self._check(principal, report_id)
+        if self.document is not None:
+            return self.document
         raise ReportError(ReportErrorCode.ACCESS_CHANGED, "Access changed.")
 
     async def export(
         self, principal: Principal, report_id: str, version: int | None = None
     ) -> ExportedReport:
         self._check(principal, report_id)
-        version_record = ReportVersion(
-            report_id=report_id,
-            version=1,
-            owner_id=ALICE.executive_id,
-            session_id=None,
-            run_id=None,
-            artifact_version=1,
-            title="t",
-            evidence_ids=(),
-            scope_digest="d",
-            authorization_version=1,
-            draft_digest="d",
-            created_at=T0,
-        )
+        version_record = _version(report_id)
         return ExportedReport(
-            "report-rep-1-v1.md", "text/markdown", b"# R\n", version_record
+            "report-rep-1-v1.md",
+            "text/markdown",
+            b"# R\n",
+            version_record,
+            notices=self.notices,
         )
 
     async def search(
@@ -299,6 +300,23 @@ class Reports:
     ) -> ReportSearchResult:
         self._check(principal)
         return ReportSearchResult((), 0, 0, False)
+
+
+def _version(report_id: str) -> ReportVersion:
+    return ReportVersion(
+        report_id=report_id,
+        version=1,
+        owner_id=ALICE.executive_id,
+        session_id=None,
+        run_id=None,
+        artifact_version=1,
+        title="t",
+        evidence_ids=(),
+        scope_digest="d",
+        authorization_version=1,
+        draft_digest="d",
+        created_at=T0,
+    )
 
 
 @dataclass
@@ -591,6 +609,51 @@ def test_reports_routes_and_errors(client: TestClient, world: World) -> None:
     assert changed.status_code == 409
     assert changed.json()["error"]["code"] == "access_changed"
     assert client.get("/v1/reports/search?q=", headers=auth()).status_code == 422
+
+
+def test_report_read_and_export_carry_definition_notices(
+    client: TestClient, world: World
+) -> None:
+    changed = DefinitionNotice(
+        DefinitionNoticeKind.DEFINITION_CHANGED,
+        'This report uses "revenue" to mean A. Your current definition of '
+        '"revenue" is B. The figures in this report have not been recalculated.',
+        "revenue",
+        "A",
+        "B",
+    )
+    unrecorded = DefinitionNotice(
+        DefinitionNoticeKind.DEFINITIONS_NOT_RECORDED, UNRECORDED_MESSAGE
+    )
+    world.reports.document = ReportDocument(
+        _version("rep-1"), "# R\n", (), (changed, unrecorded)
+    )
+    world.reports.notices = (changed,)
+
+    body = client.get("/v1/reports/rep-1", headers=auth()).json()
+    assert body["markdown"] == "# R\n"
+    assert body["definition_notices"] == [
+        {
+            "kind": "definition_changed",
+            "message": changed.message,
+            "subject": "revenue",
+            "report_definition": "A",
+            "current_definition": "B",
+            "recalculation_required": True,
+        },
+        {
+            "kind": "definitions_not_recorded",
+            "message": UNRECORDED_MESSAGE,
+            "subject": None,
+            "report_definition": None,
+            "current_definition": None,
+            "recalculation_required": True,
+        },
+    ]
+    exported = client.get("/v1/reports/rep-1/export", headers=auth())
+    assert exported.content == b"# R\n"  # the file is the saved report
+    (sent,) = json.loads(exported.headers["x-report-definition-notices"])
+    assert sent["message"] == changed.message
 
 
 def test_deletion_confirmation_needs_explicit_approval(

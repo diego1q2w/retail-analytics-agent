@@ -90,6 +90,7 @@ from retail_analytics.domain.evidence import (
     ReuseIntent,
     ReusePolicy,
     Snapshot,
+    TermMeaning,
     canonical_json,
     check_bounds,
     compatibility_block,
@@ -97,7 +98,19 @@ from retail_analytics.domain.evidence import (
     scope_digest,
     snapshot,
 )
+from retail_analytics.domain.metric_preferences import resolve_term
+from retail_analytics.domain.metrics import (
+    REVENUE_TERM,
+    MetricCatalog,
+    MetricDefinition,
+    Operation,
+    UnknownMetricError,
+)
 from retail_analytics.domain.periods import DEFAULT_TIME_ZONE, DateWindow
+from retail_analytics.domain.preferences import EffectivePreferences, PreferenceKind
+
+# Logical fields a query's rows are dated by (UTC calendar dates).
+DATED_FIELDS = frozenset({"ordered_date"})
 
 
 class EvidenceRejected(Exception):
@@ -133,6 +146,81 @@ class QueryBasis:
     time_zone: str = DEFAULT_TIME_ZONE
     analytical_slots: frozenset[str] = frozenset()
     subject_key: str | None = None
+    terms: frozenset[TermMeaning] = frozenset()
+    date_basis: str | None = None
+    # True only when trusted code determined the definition basis above.
+    definitions_recorded: bool = False
+
+
+def query_basis(
+    compiled: CompiledQuery,
+    *,
+    metrics: MetricCatalog,
+    effective: EffectivePreferences,
+) -> QueryBasis:
+    """The definition basis of a compiled query, from trusted data only.
+
+    ``definitions`` are the catalog definitions in force (current versions,
+    plus versions the executive's preferences select) whose population and
+    measure fields the compiled query read; ``terms`` say what each business
+    term ("revenue" and any term the executive defined) meant, when its
+    meaning is one of those definitions. The period is the compiler's exact
+    date window (None when the query has none or several), the date basis the
+    dated logical field it read, and the time zone UTC (warehouse dates are
+    UTC calendar dates). Nothing here comes from the model's text.
+    """
+    read = {(f.relation, f.field) for f in compiled.fields}
+    preferences = effective.definition_preferences(metrics)
+    candidates = {metrics.get(m) for m in metrics.metric_ids()}
+    for p in preferences:
+        candidates.add(metrics.get(p.metric_id, p.metric_version))
+    used = {d for d in candidates if _reads_definition(d, read, metrics)}
+    keys = {d.key for d in used}
+    names = {REVENUE_TERM} | {
+        e.setting.term
+        for e in effective.entries
+        if e.setting.kind is PreferenceKind.METRIC_DEFINITION and e.setting.term
+    }
+    terms: set[TermMeaning] = set()
+    for term in names:
+        try:
+            meaning = resolve_term(metrics, term, preferences).definition
+        except UnknownMetricError:
+            continue
+        if meaning.key in keys:
+            terms.add(TermMeaning(term, DefinitionRef(*meaning.key)))
+    dated = sorted({field for _, field in read if field in DATED_FIELDS})
+    return QueryBasis(
+        definitions=frozenset(DefinitionRef(*d.key) for d in used),
+        preference_fingerprint=effective.analytical_fingerprint,
+        period=compiled.date_window,
+        time_zone=DEFAULT_TIME_ZONE,
+        analytical_slots=frozenset(f"metric_definition:{t.term}" for t in terms),
+        terms=frozenset(terms),
+        date_basis=dated[0] if len(dated) == 1 else None,
+        definitions_recorded=True,
+    )
+
+
+def _reads_definition(
+    definition: MetricDefinition, read: set[tuple[str, str]], metrics: MetricCatalog
+) -> bool:
+    relation = definition.relation.value
+    if (relation, definition.population.status_field) not in read:
+        return False
+    match definition.operation:
+        case Operation.SUM:
+            return (relation, definition.measure_field or "") in read
+        case Operation.COUNT_DISTINCT:
+            return (relation, definition.distinct_field or "") in read
+        case Operation.COUNT_ROWS:
+            return True
+        case Operation.RATIO:
+            parts = (definition.numerator_id, definition.denominator_id)
+            return all(
+                p is not None and _reads_definition(metrics.get(p), read, metrics)
+                for p in parts
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +353,9 @@ class EvidenceService:
                     preference_fingerprint=basis.preference_fingerprint,
                     period=basis.period,
                     time_zone=basis.time_zone,
+                    terms=basis.terms,
+                    date_basis=basis.date_basis,
+                    definitions_recorded=basis.definitions_recorded,
                 ),
                 provenance=Provenance(
                     logical_sql=compiled.logical_sql,

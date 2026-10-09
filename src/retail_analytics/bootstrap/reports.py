@@ -36,4 +36,5 @@ def build_reports(
         resolver,
         metrics or default_catalog(),
         PostgresProductScopeSnapshots(db),
+        persistence.preferences,
     )

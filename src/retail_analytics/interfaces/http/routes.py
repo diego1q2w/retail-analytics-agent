@@ -4,6 +4,7 @@ application layer."""
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Query, Request, Response
@@ -15,9 +16,11 @@ from retail_analytics.interfaces.http.dependencies import CurrentPrincipal, Serv
 from retail_analytics.interfaces.http.errors import ApiError
 from retail_analytics.interfaces.http.persona_routes import build_persona_router
 from retail_analytics.interfaces.http.schemas import (
+    NOTICES_HEADER,
     AnswerRequest,
     CancelOut,
     ConfirmDeletionRequest,
+    DefinitionNoticeOut,
     DeletionPreviewOut,
     DeletionProposalListOut,
     DeletionResultOut,
@@ -260,13 +263,17 @@ def build_router(stream: StreamSettings) -> APIRouter:
     ) -> Response:
         """The report with its evidence appendix as one Markdown file."""
         exported = await s.reports.export(principal, report_id, version)
+        headers = {
+            "Content-Disposition": f'attachment; filename="{exported.filename}"',
+            "Cache-Control": "no-store",
+        }
+        if exported.notices:
+            # The file is the saved report; notices travel beside it.
+            headers[NOTICES_HEADER] = json.dumps(
+                [DefinitionNoticeOut.of(n).model_dump() for n in exported.notices]
+            )
         return Response(
-            exported.content,
-            media_type=exported.media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{exported.filename}"',
-                "Cache-Control": "no-store",
-            },
+            exported.content, media_type=exported.media_type, headers=headers
         )
 
     # --- deletion proposals ---------------------------------------------------

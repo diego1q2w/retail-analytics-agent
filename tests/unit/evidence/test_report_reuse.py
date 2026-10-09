@@ -184,6 +184,31 @@ async def test_changed_definition_or_settings_are_not_reused() -> None:
     assert env.store.imports == {}
 
 
+async def test_unrecorded_definitions_are_unknown_and_never_reused() -> None:
+    """A record that did not record its definitions (made before T18-F3) is
+    "compatibility unknown", never "compatible": the agent recomputes."""
+    env = Env()
+    compiled, released = compiled_and_released()
+    legacy = await env.service.record_query(
+        operation(context(), "op-legacy"),
+        compiled,
+        released,
+        basis(
+            definitions=frozenset(),
+            terms=frozenset(),
+            date_basis=None,
+            definitions_recorded=False,
+        ),
+    )
+    assert not legacy.content.analysis.definitions_recorded
+
+    outcome = await _import(env, legacy)
+
+    assert outcome.linked == ()
+    assert outcome.refused == ((legacy.evidence_id, ReuseBlock.DEFINITIONS_UNKNOWN),)
+    assert env.store.imports == {}
+
+
 async def test_session_setting_change_supersedes_an_import() -> None:
     env = Env()
     evidence = await _saved(env)

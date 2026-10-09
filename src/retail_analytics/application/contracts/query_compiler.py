@@ -9,6 +9,8 @@ from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 
+from retail_analytics.domain.periods import DateWindow
+
 type ScalarValue = str | int | float | bool | date | Decimal
 
 
@@ -90,6 +92,9 @@ class CompiledQuery:
     catalog_version: int
     entitlement_version: int
     maximum_bytes_billed: int
+    # The one calendar window every dated read is filtered to, derived by the
+    # compiler from the query itself; None when there is none or several.
+    date_window: DateWindow | None = None
 
     @property
     def analysis_parameters(self) -> tuple[QueryParameter, ...]:

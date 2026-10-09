@@ -374,3 +374,45 @@ def test_expired_proposal_error_is_clear() -> None:
     )
     result = invoke(backend, "deletion", "show", "p1")
     assert result.exit_code == 1 and "expired" in result.output
+
+
+NOTICE = {
+    "kind": "definition_changed",
+    "message": (
+        'This report uses "revenue" to mean completed item sales (version 1). '
+        'Your current definition of "revenue" is shipped item sales (version 1). '
+        "The figures in this report have not been recalculated; using your "
+        "current definition requires recalculating them."
+    ),
+    "subject": "revenue",
+    "report_definition": "completed item sales (version 1)",
+    "current_definition": "shipped item sales (version 1)",
+    "recalculation_required": True,
+}
+
+
+def test_reports_show_and_export_render_definition_notices(tmp_path: Path) -> None:
+    backend = Backend()
+    backend.overrides[("GET", "/v1/reports/rep1")] = lambda r: httpx.Response(
+        200, json={**REPORT, "definition_notices": [NOTICE]}
+    )
+    backend.overrides[("GET", "/v1/reports/rep1/export")] = lambda r: httpx.Response(
+        200,
+        content=b"# Revenue\n",
+        headers={
+            "content-type": "text/markdown",
+            "content-disposition": 'attachment; filename="rep1.md"',
+            "x-report-definition-notices": json.dumps([NOTICE]),
+        },
+    )
+    shown = invoke(backend, "reports", "show", "rep1")
+    assert shown.exit_code == 0
+    assert f"DEFINITIONS: {NOTICE['message']}" in shown.output
+    # The notice is shown before the saved text, which itself is unchanged.
+    assert shown.output.index("DEFINITIONS:") < shown.output.index("REVENUE")
+
+    out = tmp_path / "r.md"
+    exported = invoke(backend, "reports", "export", "rep1", "-o", str(out))
+    assert exported.exit_code == 0
+    assert out.read_bytes() == b"# Revenue\n"
+    assert "have not been recalculated" in exported.output

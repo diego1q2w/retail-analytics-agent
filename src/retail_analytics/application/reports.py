@@ -46,6 +46,16 @@ report; it only stops its figures from being reused as results (they must be
 recomputed). Reused records keep their source and computation date
 (``ReportSource.describe``) wherever they appear.
 
+Definition notices (T18-F3)
+---------------------------
+``read`` and ``export`` compare the definitions recorded with the cited
+evidence (metric versions, what terms such as "revenue" meant) with the
+reader's current definitions (their effective metric preferences, by
+``resolve_term``, and the catalog's current versions). Differences become
+display-time ``DefinitionNotice`` values on the returned document; evidence
+without recorded definitions adds a neutral notice. The saved artifact and
+version are never modified, and a notice never blocks reading.
+
 Search
 ------
 Search scans the owner's newest live reports (title, then Markdown content)
@@ -84,6 +94,7 @@ from retail_analytics.application.output_privacy import (
     OutputSection,
 )
 from retail_analytics.application.ports.evidence import ProductScopeSnapshots
+from retail_analytics.application.ports.preferences import PreferenceStore
 from retail_analytics.application.ports.reports import ReportRepository
 from retail_analytics.application.result_privacy import PRIVACY_POLICY_VERSION
 from retail_analytics.domain.access import Permission, ProductScope
@@ -98,6 +109,11 @@ from retail_analytics.domain.evidence import (
 from retail_analytics.domain.labels import present_rows
 from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.metrics import MetricCatalog, UnknownMetricError
+from retail_analytics.domain.preferences import EffectivePreferences
+from retail_analytics.domain.report_definitions import (
+    DefinitionNotice,
+    definition_notices,
+)
 from retail_analytics.domain.report_markdown import (
     DefinitionDescriber,
     render_evidence_appendix,
@@ -200,6 +216,7 @@ class ReportService:
         resolver: AccessResolver,
         metrics: MetricCatalog,
         scopes: ProductScopeSnapshots,
+        preferences: PreferenceStore,
         *,
         catalog_version: int | None = None,
     ) -> None:
@@ -217,6 +234,7 @@ class ReportService:
         )
         self._scopes = scopes
         self._rule = ReportAccessRule(scopes)
+        self._preferences = preferences
 
     # --- create ---------------------------------------------------------------
 
@@ -347,17 +365,30 @@ class ReportService:
     # --- read / export -------------------------------------------------------
 
     async def read(
-        self, principal: Principal, report_id: str, version: int | None = None
+        self,
+        principal: Principal,
+        report_id: str,
+        version: int | None = None,
+        *,
+        session_id: str | None = None,
     ) -> ReportDocument:
+        """``session_id`` (the reader's current conversation, if any) adds its
+        session-scoped preferences to the current definitions compared."""
         record, markdown, evidence = await self._open(principal, report_id, version)
         return ReportDocument(
             record,
             markdown,
             tuple(_cited(e) for e in evidence),
+            await self._notices(principal, evidence, session_id),
         )
 
     async def export(
-        self, principal: Principal, report_id: str, version: int | None = None
+        self,
+        principal: Principal,
+        report_id: str,
+        version: int | None = None,
+        *,
+        session_id: str | None = None,
     ) -> ExportedReport:
         """The report with the rows of its cited evidence, as one Markdown file."""
         record, markdown, evidence = await self._open(principal, report_id, version)
@@ -367,6 +398,7 @@ class ReportService:
             media_type=MARKDOWN,
             content=body.encode(),
             version=record,
+            notices=await self._notices(principal, evidence, session_id),
         )
 
     async def reuse_in_run(
@@ -463,6 +495,22 @@ class ReportService:
         )
 
     # --- internals -----------------------------------------------------------
+
+    async def _notices(
+        self,
+        principal: Principal,
+        evidence: Sequence[Evidence],
+        session_id: str | None,
+    ) -> tuple[DefinitionNotice, ...]:
+        # The store returns only this executive's preferences (and those of
+        # the named session when it is theirs), so nothing else can leak in.
+        stored = await self._preferences.list_preferences(
+            principal.executive_id, session_id
+        )
+        current = EffectivePreferences.build(stored).definition_preferences(
+            self._metrics
+        )
+        return definition_notices(evidence, self._metrics, current)
 
     async def _listings(
         self, rows: Sequence[ReportVersion], scope: ProductScope

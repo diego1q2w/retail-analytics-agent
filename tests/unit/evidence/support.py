@@ -24,7 +24,12 @@ from retail_analytics.application.result_privacy import (
     ResultPrivacyBoundary,
 )
 from retail_analytics.domain.access import Permission, ProductScope
-from retail_analytics.domain.evidence import DefinitionRef, Requirements, ReusePolicy
+from retail_analytics.domain.evidence import (
+    DefinitionRef,
+    Requirements,
+    ReusePolicy,
+    TermMeaning,
+)
 from retail_analytics.domain.periods import DateWindow
 from tests.unit.evidence.fakes import Clock, FakeEvidenceStore, Ids
 from tests.unit.privacy.support import (
@@ -81,6 +86,9 @@ def basis(**overrides: Any) -> QueryBasis:
         "grain": ("customer_ref",),
         "period": SEPTEMBER,
         "analytical_slots": frozenset({"metric_definition:revenue", "time_zone"}),
+        "terms": frozenset({TermMeaning("revenue", REVENUE)}),
+        "date_basis": "ordered_date",
+        "definitions_recorded": True,
     }
     values.update(overrides)
     return QueryBasis(**values)

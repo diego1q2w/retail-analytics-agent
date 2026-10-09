@@ -131,8 +131,9 @@ class World:
         self.records.add(EXEC_B, "b")
         self.guard = OwnershipGuard(self.records, self.records, self.records)
         self.resolver = AccessResolver(self.directory, self.guard)
+        self.preference_store = FakePreferenceStore(clock=self.clock)
         self.preferences = PreferenceService(
-            FakePreferenceStore(clock=self.clock),
+            self.preference_store,
             self.resolver,
             self.guard,
             default_catalog(),

@@ -58,6 +58,7 @@ class ReportWorld(World):
             self.resolver,
             default_catalog(),
             self.store,
+            self.preference_store,
         )
         self._counter = 0
 
@@ -70,12 +71,14 @@ class ReportWorld(World):
         run_id: str,
         rows: tuple[tuple[object, ...], ...] = PRODUCT_ROWS,
         principal: Principal = A,
+        analysis: AnalysisStamp | None = None,
     ) -> Evidence:
         ctx = await self.resolver.context_for_run(principal, run_id)
         content = EvidenceContent(
             kind=EvidenceKind.EXTERNAL,
             subject_key=f"p:{self.op()}",
-            analysis=AnalysisStamp(
+            analysis=analysis
+            or AnalysisStamp(
                 catalog_version=1,
                 policy_version=1,
                 definitions=frozenset({REVENUE}),

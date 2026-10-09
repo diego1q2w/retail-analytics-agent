@@ -8,6 +8,7 @@ envelope. The bearer token lives only in the ``httpx.Client`` headers.
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from collections.abc import Callable
@@ -17,6 +18,8 @@ from urllib.parse import quote
 import httpx
 
 JsonObject = dict[str, Any]
+# Definition notices for an export travel in this header (JSON list).
+NOTICES_HEADER = "X-Report-Definition-Notices"
 
 MISSING_CREDENTIAL_HELP = (
     "no access token: set ANALYTICS_CLI_TOKEN or ANALYTICS_CLI_TOKEN_FILE "
@@ -48,6 +51,18 @@ class Unreachable(Exception):
     def __init__(self, reason: str) -> None:
         self.reason = reason
         super().__init__(reason)
+
+
+def _notices(header: str | None) -> list[JsonObject]:
+    if not header:
+        return []
+    try:
+        parsed = json.loads(header)
+    except ValueError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [n for n in parsed if isinstance(n, dict)]
 
 
 def new_submission_key() -> str:
@@ -190,13 +205,14 @@ class ApiClient:
     def report_versions(self, report_id: str) -> JsonObject:
         return self._json("GET", f"/v1/reports/{quote(report_id)}/versions")
 
-    def export_report(self, report_id: str) -> tuple[str, bytes]:
+    def export_report(self, report_id: str) -> tuple[str, bytes, list[JsonObject]]:
+        """File name, content and the definition notices sent beside the file."""
         response = self.request("GET", f"/v1/reports/{quote(report_id)}/export")
         disposition = response.headers.get("content-disposition", "")
         name = f"{report_id}.md"
         if 'filename="' in disposition:
             name = disposition.split('filename="', 1)[1].split('"', 1)[0] or name
-        return name, response.content
+        return name, response.content, _notices(response.headers.get(NOTICES_HEADER))
 
     # --- deletion --------------------------------------------------------------------
 

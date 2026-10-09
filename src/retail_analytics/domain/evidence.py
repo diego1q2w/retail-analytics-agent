@@ -74,6 +74,19 @@ class DefinitionRef:
         return f"{self.metric_id}@{self.version}"
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class TermMeaning:
+    """Which definition a business term (e.g. "revenue") resolved to when the
+    evidence was computed (preference or shared default, trusted code)."""
+
+    term: str
+    definition: DefinitionRef
+
+    def __post_init__(self) -> None:
+        if not self.term:
+            raise EvidenceError("term meaning needs a term")
+
+
 def product_set_digest(product_ids: Iterable[str]) -> str:
     """Stable digest of an exact product set: SHA-256 of the sorted IDs joined
     by newlines (PostgreSQL checks stored scope snapshots the same way)."""
@@ -109,7 +122,13 @@ class AuthorityStamp:
 
 @dataclass(frozen=True, slots=True)
 class AnalysisStamp:
-    """What the numbers mean: versions that must match for reuse."""
+    """What the numbers mean: versions that must match for reuse.
+
+    ``definitions_recorded`` says trusted code recorded the definition basis
+    (``definitions``, ``terms``, ``date_basis``) at computation time. Records
+    made before that (or by code that does not know it) leave it False: their
+    definitions are *unknown*, never assumed compatible with current ones.
+    """
 
     catalog_version: int
     policy_version: int
@@ -118,6 +137,10 @@ class AnalysisStamp:
     preference_fingerprint: str
     period: DateWindow | None = None
     time_zone: str = DEFAULT_TIME_ZONE
+    terms: frozenset[TermMeaning] = frozenset()
+    # Logical date field the rows are dated by (e.g. ``ordered_date``).
+    date_basis: str | None = None
+    definitions_recorded: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -321,6 +344,9 @@ class ReuseBlock(StrEnum):
     CATALOG_CHANGED = "catalog_changed"
     POLICY_CHANGED = "policy_changed"
     DEFINITIONS_CHANGED = "definitions_changed"
+    # The record does not say which definitions it used: compatibility is
+    # unknown, so it is recomputed rather than reused (never "compatible").
+    DEFINITIONS_UNKNOWN = "definitions_unknown"
     PREFERENCES_CHANGED = "preferences_changed"
     PERIOD_MISMATCH = "period_mismatch"
     TIME_ZONE_MISMATCH = "time_zone_mismatch"
@@ -509,8 +535,14 @@ class AnalysisCompatibility:
 def compatibility_block(
     content: EvidenceContent, compatibility: AnalysisCompatibility
 ) -> ReuseBlock | None:
-    """Whether a record's meaning still matches current definitions/settings."""
+    """Whether a record's meaning still matches current definitions/settings.
+
+    A record without recorded definitions is not compatible: unknown is never
+    treated as unchanged.
+    """
     stamp = content.analysis
+    if not stamp.definitions_recorded:
+        return ReuseBlock.DEFINITIONS_UNKNOWN
     if stamp.catalog_version != compatibility.catalog_version:
         return ReuseBlock.CATALOG_CHANGED
     if stamp.policy_version != compatibility.policy_version:
@@ -668,7 +700,7 @@ def decode_provenance(data: Mapping[str, object]) -> Provenance:
 
 def encode_analysis(stamp: AnalysisStamp) -> dict[str, JsonValue]:
     period = stamp.period
-    return {
+    document: dict[str, JsonValue] = {
         "catalog_version": stamp.catalog_version,
         "policy_version": stamp.policy_version,
         "definitions": [[d.metric_id, d.version] for d in sorted(stamp.definitions)],
@@ -678,10 +710,21 @@ def encode_analysis(stamp: AnalysisStamp) -> dict[str, JsonValue]:
         else [period.start.isoformat(), period.end.isoformat()],
         "time_zone": stamp.time_zone,
     }
+    # Only present when recorded, so records made before the definition basis
+    # existed keep their exact encoding (and content digest).
+    if stamp.definitions_recorded:
+        document["definitions_recorded"] = True
+        document["terms"] = [
+            [t.term, t.definition.metric_id, t.definition.version]
+            for t in sorted(stamp.terms)
+        ]
+        document["date_basis"] = stamp.date_basis
+    return document
 
 
 def decode_analysis(data: Mapping[str, object]) -> AnalysisStamp:
     period = data["period"]
+    basis = data.get("date_basis")
     window = None
     if period is not None:
         start, end = _as_list(period)
@@ -698,6 +741,12 @@ def decode_analysis(data: Mapping[str, object]) -> AnalysisStamp:
         preference_fingerprint=str(data["preference_fingerprint"]),
         period=window,
         time_zone=str(data["time_zone"]),
+        terms=frozenset(
+            TermMeaning(str(item[0]), DefinitionRef(str(item[1]), _as_int(item[2])))
+            for item in (_as_list(x) for x in _as_list(data.get("terms", [])))
+        ),
+        date_basis=None if basis is None else str(basis),
+        definitions_recorded=data.get("definitions_recorded") is True,
     )
 
 

@@ -40,11 +40,13 @@ from retail_analytics.domain.evidence import (
     Requirements,
     ReuseBlock,
     ReuseIntent,
+    TermMeaning,
 )
 from retail_analytics.domain.logical_catalog import default_logical_catalog
 from retail_analytics.domain.operations import SideEffect
 from retail_analytics.domain.periods import DateWindow
 from retail_analytics.domain.preferences import EffectivePreferences
+from retail_analytics.domain.report_definitions import DefinitionNoticeKind
 from retail_analytics.domain.reports import ReportError, ReportErrorCode
 from tests.integration.compose_stack import Stack, running_stack
 from tests.integration.test_reports import Env as ReportsEnv
@@ -84,7 +86,12 @@ class Env(ReportsEnv):
         )
 
     async def evidence_at(
-        self, principal: Principal, run_id: str, computed_at: datetime
+        self,
+        principal: Principal,
+        run_id: str,
+        computed_at: datetime,
+        *,
+        recorded: bool = True,
     ) -> str:
         ctx = await self.access.resolver.context_for_run(principal, run_id)
         op = await self.db.tool_executions.begin(
@@ -105,6 +112,13 @@ class Env(ReportsEnv):
                 frozenset({REVENUE}),
                 FINGERPRINT,
                 period=SEPTEMBER,
+                terms=(
+                    frozenset({TermMeaning("revenue", REVENUE)})
+                    if recorded
+                    else frozenset()
+                ),
+                date_basis="ordered_date" if recorded else None,
+                definitions_recorded=recorded,
             ),
             provenance=Provenance(notes=(("source", "fixture"),)),
             table=EvidenceTable(
@@ -122,12 +136,14 @@ class Env(ReportsEnv):
         )
         return record.evidence_id
 
-    async def saved_report(self, products: set[str]) -> tuple[Principal, str, str]:
+    async def saved_report(
+        self, products: set[str], *, recorded: bool = True
+    ) -> tuple[Principal, str, str]:
         """An executive with a report saved two days ago in another session."""
         owner, session = await self.executive(products)
         run = await self.run(owner, session)
         computed = datetime.now(UTC) - timedelta(days=2)
-        evidence_id = await self.evidence_at(owner, run, computed)
+        evidence_id = await self.evidence_at(owner, run, computed, recorded=recorded)
         saved = await self.reports.create(
             owner, run, draft(evidence_id), operation_id=_id("op")
         )
@@ -193,6 +209,33 @@ async def test_same_user_new_session_cites_with_source_and_date(env: Env) -> Non
     # A later run of the same session keeps it citable.
     later = await env.run(owner, session)
     assert "48213.75" in await env.cite(owner, later, evidence_id)
+
+
+async def test_unrecorded_definitions_read_with_notice_but_are_recomputed(
+    env: Env,
+) -> None:
+    """A report whose evidence predates recorded definitions stays readable
+    with a neutral notice; its figures are never reused (compatibility
+    unknown, not compatible)."""
+    owner, report_id, evidence_id = await env.saved_report(
+        {"1", "2", "3"}, recorded=False
+    )
+    _, run = await env.new_session_run(owner)
+
+    document = await env.reports.read(owner, report_id)
+    (notice,) = document.notices
+    assert notice.kind is DefinitionNoticeKind.DEFINITIONS_NOT_RECORDED
+    assert "were not recorded" in notice.message
+    outcome = await env.reuse(owner, run, report_id)
+    assert outcome.linked == ()  # type: ignore[attr-defined]
+    assert outcome.refused == (  # type: ignore[attr-defined]
+        (evidence_id, ReuseBlock.DEFINITIONS_UNKNOWN),
+    )
+    with pytest.raises(OutputWithheld):
+        await env.cite(owner, run, evidence_id)
+    # A report with recorded, unchanged definitions shows no notice.
+    owner2, current, _ = await env.saved_report({"1", "2", "3"})
+    assert (await env.reports.read(owner2, current)).notices == ()
 
 
 async def test_narrowed_scope_refuses_and_withholds_existing_citations(

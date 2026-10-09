@@ -36,6 +36,7 @@ from retail_analytics.interfaces.cli.follow import (
     follow_run,
 )
 from retail_analytics.interfaces.cli.render import (
+    format_definition_notices,
     format_deletion_preview,
     format_error,
     format_event,
@@ -536,10 +537,12 @@ class Chat:
         if not parts:
             self.out("Usage: /export <report id> [file]")
             return
-        name, content = self.api.export_report(parts[0])
+        name, content, notices = self.api.export_report(parts[0])
         target = parts[1] if len(parts) == 2 else name
         self._write_file(target, content)
         self.out(f"Saved {len(content)} bytes to {target}.")
+        if notices:
+            self.out(format_definition_notices(notices))
 
     def _confirm(self, arg: str) -> None:
         if not arg:

@@ -276,6 +276,24 @@ def test_conversation_retrieves_methods_queries_and_saves_cited_report(
         o=executive,
     )
     assert cited[0][0] >= 1
+    # The cited query evidence records its definition basis from trusted
+    # compile-time data (catalog, compiled query, effective preferences).
+    (analysis,) = (
+        r[0]
+        for r in _rows(
+            stack,
+            "SELECT DISTINCT ev.analysis FROM evidence AS ev JOIN report_evidence "
+            "AS e ON e.evidence_id = ev.evidence_id JOIN reports AS r "
+            "ON r.report_id = e.report_id WHERE r.owner_id = :o",
+            o=executive,
+        )
+    )
+    assert analysis["definitions_recorded"] is True
+    assert ["completed_item_sales", 1] in analysis["definitions"]
+    assert ["revenue", "completed_item_sales", 1] in analysis["terms"]
+    assert analysis["period"] == ["2026-07-01", "2026-10-01"]
+    assert analysis["date_basis"] == "ordered_date"
+    assert analysis["time_zone"] == "UTC"
     statuses = {
         r[0]
         for r in _rows(

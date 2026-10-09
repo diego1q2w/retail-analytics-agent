@@ -11,6 +11,12 @@ names, row count and completeness. Released rows reach the model only through
 context assembly (``ContextBuilder``), which re-checks authority on every
 model request, so result rows never travel through workflow history.
 
+Each record carries its definition basis, determined by trusted code: the
+catalog definitions whose fields the compiled query read, what terms such as
+"revenue" meant under the effective preferences, the compiler's date window,
+the date field and the time zone (UTC). Saved reports compare it with the
+reader's current definitions when displayed.
+
 The handler owns its operation record (the warehouse job reference must be
 recorded before submission), and charges a reformulation to the run budget
 when this query follows a failed, correctable one.
@@ -29,7 +35,7 @@ from retail_analytics.application.contracts.query_compiler import AnalysisQuery
 from retail_analytics.application.evidence import (
     EvidenceRejected,
     EvidenceService,
-    QueryBasis,
+    query_basis,
 )
 from retail_analytics.application.ports.investigations import RunPrincipals
 from retail_analytics.application.ports.persistence import ToolExecutionRepository
@@ -62,6 +68,7 @@ from retail_analytics.application.tools import (
 from retail_analytics.domain.access import Permission
 from retail_analytics.domain.budgets import BudgetExhausted
 from retail_analytics.domain.executions import ToolExecution, ToolExecutionStatus
+from retail_analytics.domain.metrics import MetricCatalog, default_catalog
 from retail_analytics.domain.operations import RecoveryMode, SideEffect, ToolErrorCode
 
 ParameterName = Annotated[
@@ -136,7 +143,10 @@ def analysis_capability(
     budgets: RunBudgets,
     operations: ToolExecutionRepository,
     attempt_timeout: timedelta = timedelta(minutes=4),
+    metrics: MetricCatalog | None = None,
 ) -> CapabilitySpec[ExecuteAnalysisInput, ExecuteAnalysisOutput]:
+    catalog = metrics or default_catalog()
+
     async def execute_analysis(
         args: ExecuteAnalysisInput, ctx: OperationContext
     ) -> ToolOutcome[ExecuteAnalysisOutput]:
@@ -176,9 +186,11 @@ def analysis_capability(
                         ctx,
                         outcome.compiled,
                         outcome.result,
-                        QueryBasis(
-                            definitions=frozenset(),
-                            preference_fingerprint=effective.analytical_fingerprint,
+                        # Definitions, term meanings, period and date basis come
+                        # from the compiled query, the metric catalog and the
+                        # effective preferences, never from the model.
+                        query_basis(
+                            outcome.compiled, metrics=catalog, effective=effective
                         ),
                         # Evidence identity includes its timestamp. Replaying a
                         # committed job must reproduce the same immutable record.
