@@ -634,6 +634,8 @@ requests on code `419bb9e` took 4 queries / 11 calls / 69,353 tokens and
 controlled baseline). The amounts are identical. This is one bounded
 conversation, not a measurement of variance.
 
+Model spend (T30-F3): the same two turns ran once more on 2026-10-09 14:54 UTC (throwaway PostgreSQL and MLflow, local execution, real BigQuery) to check the cost accounting with real usage. Both runs completed with the reference amounts stated, each with 2 Gemini `gemini-3.8-flash` requests and no fallback. Estimated spend from genai-prices 0.1.9 (bundled snapshot, standard paid rates USD 0.75 input / 3.75 output per million tokens, thinking tokens billed as output, no cached tokens reported): September USD 0.011063 (10,238 tokens), August USD 0.013387 (11,509 tokens), against the USD 1 soft limit. The PostgreSQL charges, the attempt spans (`cost_usd`, usage categories, price basis), the run root (`model_cost_usd`) and MLflow's trace total (`mlflow.trace.cost`, read through the MLflow API; the browser UI was not opened) agreed to the micro-dollar. These are estimates from a public price list, not the provider's invoice (free-tier or discounted usage is not modelled).
+
 The scoring was changed once after this run and before any comparison. The
 "completed" and "no unexpected question" targets were added, because the
 cancelled typo runs had counted as meeting their query limits. "Figures right"

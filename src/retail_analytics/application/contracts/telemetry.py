@@ -34,6 +34,15 @@ class Metric(StrEnum):
     MODEL_TOKENS = "ra_model_tokens_total"
     MODEL_FALLBACKS = "ra_model_fallbacks_total"
     MODEL_ANSWERS = "ra_model_answers_total"
+    # Estimated model spend (USD) of settled provider attempts; ``kind`` is
+    # "reported" (provider usage) or "approximate" (usage not reported: the
+    # input estimate was priced). Unpriced attempts are counted apart.
+    MODEL_COST = "ra_model_cost_usd_total"
+    MODEL_UNPRICED = "ra_model_unpriced_requests_total"
+    # Per finished run: estimated model spend (``outcome`` complete when every
+    # attempt was priced), and runs whose spend ended above the soft limit.
+    RUN_MODEL_COST = "ra_run_model_cost_usd"
+    MODEL_COST_OVERRUNS = "ra_model_cost_overruns_total"
     FINAL_ANSWERS = "ra_final_answers_total"
     QUERIES = "ra_queries_total"
     QUERY_SECONDS = "ra_query_seconds"
@@ -59,6 +68,7 @@ HISTOGRAMS = frozenset(
         Metric.QUERY_SECONDS,
         Metric.RETRIEVAL_SECONDS,
         Metric.RUN_BUDGET_USE,
+        Metric.RUN_MODEL_COST,
     }
 )
 

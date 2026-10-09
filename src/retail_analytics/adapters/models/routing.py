@@ -48,7 +48,7 @@ from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.profiles import DEFAULT_PROFILE, ModelProfile
 from pydantic_ai.settings import ModelSettings
 
-from retail_analytics.adapters.models.budgeted import current_run_id
+from retail_analytics.adapters.models.budgeted import attempt_costs, current_run_id
 from retail_analytics.adapters.models.capture import (
     error_payload,
     request_payload,
@@ -73,6 +73,7 @@ from retail_analytics.application.telemetry import (
     classify_reason_text,
     telemetry,
 )
+from retail_analytics.domain.budgets import MICROS_PER_USD, Charge
 
 TRANSIENT_STATUS = frozenset({408, 409, 429, 500, 502, 503, 504})
 MISCONFIGURED = frozenset({401, 403, 404})
@@ -160,6 +161,65 @@ def _served_attributes(served: ProviderAttribution) -> dict[str, object]:
         "fallback_from": served.fallback_from or "none",
         "fallback_reason": served.fallback_reason or "none",
     }
+
+
+def _cost_attributes(charges: list[Charge]) -> dict[str, object]:
+    """The attempt's settled usage and estimated cost, as span attributes.
+
+    ``cost_status``: "estimated" (reported usage, known price),
+    "approximate" (usage not reported: the input estimate was priced),
+    "unknown" (no price; never shown as zero) or "unrecorded".
+    """
+    charge = charges[-1] if charges else None
+    if charge is None or charge.detail is None:
+        return {"cost_status": "unrecorded"}
+    detail = charge.detail
+    # "reasoning" marks content keys for the sanitizer; thinking is a count.
+    names = {
+        "input_tokens": "usage_input_tokens",
+        "cached_input_tokens": "usage_cached_input_tokens",
+        "cache_write_tokens": "usage_cache_write_tokens",
+        "output_tokens": "usage_output_tokens",
+        "reasoning_tokens": "usage_thinking_tokens",
+    }
+    attributes: dict[str, object] = {
+        attribute: detail[name]
+        for name, attribute in names.items()
+        if isinstance(detail.get(name), int)
+    }
+    attributes["usage_reported"] = bool(detail.get("usage_reported"))
+    attributes["price_source"] = str(detail.get("price_source") or "none")
+    attributes["price_version"] = str(detail.get("price_version") or "none")
+    attributes["price_override"] = bool(detail.get("price_override"))
+    if charge.cost_micros is None:
+        attributes["cost_status"] = "unknown"
+        return attributes
+    attributes["cost_status"] = (
+        "estimated" if detail.get("usage_reported") else ("approximate")
+    )
+    attributes["cost_usd"] = charge.cost_micros / MICROS_PER_USD
+    for side in ("input", "output"):
+        value = detail.get(f"{side}_cost_usd")
+        if isinstance(value, str):
+            attributes[f"cost_{side}_usd"] = float(value)
+    return attributes
+
+
+def _record_cost(labels: dict[Label, str], charges: list[Charge]) -> None:
+    for charge in charges:
+        if charge.cost_micros is None:
+            telemetry().count(Metric.MODEL_UNPRICED, labels)
+        elif charge.cost_micros:
+            kind = (
+                "reported"
+                if (charge.detail or {}).get("usage_reported")
+                else ("approximate")
+            )
+            telemetry().count(
+                Metric.MODEL_COST,
+                {**labels, Label.KIND: kind},
+                charge.cost_micros / MICROS_PER_USD,
+            )
 
 
 def _usage_counts(response: ModelResponse) -> tuple[int, int]:
@@ -316,12 +376,16 @@ class ProviderAttempts(WrapperModel):
                     )
                 )
             try:
-                response = await self.wrapped.request(
-                    messages, model_settings, model_request_parameters
-                )
+                with attempt_costs() as charges:
+                    response = await self.wrapped.request(
+                        messages, model_settings, model_request_parameters
+                    )
             except Exception as error:
                 reason = reason_class(error)
                 span.set({"outcome": "failed", "reason_class": reason.value})
+                if not isinstance(error, RunStopped):
+                    span.set(_cost_attributes(charges))
+                    _record_cost(labels, charges)
                 if span.captures:
                     span.outputs(error_payload(error, reason.value))
                 telemetry().count(
@@ -343,8 +407,10 @@ class ProviderAttempts(WrapperModel):
                     "reason_class": "none",
                     "input_tokens": tokens_in,
                     "output_tokens": tokens_out,
+                    **_cost_attributes(charges),
                 }
             )
+            _record_cost(labels, charges)
         telemetry().count(
             Metric.MODEL_REQUESTS,
             {**labels, Label.OUTCOME: "succeeded", Label.REASON_CLASS: "none"},

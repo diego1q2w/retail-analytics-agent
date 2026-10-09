@@ -29,7 +29,7 @@ from retail_analytics.bootstrap.execution import (
     investigation_wiring,
 )
 from retail_analytics.bootstrap.investigations import build_investigations
-from retail_analytics.bootstrap.models import provider_summary
+from retail_analytics.bootstrap.models import pricing_summary, provider_summary
 from retail_analytics.bootstrap.persistence import persistence_from_settings
 from retail_analytics.bootstrap.telemetry import install_from_settings
 from retail_analytics.bootstrap.temporal import (
@@ -104,6 +104,7 @@ def main(check_config: bool) -> None:
         click.echo(WORKER_NOT_USED_MESSAGE, err=True)
         raise SystemExit(NOT_USED_EXIT_CODE)
     click.echo(f"retail-analytics-worker: {provider_summary(settings)}", err=True)
+    click.echo(f"retail-analytics-worker: {pricing_summary(settings)}", err=True)
     try:
         asyncio.run(run_worker(settings))
     except ConfigError as error:

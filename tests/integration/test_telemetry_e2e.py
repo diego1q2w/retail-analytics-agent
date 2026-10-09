@@ -357,6 +357,28 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
         assert run["answered_by"] == "openai"
         assert run["fallback_from"] == "google-interactions"
 
+        # Estimated model spend (T30-F3): per attempt, matching the run total
+        # from accounting and MLflow's own trace total (attempts only).
+        assert {a["cost_status"] for a in failed} == {"approximate"}
+        assert backup["cost_status"] == "estimated"
+        assert backup["price_source"] == "genai-prices"
+        assert "openai/gpt-5-mini" in backup["price_version"]
+        attempt_costs = [float(a["cost_usd"]) for a in attempts if "cost_usd" in a]
+        assert float(backup["cost_usd"]) > 0
+        assert float(run["model_cost_usd"]) == pytest.approx(sum(attempt_costs))
+        assert run["model_cost_complete"].lower() == "true"
+        assert float(run["model_cost_limit_usd"]) == 1.0
+
+        def trace_cost_matches() -> bool:
+            metadata = mlflow_trace_info(stack, run_id).get("trace_metadata", {})
+            raw = metadata.get("mlflow.trace.cost")
+            if raw is None:
+                return False
+            total = float(json.loads(raw)["total_cost"])
+            return total == pytest.approx(sum(attempt_costs))
+
+        eventually("the matching trace cost in MLflow", trace_cost_matches, 60)
+
         # The same data as metrics, without identifiers.
         def has_metrics() -> bool:
             return bool(
@@ -373,6 +395,10 @@ async def test_run_with_fallback_is_traced_measured_and_sanitized(
                 and prometheus(
                     stack, 'ra_tool_calls_total{capability="checkpoint_effect"}'
                 )
+                and prometheus(
+                    stack, 'ra_model_cost_usd_total{provider="openai",kind="reported"}'
+                )
+                and prometheus(stack, 'ra_run_model_cost_usd_count{outcome="complete"}')
             )
 
         eventually("run metrics in Prometheus", has_metrics, 90)

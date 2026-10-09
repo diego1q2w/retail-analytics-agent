@@ -126,6 +126,23 @@ retries, fallback attempts and Temporal activity retries.
   still counts as a request.
 - **Cooling primary.** While the primary cools down, it is skipped without a
   request and without a charge.
+- **Estimated cost.** Each settled request is priced (genai-prices, or
+  `MODEL_PRICE_OVERRIDES`) and added to the run's spend; the next request,
+  retries and fallback included, is refused once the run reaches
+  `RUN_MAX_MODEL_COST_USD` (USD 1 by default, a soft limit). Usage
+  semantics, checked against the Interactions API reference and pricing page
+  (2026-10): `total_input_tokens` includes `total_cached_tokens`;
+  `total_thought_tokens` are separate from `total_output_tokens` and billed
+  at the output price ("output price, including thinking tokens");
+  `total_tokens` = input + output + thoughts. Server-side tool-use prompt
+  tokens are counted as input (the agent uses none). OpenAI Responses:
+  `input_tokens` includes `cached_tokens`, `output_tokens` includes
+  `reasoning_tokens`. Each category is charged once. On 2026-10-09 the price
+  list gave `gemini-3.8-flash` USD 0.75 input / 0.075 cached input / 3.75
+  output per million tokens through 2026-12-31 (1.50 / 0.15 / 7.50 from
+  2027-01-01), matching Google's pricing page, and `gpt-5-mini` 0.25 / 0.025
+  / 2.00. Free-tier, batch, flex and priority rates and context-cache storage
+  are not modelled: estimates are not invoices.
 
 ## Rate limits
 

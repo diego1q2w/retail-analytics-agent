@@ -19,7 +19,9 @@ from tests.unit.sql_compiler.support import view
 
 def test_default_settings_are_the_accepted_limits() -> None:
     settings = load_backend_settings({"APP_MODE": "fixture"}, env_file=None)
-    assert run_limits(settings) == RunLimits()
+    # USD 1 of estimated model spend per question (the domain default, 0, is
+    # "no dollar limit": it is what runs opened before the limit existed get).
+    assert run_limits(settings) == RunLimits(model_cost_micros=1_000_000)
 
 
 def test_settings_override_limits_for_new_runs() -> None:

@@ -13,6 +13,12 @@ per-request sequence number, so a retried attempt (which may have sent its
 request before the worker died), an in-attempt retry and a fallback attempt
 are each charged again: provider attempts are never undercounted.
 
+Each settled request also carries its estimated dollar cost (input, cached
+input and output priced per the provider's API); the budget refuses the next
+request once the run's estimated spend reaches its limit. The settled charge
+is handed to the enclosing ``ProviderAttempts`` (``attempt_costs``) for the
+attempt's trace attributes and metrics; enforcement never depends on them.
+
 Settlement records actual usage only when the provider reported it. A
 response without usage, a lost response or a timeout keeps the reservation
 estimate (the outcome is ambiguous); a definite client-side rejection
@@ -45,9 +51,10 @@ from pydantic_core import to_json
 
 from retail_analytics.application.contracts.budgets import ProviderUsage
 from retail_analytics.application.contracts.investigations import StopReason
+from retail_analytics.application.contracts.model_costs import ModelRef
 from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.application.ports.budgets import ProviderBudget
-from retail_analytics.domain.budgets import BudgetExhausted
+from retail_analytics.domain.budgets import BudgetExhausted, Charge
 
 CHARS_PER_TOKEN = 4
 
@@ -89,15 +96,41 @@ def scoped_request_key(model_name: str) -> str:
     return f"local/{uuid.uuid4().hex}/{model_name}"[:200]
 
 
+_attempt_costs: ContextVar[list[Charge] | None] = ContextVar(
+    "retail_analytics_attempt_costs", default=None
+)
+
+
+@contextmanager
+def attempt_costs() -> Iterator[list[Charge]]:
+    """Collect the settled charges of the requests sent inside the block."""
+    sink: list[Charge] = []
+    token = _attempt_costs.set(sink)
+    try:
+        yield sink
+    finally:
+        _attempt_costs.reset(token)
+
+
 def reported_usage(usage: RequestUsage) -> ProviderUsage:
     """What the provider reported; unknown when it reported nothing.
 
     Every real request has input tokens, so zero input means the usage was
     not reported (for example a stream cut off before its final event).
+    Pydantic AI's request usage is already normalized: input includes the
+    cached part and output includes reasoning; the subsets come along for
+    pricing and audit.
     """
     if usage.input_tokens <= 0:
         return ProviderUsage()
-    return ProviderUsage(usage.input_tokens, usage.output_tokens)
+    reasoning = (usage.details or {}).get("reasoning_tokens")
+    return ProviderUsage(
+        usage.input_tokens,
+        usage.output_tokens,
+        cached_input_tokens=usage.cache_read_tokens,
+        cache_write_tokens=usage.cache_write_tokens,
+        reasoning_tokens=reasoning if isinstance(reasoning, int) else None,
+    )
 
 
 def failure_usage(error: BaseException) -> ProviderUsage:
@@ -125,16 +158,35 @@ class BudgetedModel(WrapperModel):
         self._request_key = request_key
         self._sequence = itertools.count()
 
-    async def _reserve(self, messages: list[ModelMessage]) -> tuple[str, str]:
+    @property
+    def model_ref(self) -> ModelRef:
+        return ModelRef(self.system, self.model_name)
+
+    async def _reserve(self, messages: list[ModelMessage]) -> tuple[str, str, int]:
         run_id = self._run_id()
         key = f"{self._request_key(self.model_name)}/{next(self._sequence)}"
+        estimate = estimate_input_tokens(messages)
         try:
             await self._budget.reserve_provider_request(
-                run_id, key, estimated_input_tokens=estimate_input_tokens(messages)
+                run_id, key, estimated_input_tokens=estimate, model=self.model_ref
             )
         except BudgetExhausted as exhausted:
             raise RunStopped(StopReason.BUDGET, exhausted.resource) from None
-        return run_id, key
+        return run_id, key, estimate
+
+    async def _record(
+        self, run_id: str, key: str, usage: ProviderUsage, estimate: int
+    ) -> None:
+        charge = await self._budget.record_provider_usage(
+            run_id,
+            key,
+            usage,
+            model=self.model_ref,
+            estimated_input_tokens=estimate,
+        )
+        sink = _attempt_costs.get()
+        if sink is not None and charge is not None:
+            sink.append(charge)
 
     async def request(
         self,
@@ -142,7 +194,7 @@ class BudgetedModel(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
-        run_id, key = await self._reserve(messages)
+        run_id, key, estimate = await self._reserve(messages)
         try:
             response = await self.wrapped.request(
                 messages, model_settings, model_request_parameters
@@ -150,11 +202,9 @@ class BudgetedModel(WrapperModel):
         except BaseException as error:
             # Sent (or maybe sent) without reported usage: the estimate stands
             # unless the provider definitely rejected the request.
-            await self._budget.record_provider_usage(run_id, key, failure_usage(error))
+            await self._record(run_id, key, failure_usage(error), estimate)
             raise
-        await self._budget.record_provider_usage(
-            run_id, key, reported_usage(response.usage)
-        )
+        await self._record(run_id, key, reported_usage(response.usage), estimate)
         return response
 
     @asynccontextmanager
@@ -165,7 +215,7 @@ class BudgetedModel(WrapperModel):
         model_request_parameters: ModelRequestParameters,
         run_context: RunContext[Any] | None = None,
     ) -> AsyncGenerator[StreamedResponse]:
-        run_id, key = await self._reserve(messages)
+        run_id, key, estimate = await self._reserve(messages)
         usage = ProviderUsage()
         try:
             async with self.wrapped.request_stream(
@@ -174,4 +224,4 @@ class BudgetedModel(WrapperModel):
                 yield stream
                 usage = reported_usage(stream.usage)
         finally:
-            await self._budget.record_provider_usage(run_id, key, usage)
+            await self._record(run_id, key, usage, estimate)

@@ -10,6 +10,7 @@ attempt is one the application counted.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 
 import httpx
 from openai import AsyncOpenAI, DefaultAsyncHttpxClient
@@ -20,10 +21,13 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from retail_analytics.adapters.models.budgeted import BudgetedModel
 from retail_analytics.adapters.models.deadlines import ResponseLimits, StreamDeadlines
 from retail_analytics.adapters.models.gemini_interactions import (
+    PROVIDER,
     GeminiInteractionsModel,
 )
 from retail_analytics.adapters.models.routing import ProviderAttempts, ProviderRouting
 from retail_analytics.application.budgets import RunBudgets
+from retail_analytics.application.contracts.model_costs import ModelRef
+from retail_analytics.bootstrap.budgets import model_pricing
 from retail_analytics.bootstrap.config import (
     BackendSettings,
     ConfigError,
@@ -50,6 +54,37 @@ def provider_summary(settings: BackendSettings) -> str:
         else f"no fallback ({openai} unset)"
     )
     return f"model providers: gemini (primary), {fallback}"
+
+
+def pricing_summary(settings: BackendSettings, *, at: datetime | None = None) -> str:
+    """One startup line: the spending limit and each live model's price basis.
+
+    A model without a known price is named, since under a dollar limit its
+    requests are refused until a price override is set.
+    """
+    limit = settings.run_max_model_cost_usd
+    head = (
+        f"model spend limit: USD {limit.normalize():f} per question (soft, estimated)"
+        if limit > 0
+        else "model spend limit: off"
+    )
+    if settings.mode is not RuntimeMode.LIVE:
+        return head
+    pricing = model_pricing(settings)
+    when = at or datetime.now(UTC)
+    models = [ModelRef(PROVIDER, settings.agent_gemini_model)]
+    if settings.openai_api_key is not None:
+        models.append(ModelRef("openai", settings.agent_openai_model))
+    parts = []
+    for ref in models:
+        basis = pricing.basis(ref, at=when)
+        override = backend_env_name("model_price_overrides")
+        parts.append(
+            f"{ref.model}: price UNKNOWN (set {override})"
+            if basis is None
+            else f"{ref.model}: {basis.source} {basis.version}"
+        )
+    return head + "; " + "; ".join(parts)
 
 
 def response_limits(settings: BackendSettings) -> ResponseLimits:

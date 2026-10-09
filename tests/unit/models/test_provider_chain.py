@@ -21,6 +21,7 @@ from pydantic_ai.messages import ModelResponse
 from retail_analytics.application.budgets import RetrySettings, RunBudgets
 from retail_analytics.application.contracts.investigations import StopReason
 from retail_analytics.application.investigation_runtime import RunStopped
+from retail_analytics.application.ports.model_costs import ModelPricing
 from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.domain.budgets import (
@@ -73,16 +74,23 @@ def harness(
     *,
     limits: RunLimits | None = None,
     settings: BackendSettings = SETTINGS,
+    pricing: ModelPricing | None = None,
+    store: MemoryRunBudgetStore | None = None,
+    gemini_model: str = "gemini-3.8-flash",
 ) -> Harness:
-    store = MemoryRunBudgetStore()
+    store = store or MemoryRunBudgetStore()
     budgets = RunBudgets(
         store,
         limits or RunLimits(),
         retry=RetrySettings(0.001, 0.01),
         clock=lambda: NOW,
         jitter=lambda: 0.0,
+        pricing=pricing,
     )
-    providers = [stubs.gemini(gemini), *([stubs.openai(gpt)] if gpt else [])]
+    providers = [
+        stubs.gemini(gemini, gemini_model),
+        *([stubs.openai(gpt)] if gpt else []),
+    ]
     chain = provider_chain(settings, providers=providers)(budgets)
     agent: Agent[Deps, Answer] = Agent(
         chain, deps_type=Deps, output_type=Answer, instructions="Policy."

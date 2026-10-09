@@ -43,18 +43,31 @@ def sse(events: list[dict[str, Any]], *, done: bool = True) -> bytes:
 # Gemini Interactions replies
 
 
-def gemini_usage(input_tokens: int = 100, output_tokens: int = 20) -> dict[str, Any]:
-    return {
+def gemini_usage(
+    input_tokens: int = 100,
+    output_tokens: int = 20,
+    *,
+    thought_tokens: int = 5,
+    cached_tokens: int | None = None,
+) -> dict[str, Any]:
+    usage = {
         "total_input_tokens": input_tokens,
         "total_output_tokens": output_tokens,
-        "total_thought_tokens": 5,
+        "total_thought_tokens": thought_tokens,
         "total_tool_use_tokens": 0,
-        "total_tokens": input_tokens + output_tokens + 5,
+        "total_tokens": input_tokens + output_tokens + thought_tokens,
     }
+    if cached_tokens is not None:
+        usage["total_cached_tokens"] = cached_tokens
+    return usage
 
 
 def gemini_call(
-    name: str, arguments: dict[str, Any], *, call_id: str = "call_1"
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    call_id: str = "call_1",
+    usage: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     return [
         {"event_type": "interaction.created", "interaction": {"model": "g"}},
@@ -87,7 +100,7 @@ def gemini_call(
             "interaction": {
                 "id": "int-1",
                 "status": "requires_action",
-                "usage": gemini_usage(),
+                "usage": usage if usage is not None else gemini_usage(),
             },
         },
     ]
@@ -229,7 +242,13 @@ def _response(
 
 
 def openai_call(
-    name: str, arguments: dict[str, Any], *, tokens: int = 50
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    tokens: int = 50,
+    output_tokens: int = 10,
+    cached_tokens: int = 0,
+    reasoning_tokens: int = 0,
 ) -> list[dict[str, Any]]:
     item = {
         "type": "function_call",
@@ -241,10 +260,10 @@ def openai_call(
     }
     usage = {
         "input_tokens": tokens,
-        "output_tokens": 10,
-        "total_tokens": tokens + 10,
-        "input_tokens_details": {"cached_tokens": 0},
-        "output_tokens_details": {"reasoning_tokens": 0},
+        "output_tokens": output_tokens,
+        "total_tokens": tokens + output_tokens,
+        "input_tokens_details": {"cached_tokens": cached_tokens},
+        "output_tokens_details": {"reasoning_tokens": reasoning_tokens},
     }
     return [
         {

@@ -386,6 +386,8 @@ run_budgets = sa.Table(
     sa.Column("tokens", sa.BigInteger, nullable=False),
     sa.Column("queries", sa.Integer, nullable=False),
     sa.Column("bytes", sa.BigInteger, nullable=False),
+    sa.Column("model_cost_micros", sa.BigInteger, nullable=False),
+    sa.Column("unpriced_requests", sa.Integer, nullable=False),
     _ts("created_at"),
     _ts("updated_at"),
 )
@@ -401,6 +403,8 @@ budget_charges = sa.Table(
     sa.Column("tokens", sa.BigInteger, nullable=False),
     sa.Column("settled", sa.Boolean, nullable=False),
     sa.Column("ambiguous", sa.Boolean, nullable=False),
+    sa.Column("cost_micros", sa.BigInteger),
+    sa.Column("detail", JSONB),
     _ts("created_at"),
     _ts("settled_at", nullable=True),
 )

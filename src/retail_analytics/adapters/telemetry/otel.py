@@ -73,6 +73,13 @@ from retail_analytics.application.telemetry import root_span_id_for, trace_id_fo
 
 _SECONDS = (0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 45, 90, 180, 360, 720)
 _RATIO = (0.1, 0.25, 0.5, 0.75, 0.9, 1.0)
+_USD = (0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0)
+_BUCKETS = {Metric.RUN_BUDGET_USE: _RATIO, Metric.RUN_MODEL_COST: _USD}
+# MLflow's documented span attributes for token usage and cost. MLflow sums
+# them over a trace's spans, so only provider attempts carry them (never the
+# logical request or the run root): the trace total is the attempts' sum.
+_MLFLOW_USAGE = "mlflow.chat.tokenUsage"
+_MLFLOW_COST = "mlflow.llm.cost"
 _PAYLOAD_ATTRIBUTES = {
     PayloadSide.INPUTS: "mlflow.spanInputs",
     PayloadSide.OUTPUTS: "mlflow.spanOutputs",
@@ -203,13 +210,48 @@ class _Ids(IdGenerator):
         return forced[0] if forced else self._random.generate_trace_id()
 
 
+def mlflow_usage_attributes(attributes: Attributes) -> dict[str, str]:
+    """MLflow token-usage and cost attributes from a provider attempt's
+    ``usage_*``/``cost_*`` attributes. An unknown cost gets no cost attribute
+    (MLflow would otherwise show it as zero)."""
+    found: dict[str, str] = {}
+    tokens_in, tokens_out = (
+        attributes.get("usage_input_tokens"),
+        attributes.get("usage_output_tokens"),
+    )
+    if isinstance(tokens_in, int) and isinstance(tokens_out, int):
+        usage = {
+            "input_tokens": tokens_in,
+            "output_tokens": tokens_out,
+            "total_tokens": tokens_in + tokens_out,
+        }
+        cached = attributes.get("usage_cached_input_tokens")
+        if isinstance(cached, int):
+            usage["cache_read_input_tokens"] = cached
+        found[_MLFLOW_USAGE] = json.dumps(usage)
+    total = attributes.get("cost_usd")
+    if isinstance(total, int | float) and not isinstance(total, bool):
+        found[_MLFLOW_COST] = json.dumps(
+            {
+                "input_cost": float(attributes.get("cost_input_usd", 0.0)),
+                "output_cost": float(attributes.get("cost_output_usd", 0.0)),
+                "total_cost": float(total),
+            }
+        )
+    return found
+
+
 class _Handle:
-    def __init__(self, span: trace.Span) -> None:
+    def __init__(self, span: trace.Span, *, attempt: bool = False) -> None:
         self._span = span
+        self._attempt = attempt
 
     def set(self, attributes: Attributes) -> None:
         for key, value in attributes.items():
             self._span.set_attribute(key, value)
+        if self._attempt:
+            for key, text in mlflow_usage_attributes(attributes).items():
+                self._span.set_attribute(key, text)
 
     def event(self, name: str, attributes: Attributes) -> None:
         self._span.add_event(name, attributes)
@@ -296,7 +338,7 @@ class OtelSink:
             View(
                 instrument_name=instrument_names(metric)[0],
                 aggregation=ExplicitBucketHistogramAggregation(
-                    _RATIO if metric is Metric.RUN_BUDGET_USE else _SECONDS
+                    _BUCKETS.get(metric, _SECONDS)
                 ),
             )
             for metric in HISTOGRAMS
@@ -372,7 +414,7 @@ class OtelSink:
         ctx = trace.set_span_in_context(span, parent_context)
         token = otel_context.attach(ctx)
         try:
-            yield _Handle(span)
+            yield _Handle(span, attempt=name == Span.MODEL_ATTEMPT.value)
         finally:
             otel_context.detach(token)
             span.end()

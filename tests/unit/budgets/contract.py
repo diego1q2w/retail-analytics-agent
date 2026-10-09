@@ -17,6 +17,7 @@ import pytest
 from retail_analytics.application.ports.budgets import RunBudgetStore
 from retail_analytics.domain.budgets import (
     GIB,
+    AttemptCost,
     BudgetExhausted,
     BudgetResource,
     ChargeKind,
@@ -225,6 +226,92 @@ async def clarification_time_is_excluded_from_active_time(
     await store.charge_provider_request(run, "r", 1, limits=LIMITS, at=just_before)
 
 
+COST_LIMITS = RunLimits(model_cost_micros=1000)
+DETAIL = {"provider": "openai", "model": "gpt-5-mini", "input_tokens": 10}
+
+
+async def model_spend_settles_once_and_stops_the_next_request(
+    stores: Sequence[RunBudgetStore],
+) -> None:
+    store, other = stores[0], stores[-1]
+    run = new_run()
+    await store.charge_provider_request(run, "a", 10, limits=COST_LIMITS, at=T0)
+    settled = await store.settle_provider_request(
+        run, "a", 20, AttemptCost(600, DETAIL)
+    )
+    assert settled is not None and settled.cost_micros == 600
+    assert settled.detail == DETAIL
+    # A replayed settlement (another worker, a retried activity) is the same one.
+    again = await other.settle_provider_request(run, "a", 20, AttemptCost(600, DETAIL))
+    assert again is not None and again.cost_micros == 600
+    await other.charge_provider_request(run, "b", 10, limits=COST_LIMITS, at=T0)
+    await other.settle_provider_request(run, "b", 20, AttemptCost(500, DETAIL))
+    # 1100 > 1000: the soft limit let "b" finish and refuses what comes next.
+    with pytest.raises(BudgetExhausted) as error:
+        await store.charge_provider_request(run, "c", 10, limits=COST_LIMITS, at=T0)
+    assert error.value.resource is BudgetResource.MODEL_COST
+    assert error.value.run_exhausted
+    reopened = await other.open(run, RunLimits(model_cost_micros=10**9), at=T0)
+    assert reopened.limits == COST_LIMITS  # never a fresh allowance
+    assert reopened.usage.model_cost_micros == 1100
+    assert reopened.snapshot(T0).exhausted() >= {BudgetResource.MODEL_COST}
+    costs = {
+        c.key: c.cost_micros
+        for c in await store.charges(run)
+        if c.kind is ChargeKind.PROVIDER_REQUEST
+    }
+    assert costs == {"a": 600, "b": 500}
+
+
+async def unknown_prices_are_never_free(
+    stores: Sequence[RunBudgetStore],
+) -> None:
+    store = stores[0]
+    run = new_run()
+    await store.charge_provider_request(run, "a", 10, limits=COST_LIMITS, at=T0)
+    unknown = await store.settle_provider_request(run, "a", 20, AttemptCost(None))
+    assert unknown is not None and unknown.cost_micros is None and unknown.settled
+    budget = await store.get(run)
+    assert budget is not None
+    assert (budget.usage.model_cost_micros, budget.usage.unpriced_requests) == (0, 1)
+    with pytest.raises(BudgetExhausted) as error:
+        await stores[-1].charge_provider_request(
+            run, "b", 10, limits=COST_LIMITS, at=T0
+        )
+    assert error.value.resource is BudgetResource.MODEL_PRICE
+    # Without a dollar limit an unknown price is recorded, not enforced.
+    run = new_run()
+    await store.charge_provider_request(run, "a", 10, limits=LIMITS, at=T0)
+    await store.settle_provider_request(run, "a", 20, AttemptCost(None))
+    await store.charge_provider_request(run, "b", 10, limits=LIMITS, at=T0)
+
+
+async def in_flight_requests_may_overshoot_the_soft_limit(
+    stores: Sequence[RunBudgetStore],
+) -> None:
+    """Spend is known only after a response: requests reserved before the
+    limit is reached all complete, and their spend all counts."""
+    run = new_run()
+    reserved = [
+        stores[i % len(stores)].charge_provider_request(
+            run, f"r{i}", 10, limits=COST_LIMITS, at=T0
+        )
+        for i in range(3)
+    ]
+    accepted, refused = await _outcomes(reserved)
+    assert (accepted, refused) == (3, [])
+    for i in range(3):
+        await stores[i % len(stores)].settle_provider_request(
+            run, f"r{i}", 20, AttemptCost(900)
+        )
+    budget = await stores[0].get(run)
+    assert budget is not None and budget.usage.model_cost_micros == 2700
+    with pytest.raises(BudgetExhausted):
+        await stores[0].charge_provider_request(
+            run, "r9", 10, limits=COST_LIMITS, at=T0
+        )
+
+
 CONTRACT: tuple[Callable[[Sequence[RunBudgetStore]], Awaitable[None]], ...] = (
     limits_are_pinned_and_reopening_never_resets,
     concurrent_query_charges_never_exceed_the_query_limit,
@@ -234,4 +321,7 @@ CONTRACT: tuple[Callable[[Sequence[RunBudgetStore]], Awaitable[None]], ...] = (
     provider_requests_and_tokens_are_capped,
     corrections_are_capped_per_chain,
     clarification_time_is_excluded_from_active_time,
+    model_spend_settles_once_and_stops_the_next_request,
+    unknown_prices_are_never_free,
+    in_flight_requests_may_overshoot_the_soft_limit,
 )

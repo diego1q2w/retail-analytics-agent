@@ -455,16 +455,31 @@ class InteractionStream(StreamedResponse):
 
 
 def interaction_usage(usage: Mapping[str, Any]) -> RequestUsage:
-    """Billed tokens: thinking and tool-use prompts count like the rest."""
+    """Billed tokens in Pydantic AI's normalized form.
+
+    Interactions API usage (checked against the API reference and pricing
+    page, 2026-10): ``total_input_tokens`` is the whole prompt, the cached
+    part (``total_cached_tokens``) included; ``total_output_tokens`` excludes
+    thinking, reported separately as ``total_thought_tokens`` and billed at
+    the output price; ``total_tokens`` is input + output + thoughts.
+    ``total_tool_use_tokens`` (server-side tool prompts) are not part of
+    ``total_tokens``; this agent uses no server-side tools, so it is zero in
+    practice, and it is counted as input (the conservative choice). Thoughts
+    and tool-use tokens are added once here; ``details`` keeps the raw
+    subsets for audit only.
+    """
 
     def count(name: str) -> int:
         value = usage.get(name)
         return value if isinstance(value, int) and value >= 0 else 0
 
+    thoughts = count("total_thought_tokens")
+    tool_use = count("total_tool_use_tokens")
     return RequestUsage(
-        input_tokens=count("total_input_tokens") + count("total_tool_use_tokens"),
-        output_tokens=count("total_output_tokens") + count("total_thought_tokens"),
+        input_tokens=count("total_input_tokens") + tool_use,
+        output_tokens=count("total_output_tokens") + thoughts,
         cache_read_tokens=count("total_cached_tokens"),
+        details={"reasoning_tokens": thoughts, "tool_use_tokens": tool_use},
     )
 
 

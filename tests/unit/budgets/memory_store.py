@@ -12,7 +12,13 @@ from dataclasses import replace
 from datetime import datetime
 
 from retail_analytics.application.contracts.persistence import RecordNotFound
-from retail_analytics.domain.budgets import Charge, ChargeKind, RunBudget, RunLimits
+from retail_analytics.domain.budgets import (
+    AttemptCost,
+    Charge,
+    ChargeKind,
+    RunBudget,
+    RunLimits,
+)
 
 
 class MemoryRunBudgetStore:
@@ -100,14 +106,23 @@ class MemoryRunBudgetStore:
             return charge
 
     async def settle_provider_request(
-        self, run_id: str, key: str, reported_tokens: int | None
+        self,
+        run_id: str,
+        key: str,
+        reported_tokens: int | None,
+        cost: AttemptCost | None = None,
     ) -> Charge | None:
         return await self._settle(
-            run_id, ChargeKind.PROVIDER_REQUEST, key, reported_tokens
+            run_id, ChargeKind.PROVIDER_REQUEST, key, reported_tokens, cost
         )
 
     async def _settle(
-        self, run_id: str, kind: ChargeKind, key: str, amount: int | None
+        self,
+        run_id: str,
+        kind: ChargeKind,
+        key: str,
+        amount: int | None,
+        cost: AttemptCost | None = None,
     ) -> Charge | None:
         async with self._lock:
             budget = self.budgets.get(run_id)
@@ -117,7 +132,7 @@ class MemoryRunBudgetStore:
             if kind is ChargeKind.QUERY:
                 budget, charge = budget.settle_query(charge, amount)
             else:
-                budget, charge = budget.settle_provider_request(charge, amount)
+                budget, charge = budget.settle_provider_request(charge, amount, cost)
             self.budgets[run_id] = budget
             self.charge_rows[(run_id, kind, key)] = charge
             return charge

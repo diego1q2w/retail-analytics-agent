@@ -24,8 +24,9 @@ from retail_analytics.application.contracts.investigations import (
     InterruptionKind,
     StopReason,
 )
+from retail_analytics.application.contracts.model_costs import ModelRef
 from retail_analytics.application.investigation_runtime import RunStopped
-from retail_analytics.domain.budgets import BudgetResource
+from retail_analytics.domain.budgets import BudgetResource, Charge
 from tests.unit.agent.scenario import STEP, FakeSteps, FakeTools, Provider
 
 MESSAGES: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart("Investigate.")])]
@@ -36,14 +37,25 @@ class Budget:
         self.keys: list[str] = []
 
     async def reserve_provider_request(
-        self, run_id: str, request_key: str, *, estimated_input_tokens: int
+        self,
+        run_id: str,
+        request_key: str,
+        *,
+        estimated_input_tokens: int,
+        model: ModelRef | None = None,
     ) -> ProviderPermit:
         self.keys.append(request_key)
         return ProviderPermit(request_key, estimated_input_tokens, 100_000, 20)
 
     async def record_provider_usage(
-        self, run_id: str, request_key: str, usage: ProviderUsage
-    ) -> None:
+        self,
+        run_id: str,
+        request_key: str,
+        usage: ProviderUsage,
+        *,
+        model: ModelRef | None = None,
+        estimated_input_tokens: int = 0,
+    ) -> Charge | None:
         return None
 
 

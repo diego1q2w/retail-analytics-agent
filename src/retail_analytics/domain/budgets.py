@@ -19,13 +19,20 @@ Accounting rules:
   charged before it is sent, with the caller's input-token estimate. Settling
   replaces the estimate with reported input+output tokens. When the provider
   reports no usage the estimate stays and the charge is marked ambiguous.
+- Model spend: after each provider request settles, its estimated cost (USD,
+  stored in micro-dollars) is added to the run; the next request is refused
+  once the total reaches the run's limit. This is a soft ceiling: the request
+  that crosses the limit, and requests already in flight, are not undone. A
+  request whose price is unknown is counted as unpriced and, while a limit
+  applies, refuses further requests: unknown is never treated as free.
 - Corrections: each reformulation of a failed query is charged to the chain's
   first query; at most ``corrections_per_query`` per chain.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 
@@ -41,6 +48,10 @@ class BudgetResource(StrEnum):
     RUN_BYTES = "run_bytes"
     CORRECTIONS = "corrections"
     TRANSIENT_ATTEMPTS = "transient_attempts"
+    # Estimated model spend reached the run's dollar limit.
+    MODEL_COST = "model_cost"
+    # A model request had no known price while a dollar limit applies.
+    MODEL_PRICE = "model_price"
 
 
 # Limits a narrower or different request can still satisfy; the others end
@@ -82,6 +93,9 @@ class RunLimits:
     query_deadline_seconds: int = 120
     result_rows: int = 500
     result_bytes: int = 256 * 1024
+    # Estimated model spend per run in micro-USD; 0 = no dollar limit (runs
+    # opened before the limit existed). Configuration sets the default.
+    model_cost_micros: int = 0
 
     def __post_init__(self) -> None:
         for name in type(self).__slots__:
@@ -110,6 +124,10 @@ class RunUsage:
     tokens: int = 0
     queries: int = 0
     bytes: int = 0
+    # Estimated spend of priced provider requests (micro-USD).
+    model_cost_micros: int = 0
+    # Settled provider requests whose cost is unknown (no price).
+    unpriced_requests: int = 0
 
     def active_seconds(self, at: datetime) -> float:
         running = 0.0
@@ -122,6 +140,26 @@ class ChargeKind(StrEnum):
     QUERY = "query"
     PROVIDER_REQUEST = "provider_request"
     CORRECTION = "correction"
+
+
+MICROS_PER_USD = 1_000_000
+
+
+@dataclass(frozen=True, slots=True)
+class AttemptCost:
+    """Estimated spend of one provider request, decided by the caller.
+
+    ``micros`` is None when the price is unknown. ``detail`` is the audit
+    record (usage categories, provider, model, price basis); numbers and
+    codes only, never request content.
+    """
+
+    micros: int | None
+    detail: Mapping[str, object] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.micros is not None and self.micros < 0:
+            raise ValueError("cost must not be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +175,10 @@ class Charge:
     settled: bool = False
     # Settled without provider-reported usage: the estimate stands.
     ambiguous: bool = False
+    # Provider requests: estimated cost once settled; None while unsettled
+    # or when the price is unknown (``detail`` tells which).
+    cost_micros: int | None = None
+    detail: Mapping[str, object] | None = None
 
 
 def query_charge_key(operation_id: str, submission: int) -> str:
@@ -172,10 +214,22 @@ class BudgetSnapshot:
             BudgetResource.TOKENS: max(limits.tokens - usage.tokens, 0),
             BudgetResource.QUERIES: max(limits.queries - usage.queries, 0),
             BudgetResource.RUN_BYTES: max(limits.bytes_per_run - usage.bytes, 0),
+            **(
+                {
+                    BudgetResource.MODEL_COST: max(
+                        limits.model_cost_micros - usage.model_cost_micros, 0
+                    )
+                }
+                if limits.model_cost_micros > 0
+                else {}
+            ),
         }
 
     def exhausted(self) -> frozenset[BudgetResource]:
-        return frozenset(r for r, left in self.remaining().items() if left <= 0)
+        spent = {r for r, left in self.remaining().items() if left <= 0}
+        if self.limits.model_cost_micros > 0 and self.usage.unpriced_requests:
+            spent.add(BudgetResource.MODEL_PRICE)
+        return frozenset(spent)
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,6 +322,11 @@ class RunBudget:
             usage.tokens + estimated_tokens > limits.tokens
         ):
             raise BudgetExhausted(BudgetResource.TOKENS)
+        if limits.model_cost_micros > 0:
+            if usage.unpriced_requests:
+                raise BudgetExhausted(BudgetResource.MODEL_PRICE)
+            if usage.model_cost_micros >= limits.model_cost_micros:
+                raise BudgetExhausted(BudgetResource.MODEL_COST)
         charge = Charge(ChargeKind.PROVIDER_REQUEST, key, tokens=estimated_tokens)
         updated = replace(
             usage,
@@ -277,16 +336,32 @@ class RunBudget:
         return replace(self, usage=updated), charge
 
     def settle_provider_request(
-        self, charge: Charge, reported_tokens: int | None
+        self,
+        charge: Charge,
+        reported_tokens: int | None,
+        cost: AttemptCost | None = None,
     ) -> tuple[RunBudget, Charge]:
+        """Settle once: reported tokens replace the estimate; ``cost`` (when
+        given) adds the request's estimated spend, or counts it unpriced."""
         if charge.kind is not ChargeKind.PROVIDER_REQUEST:
             raise ValueError("not a provider request charge")
         if charge.settled:
             return self, charge
+        usage = self.usage
+        if cost is not None:
+            charge = replace(charge, cost_micros=cost.micros, detail=dict(cost.detail))
+            if cost.micros is None:
+                usage = replace(usage, unpriced_requests=usage.unpriced_requests + 1)
+            else:
+                usage = replace(
+                    usage, model_cost_micros=usage.model_cost_micros + cost.micros
+                )
         if reported_tokens is None:
-            return self, replace(charge, settled=True, ambiguous=True)
+            return replace(self, usage=usage), replace(
+                charge, settled=True, ambiguous=True
+            )
         delta = max(reported_tokens, 0) - charge.tokens
-        usage = replace(self.usage, tokens=max(self.usage.tokens + delta, 0))
+        usage = replace(usage, tokens=max(usage.tokens + delta, 0))
         return replace(self, usage=usage), replace(
             charge, tokens=max(reported_tokens, 0), settled=True
         )

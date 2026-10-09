@@ -119,7 +119,11 @@ from retail_analytics.application.tools import (
     ToolDescriptor,
 )
 from retail_analytics.domain.access import Permission
-from retail_analytics.domain.budgets import BudgetResource, BudgetSnapshot
+from retail_analytics.domain.budgets import (
+    MICROS_PER_USD,
+    BudgetResource,
+    BudgetSnapshot,
+)
 from retail_analytics.domain.context import EvidenceStanding
 from retail_analytics.domain.currency import SourceCurrency
 from retail_analytics.domain.executions import ToolExecutionStatus
@@ -147,6 +151,8 @@ _STOP_TIME = frozenset(
         BudgetResource.ACTIVE_TIME,
         BudgetResource.PROVIDER_REQUESTS,
         BudgetResource.TOKENS,
+        BudgetResource.MODEL_COST,
+        BudgetResource.MODEL_PRICE,
     }
 )
 
@@ -878,6 +884,7 @@ class InvestigationRuntime:
                         used,
                         {Label.RESOURCE: resource.value},
                     )
+            attributes.update(_model_cost_summary(snapshot))
         with telemetry().span(
             Span.RUN,
             run_id=run.run_id,
@@ -1174,8 +1181,34 @@ def _limit_of(snapshot: BudgetSnapshot, resource: BudgetResource) -> float:
             BudgetResource.TOKENS: limits.tokens,
             BudgetResource.QUERIES: limits.queries,
             BudgetResource.RUN_BYTES: limits.bytes_per_run,
+            BudgetResource.MODEL_COST: limits.model_cost_micros,
         }.get(resource, 0)
     )
+
+
+def _model_cost_summary(snapshot: BudgetSnapshot) -> dict[str, object]:
+    """The run's estimated model spend for its root span and metrics.
+
+    ``model_cost_usd`` sums the priced attempts only; when any attempt had
+    no price the total is incomplete (never presented as the full cost).
+    """
+    usage, limit = snapshot.usage, snapshot.limits.model_cost_micros
+    spent = usage.model_cost_micros / MICROS_PER_USD
+    complete = usage.unpriced_requests == 0
+    telemetry().observe(
+        Metric.RUN_MODEL_COST,
+        spent,
+        {Label.OUTCOME: "complete" if complete else "incomplete"},
+    )
+    if limit and usage.model_cost_micros > limit:
+        # The soft limit stops the next request; the last one may overshoot.
+        telemetry().count(Metric.MODEL_COST_OVERRUNS)
+    return {
+        "model_cost_usd": spent,
+        "model_cost_complete": complete,
+        "model_cost_unpriced_requests": usage.unpriced_requests,
+        "model_cost_limit_usd": limit / MICROS_PER_USD if limit else "none",
+    }
 
 
 def _check_budget(snapshot: BudgetSnapshot | None) -> None:

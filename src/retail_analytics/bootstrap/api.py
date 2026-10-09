@@ -53,7 +53,7 @@ from retail_analytics.bootstrap.execution import (
     local_scheduler,
     require_api_settings,
 )
-from retail_analytics.bootstrap.models import provider_summary
+from retail_analytics.bootstrap.models import pricing_summary, provider_summary
 from retail_analytics.bootstrap.persistence import (
     Persistence,
     persistence_from_settings,
@@ -195,6 +195,7 @@ def main(check_config: bool) -> None:
         click.echo(str(error), err=True)
         raise SystemExit(CONFIG_ERROR_EXIT_CODE) from None
     click.echo(f"retail-analytics-api: {provider_summary(settings)}", err=True)
+    click.echo(f"retail-analytics-api: {pricing_summary(settings)}", err=True)
     uvicorn.run(build_app(settings), host=settings.api_host, port=settings.api_port)
 
 

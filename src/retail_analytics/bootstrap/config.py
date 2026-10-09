@@ -30,9 +30,11 @@ environment: bootstrap passes the typed values they need.
 from __future__ import annotations
 
 import difflib
+import json
 import os
 import re
 from collections.abc import Mapping
+from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Self
@@ -96,6 +98,17 @@ class RuntimeMode(StrEnum):
 
     FIXTURE = "fixture"
     LIVE = "live"
+
+
+class ModelPriceSetting(BaseModel):
+    """One model's price override, USD per million tokens."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    input: Decimal = Field(ge=0, le=10_000)
+    output: Decimal = Field(ge=0, le=10_000)
+    # Unset: cached input is priced as ordinary input.
+    cached_input: Decimal | None = Field(default=None, ge=0, le=10_000)
 
 
 _MIB = 1024 * 1024
@@ -166,6 +179,11 @@ class BackendSettings(BaseModel):
     # or model), requests skip it for this long and use the backup.
     model_primary_cooldown_seconds: int = Field(default=60, ge=0, le=3600)
     model_max_output_tokens: int = Field(default=8192, ge=256, le=65536)
+    # Prices replacing the maintained price list (genai-prices) for exact
+    # model names, USD per million tokens, as JSON:
+    # {"<model>": {"input": 0.75, "cached_input": 0.075, "output": 3.75}}.
+    # Needed for a model the list does not know while a dollar limit applies.
+    model_price_overrides: dict[str, ModelPriceSetting] = Field(default_factory=dict)
     # Golden retrieval: "hashing" is the offline deterministic embedder. Unset:
     # gemini in live mode (the provider the thresholds were measured with),
     # hashing in fixture mode. Live mode never substitutes hashing on its own.
@@ -197,6 +215,13 @@ class BackendSettings(BaseModel):
     query_max_bytes: int = Field(default=_GIB, ge=10 * _MIB, le=1024 * _GIB)
     run_max_bytes: int = Field(default=5 * _GIB, ge=10 * _MIB, le=10240 * _GIB)
     query_max_corrections: int = Field(default=2, ge=0, le=10)
+    # Soft limit on estimated model spend per investigation (USD; every
+    # provider attempt, retry and fallback). Checked before each request, so
+    # the request that crosses it may overshoot. 0 turns the dollar limit off
+    # (the token and request limits still apply).
+    run_max_model_cost_usd: Decimal = Field(
+        default=Decimal("1"), ge=0, le=1000, max_digits=12, decimal_places=6
+    )
     # Attempts per operation that may end in a transient failure (total).
     max_transient_attempts: int = Field(default=3, ge=1, le=10)
     retry_base_seconds: float = Field(default=1.0, gt=0, le=60)
@@ -234,6 +259,16 @@ class BackendSettings(BaseModel):
         if value in (None, ""):
             fixture = info.data.get("mode") is RuntimeMode.FIXTURE
             return "hashing" if fixture else "gemini"
+        return value
+
+    @field_validator("model_price_overrides", mode="before")
+    @classmethod
+    def _parse_price_overrides(cls, value: object) -> object:
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                raise ValueError("must be a JSON object") from None
         return value
 
     @field_validator("source_currency_declared")

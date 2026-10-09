@@ -5,7 +5,8 @@
 - warehouse queries, as the ``QueryAdmission`` and ``QueryUsageRecorder`` of
   ``QueryExecutionService``;
 - model provider requests, through :class:`ProviderBudget` (the runtime's
-  provider adapter calls it around every request it sends, fallback included);
+  provider adapter calls it around every request it sends, fallback included),
+  including their estimated dollar cost (``ModelPricing``);
 - SQL reformulations (:meth:`RunBudgets.reserve_correction`);
 - transient retries (:meth:`RunBudgets.retry_decision`), with backoff.
 
@@ -21,21 +22,31 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from decimal import ROUND_CEILING, Decimal
 
 from retail_analytics.application.contracts.budgets import (
     ProviderPermit,
     ProviderUsage,
+)
+from retail_analytics.application.contracts.model_costs import (
+    CostEstimate,
+    ModelRef,
+    PriceBasis,
 )
 from retail_analytics.application.contracts.persistence import RecordNotFound
 from retail_analytics.application.contracts.query_compiler import CompiledQuery
 from retail_analytics.application.contracts.tools import ExecutionContext
 from retail_analytics.application.contracts.warehouse_jobs import JobStatistics
 from retail_analytics.application.ports.budgets import RunBudgetStore
+from retail_analytics.application.ports.model_costs import ModelPricing
 from retail_analytics.application.query_execution import QueryNotAdmitted
 from retail_analytics.domain.budgets import (
+    MICROS_PER_USD,
+    AttemptCost,
     BudgetExhausted,
     BudgetResource,
     BudgetSnapshot,
+    Charge,
     RunLimits,
     backoff_delay,
     query_charge_key,
@@ -89,6 +100,14 @@ _NOT_ADMITTED = {
     BudgetResource.TRANSIENT_ATTEMPTS: (
         "The warehouse kept failing; the retry limit for this query is reached."
     ),
+    BudgetResource.MODEL_COST: (
+        "This investigation has reached its estimated model spending limit; "
+        "no more model requests can be made."
+    ),
+    BudgetResource.MODEL_PRICE: (
+        "The model's price is unknown, so its spending cannot be limited; no "
+        "more model requests can be made (an operator can set a price)."
+    ),
 }
 
 
@@ -108,6 +127,48 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def usd_to_micros(amount: Decimal) -> int:
+    """Whole micro-dollars, rounded up: an estimate never rounds to free."""
+    return int((amount * MICROS_PER_USD).to_integral_value(rounding=ROUND_CEILING))
+
+
+def _count(value: int | None) -> int | None:
+    return None if value is None else max(value, 0)
+
+
+def cost_detail(
+    model: ModelRef | None,
+    usage: ProviderUsage,
+    *,
+    estimated_input_tokens: int,
+    basis: PriceBasis | None,
+    estimate: CostEstimate | None,
+) -> dict[str, object]:
+    """Audit record of one priced request: usage categories as reported
+    (``None`` = not reported), what was priced and on what basis."""
+    detail: dict[str, object] = {
+        "provider": model.provider if model else None,
+        "model": model.model if model else None,
+        "usage_reported": usage.reported,
+        "input_tokens": _count(usage.input_tokens),
+        "cached_input_tokens": _count(usage.cached_input_tokens),
+        "cache_write_tokens": _count(usage.cache_write_tokens),
+        "output_tokens": _count(usage.output_tokens),
+        "reasoning_tokens": _count(usage.reasoning_tokens),
+        "price_source": basis.source if basis else None,
+        "price_version": basis.version if basis else None,
+        "price_override": basis.overridden if basis else False,
+    }
+    if not usage.reported:
+        # No usage: the reservation's input estimate is priced instead
+        # (a lower bound: output is unknown).
+        detail["estimated_input_tokens"] = estimated_input_tokens
+    if estimate is not None:
+        detail["input_cost_usd"] = str(estimate.input_usd)
+        detail["output_cost_usd"] = str(estimate.output_usd)
+    return detail
+
+
 class RunBudgets:
     """Application gate over the persisted run accounting."""
 
@@ -119,9 +180,13 @@ class RunBudgets:
         retry: RetrySettings | None = None,
         clock: Callable[[], datetime] = _utc_now,
         jitter: Callable[[], float] = random.random,
+        pricing: ModelPricing | None = None,
     ) -> None:
+        """``pricing`` None: every price is unknown (a dollar limit then
+        refuses priced providers; local tests use limits without one)."""
         self._store = store
         self._limits = limits
+        self._pricing = pricing
         self._retry = retry or RetrySettings()
         self._clock = clock
         self._jitter = jitter
@@ -199,9 +264,24 @@ class RunBudgets:
     # -- model provider requests (ProviderBudget) ---------------------------
 
     async def reserve_provider_request(
-        self, run_id: str, request_key: str, *, estimated_input_tokens: int
+        self,
+        run_id: str,
+        request_key: str,
+        *,
+        estimated_input_tokens: int,
+        model: ModelRef | None = None,
     ) -> ProviderPermit:
+        """Charge one request before it is sent.
+
+        Under a dollar limit, a model without a known price is refused here,
+        before any paid work: its spending could not be limited.
+        """
         now = self._clock()
+        if model is not None and self._price_basis(model, now) is None:
+            budget = await self._store.get(run_id)
+            limits = budget.limits if budget is not None else self._limits
+            if limits.model_cost_micros > 0:
+                raise BudgetExhausted(BudgetResource.MODEL_PRICE)
         charge = await self._store.charge_provider_request(
             run_id,
             request_key,
@@ -221,9 +301,60 @@ class RunBudgets:
         )
 
     async def record_provider_usage(
-        self, run_id: str, request_key: str, usage: ProviderUsage
-    ) -> None:
-        await self._store.settle_provider_request(run_id, request_key, usage.total)
+        self,
+        run_id: str,
+        request_key: str,
+        usage: ProviderUsage,
+        *,
+        model: ModelRef | None = None,
+        estimated_input_tokens: int = 0,
+    ) -> Charge | None:
+        """Settle the request's tokens and estimated cost, once.
+
+        Reported usage is priced as reported. Without usage (a lost response,
+        a timeout, a cut-off stream) the reservation's input estimate is
+        priced and the charge stays ambiguous. No ``model`` (a caller that
+        does not identify it) records no cost.
+        """
+        cost = None
+        if model is not None:
+            cost = self._attempt_cost(model, usage, estimated_input_tokens)
+        return await self._store.settle_provider_request(
+            run_id, request_key, usage.total, cost
+        )
+
+    def _price_basis(self, model: ModelRef, at: datetime) -> PriceBasis | None:
+        return None if self._pricing is None else self._pricing.basis(model, at=at)
+
+    def _attempt_cost(
+        self, model: ModelRef, usage: ProviderUsage, estimated_input_tokens: int
+    ) -> AttemptCost:
+        now = self._clock()
+        priced = (
+            usage
+            if usage.reported
+            else ProviderUsage(input_tokens=max(estimated_input_tokens, 0))
+        )
+        estimate = (
+            None
+            if self._pricing is None
+            else self._pricing.estimate(model, priced, at=now)
+        )
+        if estimate is None and not (priced.total or 0):
+            # Nothing was used (a definite rejection): free at any price.
+            estimate = CostEstimate(
+                Decimal(0), Decimal(0), PriceBasis("none", "no usage")
+            )
+        detail = cost_detail(
+            model,
+            usage,
+            estimated_input_tokens=estimated_input_tokens,
+            basis=None if estimate is None else estimate.basis,
+            estimate=estimate,
+        )
+        if estimate is None:
+            return AttemptCost(None, detail)
+        return AttemptCost(usd_to_micros(estimate.total_usd), detail)
 
     # -- reformulation and retry --------------------------------------------
 

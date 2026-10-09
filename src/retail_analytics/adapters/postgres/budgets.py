@@ -21,6 +21,7 @@ from retail_analytics.adapters.postgres.database import Database
 from retail_analytics.adapters.postgres.schema import budget_charges, run_budgets
 from retail_analytics.application.contracts.persistence import RecordNotFound
 from retail_analytics.domain.budgets import (
+    AttemptCost,
     Charge,
     ChargeKind,
     RunBudget,
@@ -41,6 +42,8 @@ def _budget(row: sa.Row[tuple[object, ...]]) -> RunBudget:
             tokens=m["tokens"],
             queries=m["queries"],
             bytes=m["bytes"],
+            model_cost_micros=m["model_cost_micros"],
+            unpriced_requests=m["unpriced_requests"],
         ),
     )
 
@@ -77,6 +80,8 @@ def _charge(row: sa.Row[tuple[object, ...]]) -> Charge:
         tokens=m["tokens"],
         settled=m["settled"],
         ambiguous=m["ambiguous"],
+        cost_micros=m["cost_micros"],
+        detail=m["detail"],
     )
 
 
@@ -107,6 +112,8 @@ class PostgresRunBudgetStore:
                     tokens=0,
                     queries=0,
                     bytes=0,
+                    model_cost_micros=0,
+                    unpriced_requests=0,
                     created_at=now,
                     updated_at=now,
                 )
@@ -133,6 +140,8 @@ class PostgresRunBudgetStore:
                 tokens=usage.tokens,
                 queries=usage.queries,
                 bytes=usage.bytes,
+                model_cost_micros=usage.model_cost_micros,
+                unpriced_requests=usage.unpriced_requests,
                 updated_at=self._db.clock(),
             )
         )
@@ -161,6 +170,8 @@ class PostgresRunBudgetStore:
                 tokens=charge.tokens,
                 settled=charge.settled,
                 ambiguous=charge.ambiguous,
+                cost_micros=charge.cost_micros,
+                detail=None if charge.detail is None else dict(charge.detail),
                 created_at=self._db.clock(),
             )
         )
@@ -180,6 +191,8 @@ class PostgresRunBudgetStore:
                 tokens=charge.tokens,
                 settled=charge.settled,
                 ambiguous=charge.ambiguous,
+                cost_micros=charge.cost_micros,
+                detail=None if charge.detail is None else dict(charge.detail),
                 settled_at=self._db.clock(),
             )
         )
@@ -249,7 +262,7 @@ class PostgresRunBudgetStore:
         self, run_id: str, key: str, actual_bytes: int | None
     ) -> Charge | None:
         return await self._db.transaction(
-            self._settle, run_id, ChargeKind.QUERY, key, actual_bytes
+            self._settle, run_id, ChargeKind.QUERY, key, actual_bytes, None
         )
 
     async def charge_provider_request(
@@ -284,10 +297,19 @@ class PostgresRunBudgetStore:
         return charge
 
     async def settle_provider_request(
-        self, run_id: str, key: str, reported_tokens: int | None
+        self,
+        run_id: str,
+        key: str,
+        reported_tokens: int | None,
+        cost: AttemptCost | None = None,
     ) -> Charge | None:
         return await self._db.transaction(
-            self._settle, run_id, ChargeKind.PROVIDER_REQUEST, key, reported_tokens
+            self._settle,
+            run_id,
+            ChargeKind.PROVIDER_REQUEST,
+            key,
+            reported_tokens,
+            cost,
         )
 
     def _settle(
@@ -297,6 +319,7 @@ class PostgresRunBudgetStore:
         kind: ChargeKind,
         key: str,
         amount: int | None,
+        cost: AttemptCost | None,
     ) -> Charge | None:
         try:
             budget = self._lock(connection, run_id)
@@ -308,7 +331,7 @@ class PostgresRunBudgetStore:
         if kind is ChargeKind.QUERY:
             updated, settled = budget.settle_query(charge, amount)
         else:
-            updated, settled = budget.settle_provider_request(charge, amount)
+            updated, settled = budget.settle_provider_request(charge, amount, cost)
         if updated != budget:
             self._save(connection, updated)
         self._update_charge(connection, run_id, settled)

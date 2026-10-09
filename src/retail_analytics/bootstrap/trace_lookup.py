@@ -35,6 +35,10 @@ _SHOWN = (
     "decision",
     "topic",
     "classifier_version",
+    "cost_status",
+    "cost_usd",
+    "model_cost_usd",
+    "model_cost_complete",
     "error.type",
 )
 _MAX_VALUE = 80

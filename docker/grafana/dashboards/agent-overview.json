@@ -1159,6 +1159,284 @@
       },
       "options": {},
       "description": "Exporters are bounded and drop data when MLflow or Prometheus is slow or down; runs are never delayed."
+    },
+    {
+      "type": "row",
+      "title": "Model spend (estimated)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 87
+      },
+      "panels": [],
+      "id": 41
+    },
+    {
+      "type": "text",
+      "title": "About model spend estimates",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 88
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Estimates, not invoices.** Each provider attempt (retries and fallback included) is priced from its reported token usage with the maintained price list (genai-prices) or an operator override (`MODEL_PRICE_OVERRIDES`). Provider bills can differ (free tiers, discounts, rounding, taxes). BigQuery and infrastructure costs are not included. **Known vs incomplete:** spend totals sum the attempts with a known price; attempts without a price are counted under *Unpriced model requests* and make that question's total *incomplete* (never shown as zero). The per-question limit (`RUN_MAX_MODEL_COST_USD`) is soft: it stops the next request, so the request that crosses it can overshoot (*Spend overruns*). Per-run figures are in the run's MLflow trace."
+      },
+      "id": 42
+    },
+    {
+      "type": "stat",
+      "title": "Estimated model spend (USD, range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 92
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(ra_model_cost_usd_total[$__range]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Sum of priced provider attempts. Unpriced attempts are not in this total.",
+      "id": 43
+    },
+    {
+      "type": "stat",
+      "title": "Unpriced model requests (cost unknown)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 92
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(ra_model_unpriced_requests_total[$__range]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Attempts whose model had no known price. Their cost is unknown, not zero; set MODEL_PRICE_OVERRIDES.",
+      "id": 44
+    },
+    {
+      "type": "stat",
+      "title": "Questions with incomplete spend",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 92
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(ra_run_model_cost_usd_count{outcome=\"incomplete\"}[$__range]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Finished questions where at least one attempt had no price: their spend figure is a lower bound.",
+      "id": 45
+    },
+    {
+      "type": "stat",
+      "title": "Average estimated spend per question (USD)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 92
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(ra_run_model_cost_usd_sum[$__range])) / sum(increase(ra_run_model_cost_usd_count[$__range]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "options": {},
+      "id": 46
+    },
+    {
+      "type": "timeseries",
+      "title": "Estimated model spend by provider and model",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 97
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (provider, model) (increase(ra_model_cost_usd_total[$__rate_interval]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "{{provider}} {{model}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "id": 47
+    },
+    {
+      "type": "timeseries",
+      "title": "Estimated spend per question p50 / p95",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 97
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(ra_run_model_cost_usd_bucket[$__rate_interval])))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(ra_run_model_cost_usd_bucket[$__rate_interval])))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "description": "Distribution of each finished question's estimated spend (known-price attempts).",
+      "id": 48
+    },
+    {
+      "type": "timeseries",
+      "title": "Model spend limit stops and overruns",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 97
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (resource) (increase(ra_budget_stops_total{resource=~\"model_cost|model_price\"}[$__rate_interval]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "stopped: {{resource}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(increase(ra_model_cost_overruns_total[$__rate_interval]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "finished above the soft limit"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "model_cost: the spending limit was reached; model_price: a model had no known price under a limit. Overruns are questions whose final spend exceeded the soft limit.",
+      "id": 49
     }
   ]
 }
