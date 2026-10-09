@@ -21,3 +21,6 @@ evaluation-results/
 
 # Hypothesis example database
 .hypothesis/
+
+# Regenerated locally; frozen dataset rows are not shipped in the current tree
+/evaluation/realdata/extract/*.csv.gz

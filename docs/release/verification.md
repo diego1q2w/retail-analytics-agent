@@ -74,6 +74,12 @@ not a guarantee of anonymity (see
 
 ### Frozen extract: redistribution terms (OPEN, blocks public release)
 
+**Update:** The owner requested removal of the four CSV extracts in a normal
+commit, retaining Git history. They are now excluded from the current tree and
+ignored on regeneration. The historical audit below describes the earlier state;
+its warning about copies in Git history remains unresolved. See the
+[regeneration instructions](../../evaluation/realdata/README.md#extract-files-are-local-only).
+
 The extract is derived from the public `bigquery-public-data.thelook_ecommerce`
 dataset. Public query access is not permission to redistribute. The
 applicable dataset terms have **not** been confirmed by the project owner, and this

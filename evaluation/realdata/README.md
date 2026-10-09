@@ -5,6 +5,24 @@ demographics, headline revenue, and a three-turn category report) over the
 public `thelook_ecommerce` tables. Expected values are real, but they are scored
 against a **frozen, sanitized extract**, not against the live dataset.
 
+## Extract files are local-only
+
+The four frozen CSV files have been removed from the current tree. Scripts,
+provenance and historical evaluation results remain. Live setup and chat do not
+need these files; extract-based evaluations require local regeneration:
+
+```sh
+python -m retail_analytics.bootstrap.realdata_benchmark extract --refresh
+python -m retail_analytics.bootstrap.realdata_benchmark expected
+python -m retail_analytics.bootstrap.realdata_benchmark manifest
+python -m retail_analytics.bootstrap.realdata_benchmark verify
+```
+
+The live dataset changes, so this creates a new benchmark snapshot; it does not
+reproduce the published historical scores. Follow the versioning instructions
+below and keep generated CSV files uncommitted. Earlier Git commits still contain
+the original extract; this removal does not resolve its redistribution terms.
+
 ## Why a frozen extract
 
 The public dataset is reloaded daily and statuses are restated ("Complete" is a
