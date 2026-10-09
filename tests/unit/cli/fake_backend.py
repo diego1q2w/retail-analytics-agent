@@ -111,6 +111,7 @@ def run_view(
     withheld: bool = False,
     question: tuple[str, str] | None = None,
     run_id: str = "r1",
+    citations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -126,5 +127,7 @@ def run_view(
             "question_id": question[0],
             "text": {"text": question[1], "withheld": False},
         },
-        "answer": None if answer is None else {"text": answer, "withheld": withheld},
+        "answer": None
+        if answer is None
+        else {"text": answer, "withheld": withheld, "citations": citations or []},
     }

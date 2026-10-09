@@ -11,19 +11,23 @@ narrowed authority applies to replayed events, open questions and answers
 alike. Once evidence linked to a run is withheld from the caller, nothing
 generated for that run is shown again (answer, question or summary). A
 section the gate refuses is replaced by its safe explanation rather
-than dropped, so event sequences stay gap-free.
+than dropped, so event sequences stay gap-free. A released answer also
+carries numbered sources for the evidence it cites (``CitationSources``),
+recognized under the same fresh authority; a withheld one carries none.
 """
 
 from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
+from dataclasses import replace
 
 from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
     OwnershipGuard,
 )
+from retail_analytics.application.citations import CitationSources
 from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.contracts.conversations import (
     EventBatch,
@@ -80,6 +84,7 @@ class ConversationService:
         events: RunEventStore,
         reader: ConversationReader,
         gate: OutputPrivacyGate,
+        citations: CitationSources | None = None,
     ) -> None:
         self._resolver = resolver
         self._guard = guard
@@ -89,6 +94,7 @@ class ConversationService:
         self._events = events
         self._reader = reader
         self._gate = gate
+        self._citations = citations
 
     # --- sessions -------------------------------------------------------------
 
@@ -159,6 +165,11 @@ class ConversationService:
             released_answer = self._release(
                 policy, answer.content, OutputDestination.DISPLAY, "answer"
             )
+            if not released_answer.withheld and self._citations is not None:
+                sources = await self._citations.for_answer(
+                    principal, run_id, released_answer.text, policy
+                )
+                released_answer = replace(released_answer, citations=sources)
         return RunView(run, open_question, released_answer)
 
     async def events(

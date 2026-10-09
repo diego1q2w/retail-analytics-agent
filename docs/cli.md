@@ -85,6 +85,18 @@ deterministic.
   truncated report
   evidence is flagged `TRUNCATED`; an answer withheld by the privacy check
   is replaced by the server's notice.
+* Evidence citations are shown as numbers: `[evd_90c4…]` becomes `[1]`, a
+  repeated citation keeps its number, and a `SOURCES` section after the
+  answer describes each cited result once, for example
+  `[1] Query result; definition basis: completed item sales v1; September 2026 (UTC, by ordered date); computed 9 October 2026, 14:02 UTC.`
+  The server checks each source against your current access. An ID it does
+  not recognize, such as one the model invented or one you can no longer
+  use, is left as written and gets no number. If the answer already has
+  numbered references such as `[1]`, its sources are numbered `[S1]`, `[S2]`.
+  Code blocks and links are never changed. Fresh, partial and reopened
+  answers (`chat --session`, `show`, `follow`) use the same numbering. The
+  full evidence IDs stay in the stored answer and in `--json` output
+  (`answer.citations`).
 * Markdown headings, lists, bold and code are rendered; sections that look
   like disclosures/assumptions are marked `== ... ==` in yellow and action
   items / next steps in green with `[ ]` checkboxes.

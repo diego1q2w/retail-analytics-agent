@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -144,12 +145,23 @@ async def scripted_model(
         await asyncio.sleep(3)
     tool = next(tool for tool in info.output_tools if "Answer" in tool.name)
     text = "The requested sales investigation is complete."
+    cited: list[str] = []
     if "use annual sales" in context:
         text = "The updated annual sales investigation is complete."
+    if "citation case" in context:
+        # Cite the first evidence record the context shows, twice, plus an
+        # invented ID that must never become a numbered source.
+        shown = re.findall(r"\bevd_[0-9a-f]{32}\b", framed)
+        if shown:
+            cited = [shown[0]]
+            text = (
+                f"September sales are in the cited result [{shown[0]}]; the "
+                f"same result again [{shown[0]}]; unknown [evd_{'f' * 32}]."
+            )
     return ModelResponse(
         parts=[
             ToolCallPart(
-                tool.name, {"text": text, "cited_evidence": [], "complete": True}
+                tool.name, {"text": text, "cited_evidence": cited, "complete": True}
             )
         ]
     )

@@ -113,6 +113,7 @@ class World:
         budget: ContextBudget | None = None,
         lexicon: tuple[ProtectedTerm, ...] = (),
         schema: ApprovedSchemaContext | None = None,
+        id_prefix: str = "evd",
     ) -> None:
         self.clock = Clock()
         self.store = FakeEvidenceStore(clock=self.clock)
@@ -120,7 +121,7 @@ class World:
             self.store,
             self.store,
             clock=self.clock,
-            new_id=Ids(),
+            new_id=Ids(prefix=id_prefix),
             policy=ReusePolicy(),
         )
         self.directory = Directory()

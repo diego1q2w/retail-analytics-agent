@@ -31,6 +31,7 @@ from retail_analytics.adapters.postgres.investigations import (
     PostgresInvestigationInputs,
     PostgresRunPrincipals,
 )
+from retail_analytics.application.citations import CitationSources
 from retail_analytics.application.conversations import ConversationService
 from retail_analytics.application.investigations import (
     InvestigationControl,
@@ -134,6 +135,9 @@ def build_http_services(
             events=persistence.run_events,
             reader=PostgresConversationReader(db),
             gate=context.gate,
+            citations=CitationSources(
+                resolver=access.resolver, evidence=evidence, gate=context.gate
+            ),
         ),
         investigations=control,
         reports=build_reports(

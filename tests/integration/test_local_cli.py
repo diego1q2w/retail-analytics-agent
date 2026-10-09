@@ -18,6 +18,7 @@ from tests.integration.test_cli import (  # noqa: F401  (fixtures reused)
     test_cli_answers_a_clarification_question,
     test_cli_cancel_stops_the_run_and_reports_its_state,
     test_cli_lists_only_own_pending_unexpired_proposals,
+    test_cli_numbers_citations_on_display_and_reopening,
     test_cli_reconnects_mid_run_with_last_event_id_without_duplicates,
     test_deletion_needs_typed_phrase_and_declined_confirmation_deletes_nothing,
     test_new_cli_process_attaches_to_in_progress_run_and_disconnect_keeps_it,

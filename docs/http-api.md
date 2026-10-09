@@ -85,6 +85,37 @@ records. A missing permission (for example no `reports:delete_own`) is 403
 
 Period note: a query that compares several periods currently has no single recorded period (there is no multi-period marker), so a report or agent answer should disclose the periods it compares.
 
+### Answer citations
+
+A released answer (`answer` in `GET /v1/runs/{run_id}`) keeps the evidence IDs
+it cites in its `text` (for example `[evd_90c4…]`) and adds `citations`: one
+entry per recognized evidence record, in order of first use:
+
+```json
+{"number": 1, "label": "1", "evidence_id": "evd_90c4…", "kind": "query",
+ "description": "Query result; definition basis: completed item sales v1; September 2026 (UTC, by ordered date); computed 9 October 2026, 14:02 UTC.",
+ "current": true}
+```
+
+- Computed when the answer is read, under the caller's current access. An ID
+  is listed only if it names a record the answer's run used and that the
+  caller may use now. An invented ID, another executive's or session's record,
+  or a record withheld after access narrowed (including a deleted report's
+  link) is not listed and stays in the text as written. A withheld answer
+  always has an empty list. A superseded record (a definition or preference
+  changed after it was computed) is listed with `current: false`.
+- `description` is written by the application from recorded metadata (kind,
+  definition basis, period, time zone and date field, grouping, computation
+  time, truncation, saved-report source or exchange-rate provenance). It never
+  contains SQL, product entitlements, credentials or rows, and no model writes
+  it. Metadata that an older record does not have is described as not
+  recorded. Descriptions pass the same output check as the answer. If one
+  cannot be shown, a neutral line replaces it.
+- `label` is what to display: `1`, `2`, …, or `S1`, `S2`, … when the answer
+  already has numbered references of its own such as `[1]`. Clients replace
+  only the listed IDs, and never inside code, URLs or longer words.
+  Clarification questions never have citations.
+
 Deletion confirmation exists only as this explicit, authenticated user
 request: the model can propose a deletion but nothing it writes can confirm
 one. There is no restore route. Restoring a deleted report within its seven

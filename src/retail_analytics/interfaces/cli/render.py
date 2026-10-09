@@ -13,6 +13,7 @@ from typing import Any
 
 import click
 
+from retail_analytics.domain.citations import number_citations
 from retail_analytics.interfaces.cli.client import ApiError, JsonObject, Unreachable
 
 _ESCAPES = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?")
@@ -239,10 +240,70 @@ def format_run_result(run: JsonObject) -> str:
                 + one_line(answer.get("text", ""))
             )
         else:
-            parts.append(render_markdown(str(answer.get("text", ""))))
+            parts.append(render_answer(answer))
     elif status in ("completed", "partial"):
         parts.append("(no answer text was released)")
     return "\n\n".join(parts)
+
+
+# --- answer citations ---
+
+_LABEL = re.compile(r"^S?[1-9][0-9]{0,3}$")
+_EVIDENCE_ID = re.compile(r"^evd_[0-9a-z]{1,40}$")
+
+
+def answer_citations(answer: JsonObject) -> list[JsonObject]:
+    """The server's citation list, keeping only well-formed entries.
+
+    The server recognized these against current access; nothing here adds
+    a source the server did not list.
+    """
+    raw = answer.get("citations")
+    if answer.get("withheld") or not isinstance(raw, list):
+        return []
+    valid: list[JsonObject] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        label, evidence_id = item.get("label"), item.get("evidence_id")
+        if not (isinstance(label, str) and _LABEL.match(label)):
+            continue
+        if not (isinstance(evidence_id, str) and _EVIDENCE_ID.match(evidence_id)):
+            continue
+        if evidence_id in seen:
+            continue
+        seen.add(evidence_id)
+        valid.append(item)
+    return valid
+
+
+def render_answer(answer: JsonObject) -> str:
+    """A released answer with recognized evidence IDs shown as ``[1]`` and a
+    Sources section (fresh, partial and reopened answers alike). IDs the
+    server did not recognize stay as written; the stored text is unchanged."""
+    citations = answer_citations(answer)
+    text = safe(answer.get("text", ""))
+    if citations:
+        labels = {str(c["evidence_id"]): str(c["label"]) for c in citations}
+        text = number_citations(text, labels)
+    body = render_markdown(text)
+    if not citations:
+        return body
+    return body + "\n\n" + format_sources(citations)
+
+
+def format_sources(citations: list[JsonObject]) -> str:
+    lines = [click.style("SOURCES", bold=True)]
+    for c in citations:
+        description = one_line(c.get("description") or "") or (
+            "Details of this result were not provided."
+        )
+        line = f"[{c['label']}] {description}"
+        if c.get("current") is False:
+            line = click.style(line, fg="yellow")
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def format_run_line(run: JsonObject) -> str:

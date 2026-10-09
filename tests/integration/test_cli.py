@@ -27,6 +27,7 @@ import pytest
 import pytest_asyncio
 
 from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.domain.runs import RunStatus
 from tests.integration.test_http_api import (  # noqa: F401  (fixtures reused)
     Api,
     api,
@@ -78,11 +79,11 @@ class Cli:
         out, _ = process.communicate(stdin, timeout=timeout)
         return subprocess.CompletedProcess(args, process.returncode, out, None)
 
-    def start_run(self, text: str) -> str:
+    def start_run(self, text: str, *options: str) -> str:
         """Start a run without waiting (retrying while Temporal warms up)."""
         deadline = time.monotonic() + 60
         while True:
-            done = self.run("ask", text, "--no-wait", "--json")
+            done = self.run("ask", text, *options, "--no-wait", "--json")
             if done.returncode == 0:
                 return str(json.loads(done.stdout)["run_id"])
             assert time.monotonic() < deadline, done.stdout
@@ -224,6 +225,35 @@ async def test_cli_answers_a_clarification_question(
     answered = await asyncio.to_thread(cli.run, "answer", run_id, "use annual sales")
     assert answered.returncode == 0, answered.stdout
     assert ANNUAL in answered.stdout
+
+
+async def test_cli_numbers_citations_on_display_and_reopening(
+    alice: tuple[Cli, Principal, str],
+    world: World,
+) -> None:
+    cli, principal, session = alice
+    seeded = await world.run(principal, session)
+    evidence_id = await world.product_evidence(principal, seeded)
+    await world.db.runs.transition_run(seeded, RunStatus.COMPLETED)
+    run_id = await asyncio.to_thread(
+        cli.start_run, "Analyze sales: citation case.", "--session", session
+    )
+    fresh = await asyncio.to_thread(cli.run, "follow", run_id)
+    reopened = await asyncio.to_thread(cli.run, "show", run_id)
+    for shown in (fresh, reopened):
+        assert shown.returncode == 0, shown.stdout
+        out = shown.stdout
+        assert "cited result [1]; the same result again [1]" in out, out
+        assert evidence_id not in out
+        assert "SOURCES" in out and "[1] External data; definition basis" in out
+        assert "September 2026" in out
+        # The invented reference is not a source.
+        assert f"unknown [evd_{'f' * 32}]" in out
+        assert "[2]" not in out
+    raw = await asyncio.to_thread(cli.run, "show", run_id, "--json")
+    answer = json.loads(raw.stdout)["answer"]
+    assert evidence_id in answer["text"]
+    assert [c["evidence_id"] for c in answer["citations"]] == [evidence_id]
 
 
 async def test_cli_cancel_stops_the_run_and_reports_its_state(

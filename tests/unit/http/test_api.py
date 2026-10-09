@@ -594,7 +594,11 @@ def test_run_commands_and_view(client: TestClient, world: World) -> None:
     assert cancelled.json()["run"]["status"] == "cancelling"
     view = client.get("/v1/runs/run-1", headers=auth()).json()
     assert view["status"] == "completed"
-    assert view["answer"] == {"text": "Revenue rose 4%.", "withheld": False}
+    assert view["answer"] == {
+        "text": "Revenue rose 4%.",
+        "withheld": False,
+        "citations": [],
+    }
     sessions = client.get("/v1/sessions", headers=auth()).json()["sessions"]
     assert [s["session_id"] for s in sessions] == ["ses-1"]
 

@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from retail_analytics.application.contracts import Identifier
 from retail_analytics.application.contracts.conversations import (
+    CitedSource,
     ReleasedText,
     RunView,
 )
@@ -166,14 +167,45 @@ class InputReceiptOut(_Response):
         )
 
 
+class CitationOut(_Response):
+    """A recognized evidence citation in the answer text, checked against the
+    caller's current access when the answer was read. Display ``[label]`` in
+    place of ``evidence_id``; IDs not listed are not recognized sources."""
+
+    number: int
+    label: str
+    evidence_id: str
+    kind: str
+    description: str
+    # False for a superseded result (definition or preference changed since).
+    current: bool
+
+    @classmethod
+    def of(cls, source: CitedSource) -> CitationOut:
+        return cls(
+            number=source.number,
+            label=source.label,
+            evidence_id=source.evidence_id,
+            kind=source.kind,
+            description=source.description,
+            current=source.current,
+        )
+
+
 class ReleasedTextOut(_Response):
     text: str
     # True when the output gate withheld the text; ``text`` then explains.
     withheld: bool
+    # First-use order; always empty for withheld text and for questions.
+    citations: list[CitationOut] = Field(default_factory=list)
 
     @classmethod
     def of(cls, released: ReleasedText) -> ReleasedTextOut:
-        return cls(text=released.text, withheld=released.withheld)
+        return cls(
+            text=released.text,
+            withheld=released.withheld,
+            citations=[CitationOut.of(c) for c in released.citations],
+        )
 
 
 class QuestionOut(_Response):
