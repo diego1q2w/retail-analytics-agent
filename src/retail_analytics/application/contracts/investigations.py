@@ -113,6 +113,9 @@ class ModelStep:
     standing: ContextStanding | None = None
     # Analytical skills in effect for this request.
     focus: ToolFocus | None = None
+    # Active seconds the run had left when this step was prepared (None: no
+    # accounting); the model request is cut off when they run out.
+    active_seconds_left: float | None = None
 
 
 class ContextKeyPart(StrEnum):

@@ -11,7 +11,8 @@ and translates the typed outcomes raised here into its own errors.
   permission-checked context assembled, tool catalog filtered), refuses a
   conversation whose source context is no longer valid
   (``InvestigationContextChanged``), puts the context in front of the
-  conversation and only then calls the provider model. Context (with
+  conversation and only then calls the provider model, for no longer than
+  the run's remaining active time (``RunStopped`` at the deadline). Context (with
   evidence rows) is rebuilt for every request and never stored in the
   conversation.
 - ``CatalogToolset`` lists the executive's permission-filtered catalog
@@ -28,6 +29,7 @@ fails closed when no services are bound.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
@@ -52,16 +54,22 @@ from pydantic_ai.toolsets._dynamic import DynamicToolset
 from pydantic_ai.usage import UsageLimits
 from pydantic_core import SchemaValidator, core_schema
 
+from retail_analytics.application.budgets import (
+    ActiveDeadlineReached,
+    within_active_time,
+)
 from retail_analytics.application.contracts.investigations import (
     AnswerDraft,
     ContextKeyPart,
     ContextRestartCause,
     ModelStep,
     QuestionDraft,
+    StopReason,
 )
 from retail_analytics.application.contracts.telemetry import Label, Metric, Span
 from retail_analytics.application.investigation_runtime import (
     InvestigationContextChanged,
+    RunStopped,
 )
 from retail_analytics.application.telemetry import (
     ATTRIBUTION_METADATA_KEY,
@@ -210,6 +218,7 @@ class GuardedModel(Model):
     ) -> ModelResponse:
         services = self._binding.require()
         deps = current_deps()
+        prepared_from = time.monotonic()
         step = await services.steps.prepare_model_step(deps.run_id)
         cause = restart_cause(messages, step)
         if cause is not None:
@@ -230,7 +239,17 @@ class GuardedModel(Model):
             ModelRequest(parts=[SystemPromptPart(step.instructions)]),
             *messages,
         ]
-        response = await services.model.request(framed, model_settings, parameters)
+        left = step.active_seconds_left
+        if left is not None:
+            left -= time.monotonic() - prepared_from
+        try:
+            # The run's active-time deadline cuts off a stream that is still
+            # progressing, and the provider retries and fallback inside it.
+            response = await within_active_time(
+                left, services.model.request(framed, model_settings, parameters)
+            )
+        except ActiveDeadlineReached as reached:
+            raise RunStopped(StopReason.BUDGET, reached.resource) from None
         provenance = {
             "key": step.history_key,
             "evidence": dict(step.evidence_versions),

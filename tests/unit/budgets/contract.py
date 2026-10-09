@@ -25,7 +25,7 @@ from retail_analytics.domain.budgets import (
 )
 
 T0 = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
-LIMITS = RunLimits()
+LIMITS = RunLimits(active_seconds=600)
 
 
 def new_run() -> str:

@@ -233,3 +233,19 @@ def test_policy_states_the_join_rule_and_points_at_the_documented_example() -> N
     assert SQL_JOIN_RULE not in policy.render_investigation_policy(
         ALL_TOOLS - {policy.EXECUTE_ANALYSIS}
     )
+
+
+@pytest.mark.asyncio
+async def test_little_active_time_left_asks_for_a_conclusion() -> None:
+    from datetime import timedelta
+
+    now = [NOW]
+    budgets = RunBudgets(MemoryRunBudgetStore(), RunLimits(), clock=lambda: now[0])
+    await budgets.open("run")
+    line = _budget_line(await budgets.snapshot("run"))
+    assert "active seconds left: 120 of 120 (the investigation stops at 0)" in line
+    assert "nearly spent" not in line
+    now[0] = NOW + timedelta(seconds=95)
+    line = _budget_line(await budgets.snapshot("run"))
+    assert "active seconds left: 25 of 120" in line
+    assert "nearly spent: answer now from the evidence you have" in line

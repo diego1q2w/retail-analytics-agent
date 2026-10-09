@@ -361,11 +361,83 @@ pinned to the run across worker replacement.
 Temporal activities use bounded retries and heartbeat timeouts. Model
 activities have a 15-minute attempt timeout (a backstop: provider retries and
 fallback run inside one activity, each request has its own first-token,
-stall and total limits, and the active-time budget refuses new attempts) and
-a 30-second heartbeat; tools have a ten-minute attempt timeout and a 15-second
-heartbeat. The run's persistent active-time and query deadlines are additional
-limits. When every configured provider has failed, the model activity stops
-the run as "model unavailable" instead of being retried.
+stall and total limits, and the active-time deadline below cuts the activity's
+work off) and a 30-second heartbeat; tools have a ten-minute attempt timeout
+and a 15-second heartbeat. When every configured provider has failed, the
+model activity stops the run as "model unavailable" instead of being retried.
+
+## Active-time deadline
+
+Every run has one hard limit on active work: `RUN_ACTIVE_SECONDS`, default
+120 seconds, pinned when the run begins (an explicit setting is kept; later
+changes apply to new runs only). It is the run's existing `active_time`
+budget, not a second timer. Simple figure questions are expected to take
+10-30 seconds and investigations or reports 1-2 minutes; those are latency
+targets measured by the evaluation and the dashboard, not further deadlines,
+and no model call classifies a request's difficulty.
+
+What counts: active time starts when the run begins and is wall-clock time
+from then on - model calls, tool and warehouse waits, retries, backoff,
+provider fallback and processing between steps, on any backend. Only waiting
+for the user's answer to a clarification question is excluded (the clock
+pauses when the question is asked and resumes with the answer). Waiting in
+the session queue before the run begins is not charged. After it began, a
+local run waiting for a concurrency slot is charged, and so is Temporal worker
+downtime: the run is still active, and a restarted worker continues against
+the same persisted clock. Reconnects, steering, activity retries, context
+restarts and recovery never open a new allowance.
+
+Enforcement, the same for the local and Temporal backends because it lives in
+the shared agent and application code:
+
+- Every model request and every tool call is awaited only for the time the run
+  has left (`application.budgets.within_active_time`). At the deadline a model
+  stream that is still progressing is closed, together with any provider retry
+  or fallback inside it, and a warehouse wait or retry backoff ends. The
+  60-second first-token and 30-second stall limits only detect a silent
+  provider; the run deadline is what bounds a stream that keeps going. Inside
+  Temporal this happens within the activity, which then fails with a
+  non-retryable stop, so nothing is retried.
+- Steps between them check the budget, and every new query, retry, fallback
+  or model request is refused once the time is spent. The agent's budget line
+  shows the seconds left and, below a quarter of the limit (at least 20 s),
+  asks it to conclude from the evidence it has.
+- The run then ends through the same stop path as every budget stop. Running
+  warehouse jobs get one cancellation request by their recorded job ID and
+  one status check, within at most 10 seconds (`CLEANUP_SECONDS`); nothing is
+  resubmitted and the durable job record stays for reconciliation.
+  Cancellation can be unconfirmed: the answer then says that work still
+  running could not be confirmed stopped, and the job ends at its own
+  warehouse timeout (`QUERY_DEADLINE_SECONDS` plus a short grace). Remote work
+  does not always stop instantly.
+- The user-visible completion overhead after the deadline is this bounded
+  cleanup plus building the partial answer (no model call): normally well
+  under a second, at most about 10 seconds when the warehouse does not answer.
+
+The answer says the investigation ran out of time ("reached its 2-minute limit
+for active work"), then shows the relevant verified results, or says that
+none were produced, and what was not answered (see below). It is not labelled
+truncated. An answer the model completed before the deadline is released and
+stays complete even if releasing it finishes after the deadline.
+
+Related limits: `QUERY_DEADLINE_SECONDS` (default 120) bounds one warehouse
+query and cancels it on its own; with the default run limit a query can never
+outlast the run, which cuts the wait at its own deadline first. Model
+first-token (60 s), stall (30 s) and total (180 s) limits apply per provider
+request; the run's remaining time always caps them, and also caps retry
+backoff (a retry whose delay would not fit is refused).
+
+Observability: the run's root trace span carries `deadline_stop`,
+`stop_reason`/`stop_resource` (`budget`/`active_time`), `active_seconds`,
+`active_limit_seconds`, `elapsed_seconds` (what the user waited),
+`inactive_seconds` (queueing before the run began plus clarification waits),
+`status`, `verified_results` and the cleanup it requested
+(`cleanup_cancel_requested`, `cleanup_unconfirmed`). A deadline stop is
+counted once in `ra_budget_stops_total{reason="budget",resource="active_time"}`
+(separate from token, request or cost limits), active work in
+`ra_run_active_seconds` beside end-to-end `ra_run_seconds`; see
+[observability](observability.md). The stop and its answer are written to the
+database first; telemetry is best effort and never affects enforcement.
 
 A run that stops before the model writes an answer (budget, model unavailable,
 access change) ends with an application-written answer and no model call. It
@@ -378,7 +450,8 @@ the model was shown are not listed unless they match. Figures are rounded,
 amounts carry the known source-currency status, and the answer says what was
 not answered. When nothing matches, no figure is given. The text passes the
 output gate like any answer. A partial answer whose cited result was cut off
-at its size limit says so; a budget stop is never described as truncation.
+at its size limit says so; a budget stop (including the active-time deadline)
+is never described as truncation.
 
 ## Validation
 

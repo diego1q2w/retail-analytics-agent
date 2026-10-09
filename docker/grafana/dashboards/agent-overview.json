@@ -151,7 +151,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Run latency p50 / p95",
+      "title": "Run latency p50 / p95: end-to-end vs active work",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -170,7 +170,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "legendFormat": "p50"
+          "legendFormat": "end-to-end p50"
         },
         {
           "refId": "B",
@@ -179,7 +179,25 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "legendFormat": "p95"
+          "legendFormat": "end-to-end p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(ra_run_active_seconds_bucket[$__rate_interval])))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "active p50"
+        },
+        {
+          "refId": "D",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(ra_run_active_seconds_bucket[$__rate_interval])))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "active p95"
         }
       ],
       "fieldConfig": {
@@ -188,7 +206,8 @@
         },
         "overrides": []
       },
-      "options": {}
+      "options": {},
+      "description": "End-to-end is what the user waited (includes clarification waits and queueing); active work is what counts against the run's active-time deadline (default 120 s)."
     },
     {
       "id": 7,
@@ -310,7 +329,7 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 12,
+        "w": 8,
         "x": 0,
         "y": 17
       },
@@ -351,8 +370,8 @@
       },
       "gridPos": {
         "h": 7,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 8,
         "y": 17
       },
       "targets": [
@@ -371,6 +390,46 @@
         "overrides": []
       },
       "options": {}
+    },
+    {
+      "id": 60,
+      "type": "stat",
+      "title": "Active-time deadline stops (share of runs)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 17
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(ra_budget_stops_total{resource=\"active_time\"}[$__range])) / clamp_min(sum(increase(ra_runs_total[$__range])), 1)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "legendFormat": "timeout rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "description": "Runs ended by the active-time deadline (ra_budget_stops_total{resource=\"active_time\"}) over runs finished. Search the traces with span.attributes.stop_resource LIKE '%active_time%'."
     },
     {
       "id": 13,

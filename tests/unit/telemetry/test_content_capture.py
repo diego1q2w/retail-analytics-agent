@@ -302,6 +302,8 @@ async def test_root_span_shows_request_answer_and_stop_reason() -> None:
     from retail_analytics.application.contracts.investigations import FinishRequest
     from retail_analytics.application.investigation_runtime import (
         InvestigationRuntime,
+        _Cleanup,
+        _StopRecord,
     )
     from retail_analytics.domain.budgets import BudgetResource
     from retail_analytics.domain.investigations import InputStatus, RunInput
@@ -338,7 +340,11 @@ async def test_root_span_shows_request_answer_and_stop_reason() -> None:
             run,
             None,
             "Stopped. Partial findings.",
-            FinishRequest("run-1", StopReason.BUDGET, BudgetResource.TOKENS),
+            _StopRecord(
+                FinishRequest("run-1", StopReason.BUDGET, BudgetResource.TOKENS),
+                1,
+                _Cleanup(0, 0),
+            ),
         )
     (root,) = sink.named(Span.RUN)
     assert root.content("inputs") == {"request": "Revenue by month? cc [withheld]"}

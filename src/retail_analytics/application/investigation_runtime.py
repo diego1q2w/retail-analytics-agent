@@ -31,6 +31,7 @@ it at the next safe boundary.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections.abc import Callable, Sequence
@@ -219,6 +220,32 @@ def stop_message(reason: StopReason, resource: BudgetResource | None) -> str:
     return _STOP_MESSAGES.get(reason, _STOP_MESSAGES[StopReason.INTERRUPTED])
 
 
+# Finalization after a stop: cancellation requests for running warehouse
+# jobs get at most this long; the partial answer follows without waiting for
+# confirmation.
+CLEANUP_SECONDS = 10.0
+
+UNCONFIRMED_CLEANUP = (
+    "Work that was still running (such as a warehouse query) could not be "
+    "confirmed stopped; it ends at its own time limit and none of its results "
+    "are used."
+)
+
+
+def time_limit_message(limit_seconds: int | None) -> str:
+    """What the user is told when the active-time deadline stopped the run."""
+    if limit_seconds is None:
+        return budget_message(BudgetResource.ACTIVE_TIME)
+    if limit_seconds % 60 == 0:
+        limit = f"{limit_seconds // 60}-minute"
+    else:
+        limit = f"{limit_seconds}-second"
+    return (
+        f"This investigation ran out of time: it reached its {limit} limit "
+        "for active work, so it stopped before finishing."
+    )
+
+
 TRUNCATED_NOTE = (
     "Note: a result this answer relies on was cut off at its size limit, so "
     "rows are missing from it; figures from it may be incomplete."
@@ -396,6 +423,11 @@ class InvestigationRuntime:
                 key_parts=tuple((str(k), _digest_of(v)[:16]) for k, v in key_parts),
             ),
             focus=selection.focus,
+            active_seconds_left=(
+                None
+                if snapshot is None
+                else snapshot.remaining()[BudgetResource.ACTIVE_TIME]
+            ),
         )
 
     async def catalog(self, run_id: str) -> tuple[ToolDescriptor, ...]:
@@ -585,14 +617,16 @@ class InvestigationRuntime:
         if run.status.is_terminal:
             return await self._after_close(run, run.status, retried=True)
         reason = stop_message(request.reason, request.resource)
-        telemetry().count(
-            Metric.BUDGET_STOPS,
-            {
-                Label.REASON: request.reason.value,
-                Label.RESOURCE: request.resource.value if request.resource else "none",
-            },
-        )
-        sections = await self._partial_findings(run, reason)
+        if request.resource is BudgetResource.ACTIVE_TIME:
+            snapshot = await self._budgets.snapshot(request.run_id)
+            reason = time_limit_message(
+                None if snapshot is None else snapshot.limits.active_seconds
+            )
+        # Analytical work has stopped; what may still run remotely gets a
+        # bounded cancellation request, never a resubmission.
+        cleanup = await self._stop_operations(request.run_id)
+        stated = f"{reason} {UNCONFIRMED_CLEANUP}" if cleanup.unconfirmed else reason
+        sections = await self._partial_findings(run, stated)
         status = RunStatus.PARTIAL if sections.cited else RunStatus.FAILED
         closure = await self._inputs.close_run(
             request.run_id,
@@ -602,14 +636,50 @@ class InvestigationRuntime:
         )
         if not closure.closed:
             return StepOutcome(StepResult.STOPPED, status=closure.run.status)
+        # Counted once, by the step that closed the run: a retried or
+        # replayed finish finds the run closed and counts nothing.
+        telemetry().count(
+            Metric.BUDGET_STOPS,
+            {
+                Label.REASON: request.reason.value,
+                Label.RESOURCE: request.resource.value if request.resource else "none",
+            },
+        )
         return await self._after_close(
             closure.run,
             status,
             retried=False,
             summary=f"Stopped. {reason}",
             answer=sections.text,
-            stop=request,
+            stop=_StopRecord(request, len(sections.cited), cleanup),
         )
+
+    async def _stop_operations(self, run_id: str) -> _Cleanup:
+        """Request cancellation of the run's unfinished operations, bounded.
+
+        One cancellation request and status check per running warehouse job
+        (by its recorded reference), within ``CLEANUP_SECONDS``; anything not
+        confirmed stopped by then is reported, not waited for.
+        """
+        try:
+            pending = [
+                op
+                for op in await self._operations.for_run(run_id)
+                if not op.status.is_terminal
+            ]
+        except Exception:
+            return _Cleanup(0, 0)
+        if not pending:
+            return _Cleanup(0, 0)
+        remote = sum(1 for op in pending if op.side_effect.may_leave_external_effect)
+        try:
+            async with asyncio.timeout(CLEANUP_SECONDS):
+                unconfirmed = await self._cancel_operations(run_id)
+        except Exception:
+            # A concurrent attempt moved an operation, the store or the
+            # warehouse did not answer in time: the stop itself still stands.
+            unconfirmed = remote
+        return _Cleanup(remote, unconfirmed)
 
     async def finish_message(self, run_id: str, message: str) -> StepOutcome:
         """End the run with an application-authored message (no model call)."""
@@ -834,7 +904,7 @@ class InvestigationRuntime:
         served_by: ProviderAttribution | None = None,
         summary: str | None = None,
         answer: str | None = None,
-        stop: FinishRequest | None = None,
+        stop: _StopRecord | None = None,
     ) -> StepOutcome:
         if run.status is not status and retried:
             return StepOutcome(StepResult.STOPPED, status=run.status)
@@ -854,9 +924,17 @@ class InvestigationRuntime:
         run: Run,
         served_by: ProviderAttribution | None,
         answer: str | None = None,
-        stop: FinishRequest | None = None,
+        stop: _StopRecord | None = None,
     ) -> None:
-        """Run outcome, duration, budget use and answering provider, once."""
+        """Run outcome, duration, budget use and answering provider, once.
+
+        Times: ``elapsed_seconds`` is what the user waited (creation to close),
+        ``active_seconds`` the charged active work against
+        ``active_limit_seconds``, and ``inactive_seconds`` the rest (queueing
+        before the run began and clarification waits). A stop records its
+        reason, whether it was the active-time deadline, how many verified
+        results the partial answer shows and the cleanup it requested.
+        """
         now = self._clock()
         status = run.status.value
         seconds = max((now - run.created_at).total_seconds(), 0.0)
@@ -864,7 +942,19 @@ class InvestigationRuntime:
             "run_id": run.run_id,
             "session_id": run.session_id,
             "status": status,
+            "elapsed_seconds": round(seconds, 3),
+            "deadline_stop": stop is not None and stop.deadline,
         }
+        if stop is not None:
+            attributes.update(
+                stop_reason=stop.request.reason.value,
+                stop_resource=(
+                    stop.request.resource.value if stop.request.resource else "none"
+                ),
+                verified_results=stop.verified,
+                cleanup_cancel_requested=stop.cleanup.requested,
+                cleanup_unconfirmed=stop.cleanup.unconfirmed,
+            )
         if served_by is not None:
             attributes.update(
                 answered_by=served_by.provider,
@@ -873,7 +963,14 @@ class InvestigationRuntime:
                 fallback_reason=served_by.fallback_reason or "none",
             )
         snapshot = await self._budgets.snapshot(run.run_id)
+        active: float | None = None
         if snapshot is not None:
+            active = snapshot.active_seconds
+            attributes.update(
+                active_seconds=round(active, 3),
+                active_limit_seconds=snapshot.limits.active_seconds,
+                inactive_seconds=round(max(seconds - active, 0.0), 3),
+            )
             for resource, left in snapshot.remaining().items():
                 limit = _limit_of(snapshot, resource)
                 if limit > 0:
@@ -903,14 +1000,18 @@ class InvestigationRuntime:
                 outputs: dict[str, object] = {"status": status}
                 if stop is not None:
                     # The stop reason code the user's message is built from.
-                    outputs["stop_reason"] = stop.reason.value
-                    if stop.resource is not None:
-                        outputs["stop_resource"] = stop.resource.value
+                    outputs["stop_reason"] = stop.request.reason.value
+                    if stop.request.resource is not None:
+                        outputs["stop_resource"] = stop.request.resource.value
                 if answer is not None:
                     outputs["released_answer"] = answer
                 span.outputs(outputs)
         telemetry().count(Metric.RUNS, {Label.STATUS: status})
         telemetry().observe(Metric.RUN_SECONDS, seconds, {Label.STATUS: status})
+        if active is not None:
+            telemetry().observe(
+                Metric.RUN_ACTIVE_SECONDS, active, {Label.STATUS: status}
+            )
         if served_by is not None:
             telemetry().count(
                 Metric.FINAL_ANSWERS,
@@ -1121,6 +1222,26 @@ class _Partial:
     cited: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _Cleanup:
+    """Cancellation requested when a run stopped: remote operations it was
+    requested for, and how many were not confirmed stopped."""
+
+    requested: int
+    unconfirmed: int
+
+
+@dataclass(frozen=True, slots=True)
+class _StopRecord:
+    request: FinishRequest
+    verified: int
+    cleanup: _Cleanup
+
+    @property
+    def deadline(self) -> bool:
+        return self.request.resource is BudgetResource.ACTIVE_TIME
+
+
 _PARTIAL_TRUNCATED = (
     "Partial answer ready: a result it relies on was cut off, so rows are missing."
 )
@@ -1246,13 +1367,19 @@ def _budget_line(snapshot: BudgetSnapshot | None) -> str:
             else ""
         ),
         f"queries left: {int(left[BudgetResource.QUERIES])} of {limits.queries}",
-        f"active seconds left: {int(left[BudgetResource.ACTIVE_TIME])}",
+        f"active seconds left: {int(left[BudgetResource.ACTIVE_TIME])} of "
+        f"{limits.active_seconds} (the investigation stops at 0)",
     ]
+    seconds = left[BudgetResource.ACTIVE_TIME]
     guidance = (
         "These are limits, not targets: answer as soon as the evidence "
         "supports the answer."
     )
-    if requests <= _LOW_REQUESTS or (per_request and tokens < 2 * per_request):
+    if (
+        requests <= _LOW_REQUESTS
+        or (per_request and tokens < 2 * per_request)
+        or seconds <= _low_seconds(limits.active_seconds)
+    ):
         guidance = (
             "Budget is nearly spent: answer now from the evidence you have. "
             "If that evidence answers everything requested, finish normally "
@@ -1265,6 +1392,12 @@ def _budget_line(snapshot: BudgetSnapshot | None) -> str:
 
 # At or below this many model requests left, the line asks for a conclusion.
 _LOW_REQUESTS = 2
+
+
+def _low_seconds(limit: int) -> float:
+    """Active time left at which the line asks for a conclusion: a quarter of
+    the limit, at least 20 s (about one more model turn)."""
+    return max(limit / 4, 20.0)
 
 
 def _source_notes(cited: Sequence[EvidenceStanding]) -> str:

@@ -552,6 +552,95 @@ async def test_budget_stop_and_model_fallback_use_shared_policy(
         assert await env.model_requests(run_id) == 5
 
 
+def _short_limit(seconds: int) -> BackendSettings:
+    """A short active-time limit for tests (below the operator minimum)."""
+    return BackendSettings(mode=RuntimeMode.FIXTURE).model_copy(
+        update={"run_active_seconds": seconds}
+    )
+
+
+async def _terminal(env: LocalEnv, run_id: str, seconds: float = 30) -> Any:
+    async with asyncio.timeout(seconds):
+        while True:
+            run = await env.db.runs.get_run(run_id)
+            if run is not None and run.status.is_terminal:
+                return run
+            await asyncio.sleep(0.05)
+
+
+async def test_active_deadline_cuts_a_slow_model_call(env: LocalEnv) -> None:
+    limited = env.build(settings=_short_limit(2))
+    async with limited.manager:
+        started = asyncio.get_running_loop().time()
+        run_id = await env.start(limited, "Analyze sales: slow case.")
+        run = await _terminal(env, run_id)
+        elapsed = asyncio.get_running_loop().time() - started
+        await await_terminal_event(env.db, run_id)
+    # The 3 s model call was cut at the 2 s deadline; finalization is quick.
+    assert elapsed < 2 + 2.5, elapsed
+    assert run.status is RunStatus.FAILED  # nothing verified to show
+    assert await env.model_requests(run_id) == 1  # no request after the stop
+    text = (await env.assistant_texts())[-1]
+    assert "ran out of time" in text and "2-second limit for active work" in text
+    assert "No verified results were produced yet." in text
+    assert "cut off" not in text  # time expiry is not truncation
+    events = await env.db.run_events.replay(run_id, limit=100)
+    failed = [e for e in events if e.kind is EventKind.RUN_FAILED]
+    assert len(failed) == 1 and "ran out of time" in failed[0].summary
+
+
+async def test_active_deadline_cuts_a_slow_tool_and_starts_nothing_after(
+    env: LocalEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("T13_EFFECT_DELAY", "30")
+    limited = env.build(settings=_short_limit(2))
+    async with limited.manager:
+        started = asyncio.get_running_loop().time()
+        run_id = await env.start(limited, "Analyze sales: effect case.")
+        run = await _terminal(env, run_id)
+        elapsed = asyncio.get_running_loop().time() - started
+        # The task ends right after the terminal event it publishes.
+        async with asyncio.timeout(10):
+            while True:
+                if not limited.manager.running():
+                    break
+                await asyncio.sleep(0.05)
+    assert elapsed < 2 + 2.5, elapsed
+    assert run.status is RunStatus.FAILED
+    assert env.effects(run_id) == 1  # never repeated
+    assert await env.model_requests(run_id) == 1  # no model turn after the stop
+    text = (await env.assistant_texts())[-1]
+    assert "ran out of time" in text
+    # The controlled external effect cannot be cancelled: said, not hidden.
+    assert "could not be confirmed stopped" in text
+    budget = await env.db.budgets.get(run_id)
+    assert budget is not None and budget.limits.active_seconds == 2
+
+
+async def test_clarification_wait_does_not_spend_the_active_time(
+    env: LocalEnv,
+) -> None:
+    limited = env.build(settings=_short_limit(2))
+    async with limited.manager:
+        run_id = await env.start(limited, "Analyze sales: clarification case.")
+        await env.wait_status(run_id, RunStatus.WAITING_FOR_INPUT)
+        attached = await limited.services.control.attach(env.principal, run_id=run_id)
+        assert attached.open_question_id is not None
+        await asyncio.sleep(3)  # longer than the whole active allowance
+        await limited.services.control.answer(
+            env.principal,
+            run_id=run_id,
+            question_id=attached.open_question_id,
+            text="Use last full month sales.",
+            submission_key="answer",
+        )
+        await env.wait_status(run_id, RunStatus.COMPLETED, 30)
+    budget = await env.db.budgets.get(run_id)
+    assert budget is not None
+    snapshot = budget.snapshot(datetime.now(UTC))
+    assert snapshot.active_seconds < 2
+
+
 async def test_shutdown_records_truthful_interruption_and_discards_queue(
     env: LocalEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:

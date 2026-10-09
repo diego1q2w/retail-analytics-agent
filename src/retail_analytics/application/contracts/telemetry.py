@@ -23,6 +23,9 @@ class Metric(StrEnum):
 
     RUNS = "ra_runs_total"
     RUN_SECONDS = "ra_run_seconds"
+    # Active work of a finished run (clarification waits excluded); compare
+    # with ``RUN_SECONDS``, the user-visible end-to-end latency.
+    RUN_ACTIVE_SECONDS = "ra_run_active_seconds"
     RUNS_STARTED = "ra_runs_started_total"
     HTTP_REQUESTS = "ra_http_requests_total"
     HTTP_SECONDS = "ra_http_request_seconds"
@@ -62,6 +65,7 @@ class Metric(StrEnum):
 HISTOGRAMS = frozenset(
     {
         Metric.RUN_SECONDS,
+        Metric.RUN_ACTIVE_SECONDS,
         Metric.HTTP_SECONDS,
         Metric.TOOL_SECONDS,
         Metric.MODEL_SECONDS,

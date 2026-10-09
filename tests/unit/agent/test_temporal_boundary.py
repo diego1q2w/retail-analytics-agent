@@ -135,3 +135,47 @@ async def test_budget_request_key_is_stable_per_model_activity_attempt(
     # Outside an activity every request gets a fresh key.
     await request()
     assert budget.keys[1].startswith("local/")
+
+
+@pytest.mark.asyncio
+async def test_active_deadline_inside_the_model_activity_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slow provider call is cut off inside the activity at the run's
+    deadline and surfaces as the active-time stop, never as a retry."""
+    import asyncio
+    from dataclasses import replace
+
+    async def slow(messages: list[ModelMessage], info: Any) -> Any:
+        await asyncio.sleep(30)
+
+    steps = FakeSteps((replace(STEP, active_seconds_left=0.2),))
+    model = _temporal_model(monkeypatch, steps, FunctionModel(slow))
+    with pytest.raises(ApplicationError) as caught:
+        await model.request(MESSAGES, None, ModelRequestParameters())
+    assert caught.value.type == agent.RUN_STOPPED and caught.value.non_retryable
+    assert agent.interruption(caught.value) == AgentInterruption(
+        InterruptionKind.STOPPED, StopReason.BUDGET, BudgetResource.ACTIVE_TIME
+    )
+
+
+@pytest.mark.asyncio
+async def test_active_deadline_in_a_tool_activity_is_not_retried() -> None:
+    from types import SimpleNamespace
+
+    class Deadline:
+        async def run(self, *args: Any) -> Any:
+            raise RunStopped(StopReason.BUDGET, BudgetResource.ACTIVE_TIME)
+
+    toolset = agent.TemporalCatalogToolset(
+        AgentBinding(
+            AgentServices(FakeSteps(()), Deadline(), FunctionModel(Provider().respond))
+        )
+    )
+    ctx = SimpleNamespace(
+        deps=investigator.InvestigationDeps(run_id="run"), tool_call_id="c1", run_step=1
+    )
+    with pytest.raises(ApplicationError) as caught:
+        await toolset.call_tool("lookup", {}, ctx, None)  # type: ignore[arg-type]
+    assert caught.value.type == agent.RUN_STOPPED and caught.value.non_retryable
+    assert agent.interruption(caught.value).resource is BudgetResource.ACTIVE_TIME

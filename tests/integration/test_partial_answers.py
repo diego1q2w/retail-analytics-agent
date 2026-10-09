@@ -17,11 +17,15 @@ from pydantic_ai.models.function import FunctionModel
 
 from retail_analytics.application.contracts.investigations import (
     FinishRequest,
+    StepResult,
     StopReason,
 )
 from retail_analytics.application.contracts.persistence import OperationRequest
 from retail_analytics.application.contracts.progress import EventKind
+from retail_analytics.application.contracts.telemetry import Metric, Span
 from retail_analytics.application.contracts.tools import OperationContext
+from retail_analytics.application.investigation_runtime import TRUNCATED_NOTE
+from retail_analytics.application.telemetry import use_telemetry
 from retail_analytics.bootstrap.config import BackendSettings, RuntimeMode
 from retail_analytics.bootstrap.local_investigations import (
     build_local_investigations,
@@ -33,6 +37,7 @@ from tests.integration.compose_stack import Stack, running_stack
 from tests.integration.scripted_investigations import scripted_model
 from tests.integration.test_security_release_gates import ReleaseEnv
 from tests.unit.evidence.support import basis, compiled_and_released
+from tests.unit.telemetry.recording import recording
 
 pytestmark = [pytest.mark.docker, pytest.mark.asyncio]
 
@@ -162,7 +167,104 @@ async def test_token_budget_stop_through_the_local_manager(env: ReleaseEnv) -> N
     assert await _provider_requests(env, handle.run_id) == 0
 
 
-async def _record(env: ReleaseEnv, run_id: str, **overrides: object) -> str:
+async def _deadline(env: ReleaseEnv, run_id: str) -> tuple[RunStatus, str]:
+    runtime = env.local.services.runtime
+    await runtime.finish_partial(
+        FinishRequest(run_id, StopReason.BUDGET, BudgetResource.ACTIVE_TIME)
+    )
+    run = await env.db.runs.get_run(run_id)
+    assert run is not None
+    return run.status, (await env.assistant_texts())[-1]
+
+
+async def test_deadline_shows_verified_findings_and_is_traced_once(
+    env: ReleaseEnv,
+) -> None:
+    run_id = await env.run(env.principal, env.session_id, "Revenue for September?")
+    evidence_id, _ = await env.query(env.principal, run_id)
+    telemetry, sink = recording()
+    with use_telemetry(telemetry):
+        status, text = await _deadline(env, run_id)
+        # A retried or replayed finish changes and counts nothing.
+        await _deadline(env, run_id)
+    assert status is RunStatus.PARTIAL
+    assert text.startswith(
+        "This investigation ran out of time: it reached its 2-minute limit "
+        "for active work, so it stopped before finishing."
+    )
+    assert "Relevant verified results so far (not a complete answer)" in text
+    assert "Not answered:" in text
+    assert text.rstrip().endswith(f"Evidence: {evidence_id}")
+    assert "cut off" not in text and "truncat" not in text
+    assert await _provider_requests(env, run_id) == 0  # no model call
+    events = await env.db.run_events.replay(run_id, limit=100)
+    partial = [e for e in events if e.kind is EventKind.RUN_PARTIAL]
+    assert len(partial) == 1 and "ran out of time" in partial[0].summary
+    assert sink.total(Metric.BUDGET_STOPS, resource="active_time") == 1
+    assert sink.total(Metric.BUDGET_STOPS) == 1
+    (root,) = sink.named(Span.RUN)
+    attributes = root.attributes
+    assert attributes["deadline_stop"] is True
+    assert attributes["stop_reason"] == "budget"
+    assert attributes["stop_resource"] == "active_time"
+    assert attributes["status"] == "partial"
+    assert attributes["active_limit_seconds"] == 120
+    assert attributes["verified_results"] == 1
+    assert isinstance(attributes["active_seconds"], float)
+    assert isinstance(attributes["elapsed_seconds"], float)
+    active = [m for m, _, _ in sink.observations if m is Metric.RUN_ACTIVE_SECONDS]
+    assert len(active) == 1
+
+
+async def test_deadline_without_usable_evidence_says_so(env: ReleaseEnv) -> None:
+    run_id = await env.run(env.principal, env.session_id, "Revenue for September?")
+    status, text = await _deadline(env, run_id)
+    assert status is RunStatus.FAILED
+    assert "ran out of time" in text
+    assert "No verified results were produced yet." in text
+    assert "Your question was not answered." in text
+
+
+async def test_answer_accepted_before_the_deadline_stays_complete(
+    env: ReleaseEnv,
+) -> None:
+    run_id = await env.run(env.principal, env.session_id, "Revenue for September?")
+    evidence_id, _ = await env.query(env.principal, run_id)
+    assert (
+        await env.answer(run_id, "September revenue is in the result.", evidence_id)
+        is StepResult.RELEASED
+    )
+    telemetry, sink = recording()
+    with use_telemetry(telemetry):
+        status, text = await _deadline(env, run_id)
+    assert status is RunStatus.COMPLETED
+    assert "ran out of time" not in text
+    assert sink.total(Metric.BUDGET_STOPS) == 0
+
+
+async def test_truncated_result_is_not_a_time_stop_and_vice_versa(
+    env: ReleaseEnv,
+) -> None:
+    run_id = await env.run(env.principal, env.session_id, "Revenue for September?")
+    evidence_id = await _record(env, run_id, max_rows=1)
+    assert (
+        await env.answer(run_id, "September revenue is in the result.", evidence_id)
+        is StepResult.RELEASED
+    )
+    run = await env.db.runs.get_run(run_id)
+    assert run is not None and run.status is RunStatus.PARTIAL
+    text = (await env.assistant_texts())[-1]
+    assert TRUNCATED_NOTE in text and "ran out of time" not in text
+    # A time stop on another run never claims truncation.
+    other = await env.run(env.principal, env.session_id, "Revenue for September?")
+    await env.query(env.principal, other)
+    _, stopped = await _deadline(env, other)
+    assert "ran out of time" in stopped and TRUNCATED_NOTE not in stopped
+
+
+async def _record(
+    env: ReleaseEnv, run_id: str, max_rows: int | None = None, **overrides: object
+) -> str:
     ctx = await env.access.resolver.context_for_run(env.principal, run_id)
     op = await env.db.tool_executions.begin(
         OperationRequest(
@@ -173,7 +275,9 @@ async def _record(env: ReleaseEnv, run_id: str, **overrides: object) -> str:
             side_effect=SideEffect.EXTERNAL_JOB,
         )
     )
-    compiled, released = compiled_and_released(ctx.executive_id, ctx.product_scope)
+    compiled, released = compiled_and_released(
+        ctx.executive_id, ctx.product_scope, max_rows=max_rows
+    )
     evidence = await env.evidence.record_query(
         OperationContext(ctx, op.execution.operation_id),
         compiled,

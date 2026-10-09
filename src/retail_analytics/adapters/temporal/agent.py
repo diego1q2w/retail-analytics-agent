@@ -10,9 +10,10 @@ The agent itself (guarded model, permission-filtered catalog, outputs) is
   runs) over a module-level ``AgentBinding`` that the worker's composition
   root fills (``bind_agent_services``) before the worker starts. Nothing here
   runs I/O in workflow code.
-- Error translation at the activity boundary: ``RunStopped`` becomes a
-  non-retryable ``RunStopped`` application error, a stale conversation a
-  non-retryable ``InvestigationContextChanged`` error and missing services a
+- Error translation at the activity boundary: ``RunStopped`` (from a model
+  or tool activity) becomes a non-retryable ``RunStopped`` application
+  error, a stale conversation a non-retryable ``InvestigationContextChanged``
+  error and missing services a
   non-retryable ``Unbound`` error. ``interruption`` turns those errors (as
   the workflow sees them) back into the runtime-neutral ``AgentInterruption``
   the application's lifecycle policy decides on.
@@ -68,8 +69,9 @@ UNBOUND = "Unbound"
 # the activity is retried on another worker; retries are bounded and every
 # retry re-checks authority and budgets, and reconciles external effects.
 # A model activity covers provider retries and the fallback chain; each
-# request has its own response deadlines and the run's active-time budget
-# refuses new attempts, so this is only a backstop for a stuck worker.
+# request has its own response deadlines, and the run's active-time deadline
+# cuts the model and tool calls off inside the activity (and refuses new
+# attempts), so these timeouts are only a backstop for a stuck worker.
 MODEL_ACTIVITY_TIMEOUT = timedelta(minutes=15)
 MODEL_HEARTBEAT_TIMEOUT = timedelta(seconds=30)
 TOOL_ACTIVITY_TIMEOUT = timedelta(minutes=10)
@@ -148,6 +150,9 @@ class TemporalCatalogToolset(CatalogToolset):
             return await super().call_tool(name, tool_args, ctx, tool)
         except AgentUnbound as unbound:
             raise _unbound_error(unbound) from None
+        except RunStopped as stopped:
+            # The run's active time ran out during the call: not retried.
+            raise stopped_error(stopped) from None
 
 
 def _retry(attempts: int) -> RetryPolicy:

@@ -15,7 +15,8 @@ runs it again with the same tool-call ID) because:
   runner records the operation, and a capability that must not be retried is
   never re-executed once an attempt started;
 - every attempt checks the run is still running and that its time budget is
-  not spent; transient failures are retried only as ``RunBudgets`` allows,
+  not spent, and the whole call is awaited only until the run's active time
+  runs out; transient failures are retried only as ``RunBudgets`` allows,
   counting attempts from the persisted operation history and failures that
   happened before an operation existed;
 - a pending or unknown outcome of an external job is followed (the capability
@@ -38,7 +39,13 @@ from retail_analytics.application.authorization import (
     AccessDenied,
     AccessResolver,
 )
-from retail_analytics.application.budgets import RunBudgets, budget_message
+from retail_analytics.application.budgets import (
+    ActiveDeadlineReached,
+    RunBudgets,
+    budget_message,
+    within_active_time,
+)
+from retail_analytics.application.contracts.investigations import StopReason
 from retail_analytics.application.contracts.persistence import OperationRequest
 from retail_analytics.application.contracts.progress import (
     EventKind,
@@ -46,6 +53,7 @@ from retail_analytics.application.contracts.progress import (
     ToolActivity,
 )
 from retail_analytics.application.contracts.telemetry import Label, Metric
+from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.application.ports.investigations import RunPrincipals
 from retail_analytics.application.ports.persistence import (
     RunRepository,
@@ -143,6 +151,34 @@ class ToolRunner:
         self._sleep = sleep
 
     async def run(
+        self,
+        run_id: str,
+        tool_call_id: str,
+        name: str,
+        arguments: dict[str, JsonValue],
+    ) -> ToolResult[Any]:
+        """Run the call, for no longer than the run's remaining active time.
+
+        At the deadline the call stops being awaited (a warehouse wait or a
+        retry backoff ends there) and ``RunStopped`` ends the agent run; the
+        stop path then requests cancellation of the recorded job. A call that
+        starts with the time already spent is refused as before.
+        """
+        snapshot = await self._budgets.snapshot(run_id)
+        left = (
+            None
+            if snapshot is None or snapshot.paused
+            else snapshot.remaining()[BudgetResource.ACTIVE_TIME]
+        )
+        work = self._run(run_id, tool_call_id, name, arguments)
+        if left is None or left <= 0:
+            return await work
+        try:
+            return await within_active_time(left, work)
+        except ActiveDeadlineReached as reached:
+            raise RunStopped(StopReason.BUDGET, reached.resource) from None
+
+    async def _run(
         self,
         run_id: str,
         tool_call_id: str,

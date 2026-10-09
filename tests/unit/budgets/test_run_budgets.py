@@ -207,7 +207,7 @@ async def test_resumed_worker_with_new_settings_keeps_the_pinned_budget() -> Non
 @pytest.mark.asyncio
 async def test_clarification_wait_is_not_charged_but_other_waits_are() -> None:
     store, clock = MemoryRunBudgetStore(), Clock()
-    budgets = _budgets(store, clock)
+    budgets = _budgets(store, clock, RunLimits(active_seconds=600))
     await budgets.open(RUN)
     clock.advance(400)  # analysis, warehouse waits, backoff: all charged
     paused = await budgets.pause_for_clarification(RUN)

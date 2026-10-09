@@ -208,7 +208,8 @@ class BackendSettings(BaseModel):
     retrieval_semantic_weight: float = Field(default=2.0, gt=0.0, le=100.0)
     # Run budgets (design section 39). Pinned per run when its accounting
     # opens; later changes only apply to new runs.
-    run_active_seconds: int = Field(default=600, ge=30, le=86400)
+    # Hard limit on a run's active work (clarification waits excluded).
+    run_active_seconds: int = Field(default=120, ge=30, le=86400)
     run_max_provider_requests: int = Field(default=20, ge=1, le=1000)
     run_max_tokens: int = Field(default=100_000, ge=1000, le=10_000_000)
     run_max_queries: int = Field(default=10, ge=1, le=1000)

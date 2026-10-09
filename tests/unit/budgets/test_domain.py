@@ -29,7 +29,7 @@ def _refused(resource: BudgetResource) -> pytest.RaisesExc[BudgetExhausted]:
 
 def test_defaults_match_the_accepted_operational_limits() -> None:
     limits = RunLimits()
-    assert limits.active_seconds == 600
+    assert limits.active_seconds == 120
     assert (limits.provider_requests, limits.tokens) == (20, 100_000)
     assert limits.queries == 10
     assert (limits.bytes_per_query, limits.bytes_per_run) == (GIB, 5 * GIB)
@@ -105,7 +105,7 @@ def test_provider_request_and_token_boundaries() -> None:
 
 
 def test_active_time_boundary_and_clarification_pause() -> None:
-    budget = _fresh()
+    budget = _fresh(active_seconds=600)
     budget.charge_query("a#1", 1, at=T0 + timedelta(seconds=599))
     with _refused(BudgetResource.ACTIVE_TIME):
         budget.charge_query("a#1", 1, at=T0 + timedelta(seconds=600))

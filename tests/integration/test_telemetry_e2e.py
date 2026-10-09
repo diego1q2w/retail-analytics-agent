@@ -535,6 +535,88 @@ async def test_conversation_with_clarification_is_readable_and_sanitized(
         env.db.close()
 
 
+# How to find active-time deadline stops in the MLflow UI search box / API
+# (MLflow 3.14 matches span attribute values with LIKE; "=" finds nothing).
+DEADLINE_TRACE_FILTER = "span.attributes.stop_resource LIKE '%active_time%'"
+
+
+def mlflow_search(stack: TelemetryStack, filter_string: str) -> list[str]:
+    """Trace ids of experiment 0 matching an MLflow trace filter."""
+    response = httpx.get(
+        f"http://127.0.0.1:{stack.mlflow_port}/api/2.0/mlflow/traces",
+        params={"experiment_ids": "0", "filter": filter_string, "max_results": 100},
+        timeout=10,
+    )
+    assert response.status_code == 200, response.text[:500]
+    return [
+        str(t.get("request_id") or t.get("trace_id"))
+        for t in response.json().get("traces", [])
+    ]
+
+
+async def test_active_deadline_stop_is_traced_searchable_and_counted(
+    stack: TelemetryStack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T11-F1: a run cut off by a 2 s active-time limit leaves a queryable
+    root trace and the deadline metric, separate from model-cost stops."""
+    env = await TestEnv.create(stack)
+    monkeypatch.setenv("T30_TRACES_ENDPOINT", stack.traces_endpoint)
+    monkeypatch.setenv("T30_METRICS_ENDPOINT", stack.metrics_endpoint)
+    process = env.worker(stack, active_seconds=2)
+    try:
+        with api_telemetry(stack):
+            run_id = await env.start("Analyze sales: slow case.")
+        await env.wait_status(run_id, RunStatus.FAILED, 60)
+
+        def root_span() -> dict[str, Any] | None:
+            spans = [
+                s
+                for s in mlflow_spans(stack, run_id)
+                if s["name"] == "investigation.run"
+            ]
+            return spans[0] if spans else None
+
+        root = eventually("the deadline run's root span", root_span, 90)
+        attributes = metadata_of(root)
+        assert str(attributes["deadline_stop"]).lower() == "true"
+        assert attributes["stop_reason"] == "budget"
+        assert attributes["stop_resource"] == "active_time"
+        assert attributes["status"] == "failed"
+        assert int(attributes["active_limit_seconds"]) == 2
+        assert float(attributes["active_seconds"]) >= 2
+        assert int(attributes["verified_results"]) == 0
+        assert (
+            float(attributes["elapsed_seconds"])
+            >= float(attributes["active_seconds"]) - 1
+        )
+
+        trace_id = "tr-" + trace_id_for(run_id)
+        found = eventually(
+            "the deadline trace through MLflow search",
+            lambda: trace_id in mlflow_search(stack, DEADLINE_TRACE_FILTER) or None,
+            60,
+        )
+        assert found
+
+        def counted() -> bool:
+            return bool(
+                prometheus(
+                    stack,
+                    'ra_budget_stops_total{reason="budget",resource="active_time"}',
+                )
+                and prometheus(stack, 'ra_run_active_seconds_count{status="failed"}')
+            )
+
+        eventually("the deadline stop in Prometheus", counted, 90)
+        # Not conflated with model-spend stops.
+        assert not prometheus(
+            stack, 'ra_budget_stops_total{resource=~"model_cost|model_price"}'
+        )
+        check_dashboard(stack)
+    finally:
+        env.stop(process)
+
+
 async def test_a_telemetry_outage_does_not_break_or_stall_runs(
     stack: TelemetryStack, monkeypatch: pytest.MonkeyPatch
 ) -> None:

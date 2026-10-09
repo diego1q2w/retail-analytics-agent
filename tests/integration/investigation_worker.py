@@ -46,6 +46,11 @@ async def main() -> None:
             os.environ.get("T39_MAX_PROVIDER_REQUESTS", "20")
         ),
     )
+    if os.environ.get("T11_ACTIVE_SECONDS"):
+        # Short test limits bypass the operator minimum on purpose.
+        settings = settings.model_copy(
+            update={"run_active_seconds": int(os.environ["T11_ACTIVE_SECONDS"])}
+        )
     assert settings.database_url is not None
     if os.environ.get("T30_TRACES_ENDPOINT"):
         install_from_settings(

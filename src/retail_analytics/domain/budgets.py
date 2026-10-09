@@ -8,9 +8,12 @@ the same counters, and a repeated charge with the same key is the same charge
 
 Accounting rules:
 
-- Active time is wall-clock time while the run is active. Only waiting for the
-  user's clarification pauses it; waiting on the warehouse, backoff and model
-  calls all count.
+- Active time is wall-clock time while the run is active, from the moment its
+  accounting opens (when the run begins; queueing before that is not charged).
+  Only waiting for the user's clarification pauses it; waiting on the
+  warehouse, backoff, retries, fallback and model calls all count, and so does
+  worker downtime of a run that is still active. When the limit is reached
+  in-flight work is interrupted (``application.budgets.within_active_time``).
 - Queries: every warehouse job submission is one query execution, charged with
   its dry-run estimate before the job exists and settled with the billed bytes
   (processed bytes when billing is not reported) once the job finishes. An
@@ -82,7 +85,7 @@ class BudgetExhausted(Exception):
 class RunLimits:
     """Per-run limits (design defaults); pinned when accounting opens."""
 
-    active_seconds: int = 600
+    active_seconds: int = 120
     provider_requests: int = 20
     tokens: int = 100_000
     queries: int = 10

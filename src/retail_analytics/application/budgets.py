@@ -8,7 +8,10 @@
   provider adapter calls it around every request it sends, fallback included),
   including their estimated dollar cost (``ModelPricing``);
 - SQL reformulations (:meth:`RunBudgets.reserve_correction`);
-- transient retries (:meth:`RunBudgets.retry_decision`), with backoff.
+- transient retries (:meth:`RunBudgets.retry_decision`), with backoff;
+- the active-time deadline: :func:`within_active_time` stops awaiting
+  in-flight model and tool work when the run's active time runs out (checks
+  between steps alone would let a long stream or warehouse wait run past it).
 
 Accounting is persisted (``RunBudgetStore``) and every charge is idempotent on
 a caller key, so activity retries, worker restarts and resumption charge once
@@ -18,8 +21,9 @@ and never reset anything. Budgets reach handlers only as the read-only
 
 from __future__ import annotations
 
+import asyncio
 import random
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import ROUND_CEILING, Decimal
@@ -167,6 +171,40 @@ def cost_detail(
         detail["input_cost_usd"] = str(estimate.input_usd)
         detail["output_cost_usd"] = str(estimate.output_usd)
     return detail
+
+
+class ActiveDeadlineReached(BudgetExhausted):
+    """The run's active time ran out while work was in flight."""
+
+    def __init__(self) -> None:
+        super().__init__(BudgetResource.ACTIVE_TIME)
+
+
+async def within_active_time[T](seconds_left: float | None, work: Awaitable[T]) -> T:
+    """Await ``work`` until the run's active time runs out.
+
+    ``seconds_left`` is what remains of the run's allowance (``None``: no
+    limit known, wait normally). At the deadline the awaited work is
+    cancelled - a model stream is closed, a warehouse wait or backoff sleep
+    ends - and ``ActiveDeadlineReached`` is raised. Remote work the cancelled
+    code had started (a warehouse job) is not stopped by this; the caller's
+    stop path requests its cancellation by recorded reference.
+    """
+    if seconds_left is None:
+        return await work
+    if seconds_left <= 0:
+        close = getattr(work, "close", None)
+        if callable(close):
+            close()
+        raise ActiveDeadlineReached
+    scope = asyncio.timeout(seconds_left)
+    try:
+        async with scope:
+            return await work
+    except TimeoutError:
+        if scope.expired():
+            raise ActiveDeadlineReached from None
+        raise
 
 
 class RunBudgets:

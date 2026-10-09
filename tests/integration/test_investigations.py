@@ -126,6 +126,7 @@ class TestEnv(Env):
         hold: bool = False,
         providers: str = "scripted",
         max_provider_requests: int = 20,
+        active_seconds: int | None = None,
     ) -> subprocess.Popen[str]:
         return subprocess.Popen(
             [sys.executable, "-m", "tests.integration.investigation_worker"],
@@ -139,6 +140,7 @@ class TestEnv(Env):
                 "T13_CRASH_HOLD": "1" if hold else "0",
                 "T14_PROVIDERS": providers,
                 "T39_MAX_PROVIDER_REQUESTS": str(max_provider_requests),
+                "T11_ACTIVE_SECONDS": str(active_seconds or ""),
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -736,3 +738,41 @@ async def test_clarification_expiry_does_not_discard_already_recorded_answer(
         assert len(await env.services.inputs.pending(run_id)) == 1
     finally:
         env.db.close()
+
+
+async def test_active_deadline_inside_temporal_activities(
+    stack: Stack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same deadline semantics as the local backend: a slow model call
+    and a slow tool are cut off inside their activities, not retried, and
+    the run ends with the time-limit partial answer."""
+    env = await TestEnv.create(stack)
+    monkeypatch.setenv("T13_EFFECT_DELAY", "30")
+    process = env.worker(stack, active_seconds=2)
+    try:
+        slow_model = await env.start("Analyze sales: slow case.")
+        await env.wait_status(slow_model, RunStatus.FAILED, 30)
+        slow_tool = await env.start("Analyze sales: effect case.")
+        await env.wait_status(slow_tool, RunStatus.FAILED, 30)
+    finally:
+        env.stop(process)
+    for run_id in (slow_model, slow_tool):
+        assert await env.model_requests(run_id) == 1
+        budget = await env.db.budgets.get(run_id)
+        assert budget is not None and budget.limits.active_seconds == 2
+        with env.db.engine.connect() as connection:
+            closing = connection.execute(
+                sa.text(
+                    "SELECT content FROM messages WHERE run_id = :run "
+                    "AND role = 'assistant' ORDER BY position DESC LIMIT 1"
+                ),
+                {"run": run_id},
+            ).scalar_one()
+        assert "ran out of time" in closing
+        assert "2-second limit for active work" in closing
+    with env.db.engine.connect() as connection:
+        effects = connection.execute(
+            sa.text("SELECT count(*) FROM t13_test_effects WHERE run_id = :run"),
+            {"run": slow_tool},
+        ).scalar_one()
+    assert effects == 1  # the tool activity was not retried
