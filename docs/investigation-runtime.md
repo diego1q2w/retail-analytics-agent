@@ -115,7 +115,7 @@ repeated load is idempotent. Skills compose, stay for the run (retries,
 restarts, context restarts, eviction) and keep their pinned version, so a
 newer asset never changes an in-flight run or a Temporal replay. A new run,
 including the one an explicit topic reset starts, begins with core tools
-again. Runs that loaded a T26-F5 tool group keep the matching skill.
+again. Runs that loaded one of the earlier tool groups (before skills existed) keep the matching skill.
 
 A skill grants nothing. Current authority gates both exposure and execution:
 the catalog offers only skills with something the executive may use, the

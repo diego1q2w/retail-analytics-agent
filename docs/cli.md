@@ -8,11 +8,14 @@ credentials and imports nothing from the backend beyond its own settings.
 
 ```sh
 ./scripts/bootstrap.sh
-./scripts/dev.sh &        # the API (local execution: it runs the investigations)
-(umask 077; retail-analytics-dev-access token local-admin > ~/.analytics-token)
-export CLI_TOKEN_FILE=~/.analytics-token     # or CLI_TOKEN=...
-analytics chat
+./scripts/dev.sh          # terminal 1: the API (local execution: it runs the investigations)
+./scripts/local_cli.sh    # terminal 2: issues a local-admin token and runs `analytics chat`
 ```
+
+`local_cli.sh` passes its arguments on to `chat` (for example `--resume`).
+To use another identity or token file, issue the token by hand
+([local administration](local-admin.md#tokens-by-hand)) and set
+`CLI_TOKEN_FILE` (or `CLI_TOKEN`).
 
 | Setting | Default | Meaning |
 | --- | --- | --- |

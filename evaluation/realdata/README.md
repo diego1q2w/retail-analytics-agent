@@ -64,7 +64,7 @@ Scoring uses the extract only. The drift report is a **separate** artifact about
 the source: it never changes expected values, the manifest or any score, and a
 drift is never reported as an agent failure. A target for these scenarios must
 answer from the frozen extract (capability `frozen_extract_source`, to be
-provided with the agent target in T26; the extract is loadable as the four
+provided with the agent runtime target; the extract is loadable as the four
 source tables with `DuckDbExtractEngine`). A run of the agent against the live
 warehouse is only a live smoke test; compare it with these values only when the
 latest drift report shows no drift, and report it separately.

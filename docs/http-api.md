@@ -77,6 +77,7 @@ records. A missing permission (for example no `reports:delete_own`) is 403
 | `GET /v1/persona` | The active company persona (editors, `persona:edit`; `current: null` when none) |
 | `GET /v1/persona/history` | Versions and every publish/rollback, newest first (`limit`) |
 | `POST /v1/persona/drafts` | Draft from free text `{content, submission_key}`; personal data is 422 `sensitive_content`; text that conflicts with fixed policy is stored with `findings` but cannot be previewed or published (422 `policy_conflict`) |
+| `GET /v1/persona/versions/{id}` | One persona version or draft by ID (editors, `persona:edit`) |
 | `PUT /v1/persona/drafts/{id}` | Replace your own draft `{content, expected_revision}` (409 `conflict` if stale); clears its preview |
 | `DELETE /v1/persona/drafts/{id}` | Discard your own draft |
 | `POST /v1/persona/drafts/{id}/preview` | Current and proposed persona over the same sample findings; checks figures, evidence and limitations survived |

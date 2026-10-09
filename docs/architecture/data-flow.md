@@ -28,7 +28,7 @@ sequenceDiagram
     loop each agent step, within the run budget
         R->>P: reserve provider request in the run budget
         R->>P: rebuild context under current authority
-        R->>M: instructions, context, tool catalog
+        R->>M: instructions, context, exposed tools
         M-->>R: tool call (for example execute_analysis)
         R->>G: tool call with trusted execution context
         G->>P: re-resolve entitlements, record operation and job id
@@ -81,7 +81,7 @@ sequenceDiagram
     C->>A: GET /v1/deletion-proposals/{id}
     A-->>C: preview: titles, dates, count, expiry
     Note over M,D: The model has no confirm tool, and its arguments cannot carry approval.
-    U->>C: confirm <proposal-id>
+    U->>C: /confirm <proposal-id>, then types the exact phrase (for example "delete 1 report")
     C->>A: POST /v1/deletion-proposals/{id}/confirm {"confirm": true}
     A->>D: confirm(principal, proposal id)
     D->>P: one transaction: lock, recheck owner, expiry and versions,<br/>soft delete, withdraw reuse links, consume proposal, audit
@@ -94,23 +94,23 @@ changed, the whole proposal is stale and nothing is deleted.
 
 ## Storage map
 
-| Data | Where (local) | Where (production, proposed) | Retention |
+| Data | Where (local) | Production (proposed service) | Retention |
 | --- | --- | --- | --- |
-| Executives, roles, product entitlements, authorization version | PostgreSQL | Cloud SQL | Until changed; every change is audited |
+| Executives, roles, product grants, brand assignments, brand catalog snapshot, authorization version | PostgreSQL | Cloud SQL | Until changed; every change is audited |
 | Sessions, messages, runs, ordered progress events, clarification inputs | PostgreSQL | Cloud SQL | 7 days after the later of last interaction and run completion |
 | Operations and BigQuery job references | PostgreSQL | Cloud SQL | With the investigation. Unresolved operations are kept and flagged for manual resolution |
 | Evidence (bounded released rows and provenance, JSONB) | PostgreSQL | Cloud SQL | With the investigation, or while a saved report pins it |
-| Run budgets and charges | PostgreSQL | Cloud SQL | With the investigation |
+| Run budgets and charges, including estimated model spend and its price basis | PostgreSQL | Cloud SQL | With the investigation |
 | Saved report metadata, versions, evidence links, required product scope | PostgreSQL | Cloud SQL | Until deleted; soft-deleted reports are restorable for 7 days, then purged |
 | Report bodies (Markdown) | Artifact directory or volume | Cloud Storage | Same as the report |
 | Deletion proposals | PostgreSQL | Cloud SQL | Expire after 10 minutes |
 | Preferences (explicit, confirmed inferred) | PostgreSQL | Cloud SQL | Until changed or forgotten |
-| Golden examples, review history, provenance, embeddings | PostgreSQL | Cloud SQL (pgvector when needed) | Independent lifecycle: retire, suspend, erase |
+| Golden examples, review history, provenance, embeddings | PostgreSQL | Originals in Cloud Storage; metadata, searchable text and embeddings in Cloud SQL (pgvector when needed) | Independent lifecycle: retire, suspend, erase |
 | Persona versions, publications, run pins | PostgreSQL | Cloud SQL | Version history kept |
 | Audit events (identifiers, versions, counts; never content) | PostgreSQL | Cloud SQL | 90 days by default (configurable) |
-| Temporal workflow history (opt-in locally) | Separate PostgreSQL database | Temporal Cloud | 7 days after a workflow closes |
-| Traces (sanitized) | MLflow | MLflow (Cloud SQL + Cloud Storage) | Backend defaults; no project policy yet |
-| Metrics | Prometheus | Managed Service for Prometheus | Backend defaults |
+| Temporal workflow history (opt-in locally) | Separate PostgreSQL database | Temporal Cloud, only if Temporal is adopted | 7 days after a workflow closes |
+| Traces (sanitized) | MLflow | MLflow (hosting open) | Backend defaults; no project policy yet |
+| Metrics | Prometheus | The company's Grafana with a metrics backend, or self-hosted (open) | Backend defaults |
 | Retail transactions | BigQuery public dataset (read-only) | Company-owned BigQuery dataset | Not managed by this application |
 
 Cleanup runs as a bounded, idempotent maintenance command
@@ -164,8 +164,8 @@ What each boundary enforces:
 | --- | --- | --- |
 | Identity | A bearer token is verified on every request. Identity never comes from a request body, and tools never receive identity or entitlements as arguments. | Implemented (local HS256; production IdP proposed) |
 | Authority | Entitlements and permissions are reloaded on every attempt, including inside retried activities. An empty product scope means no data. | Implemented |
-| SQL | The model writes SQL over logical relations only. The compiler rejects anything it cannot resolve, and adds the product filter at every physical read before aggregation. | Implemented |
-| Privacy | Direct identifiers never reach the model. Customers, orders and items appear only as per-executive opaque references, and ages only as bands. Results are checked again before release. | Implemented |
+| SQL | The model writes SQL over logical relations only. The compiler rejects anything it cannot resolve or any result below group level that shows a demographic, and adds the scope filter (granted products plus assigned brands' products) at every physical read before aggregation. | Implemented |
+| Privacy | Direct identifiers never reach the model. Customers, orders and items appear only as per-executive opaque references, ages only as bands, and demographics only in group-level statistics. Results are checked again before release, and stored evidence again when reused. | Implemented |
 | Output | Each answer, report, memory entry and progress text passes the output gate. Citations must be usable now. | Implemented |
 | Destructive actions | The model can propose a deletion. Only an authenticated user action can confirm it. | Implemented |
 | Model providers | Only masked, authorized context leaves the backend. Requests send `store: false`. | Implemented. The free tier of the Gemini API may use submitted content to improve Google products, so production needs a paid tier or an equivalent agreement (see [production deployment](production-deployment.md)) |

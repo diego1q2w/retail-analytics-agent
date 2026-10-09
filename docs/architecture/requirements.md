@@ -53,7 +53,7 @@ The release audit is in [release verification](../release/verification.md).
   Embeddings are cached in PostgreSQL by content digest. Ordinary report
   deletion does not delete published examples, which have an independent
   lifecycle.
-- **Data lake.** The brief's Golden bucket is theoretical. In production,
+- **Data lake.** No analyst data lake exists for this project. In production,
   trios exported from an analyst data lake would enter through the same
   candidate-and-review path; nothing is trusted on import (proposed).
 
@@ -82,16 +82,28 @@ declined, 3 of 28 false declines, and 0 access violations in every variant.
   model work: creative writing, general knowledge, coding help and
   prompt-extraction attempts. Analysis, report administration and preference
   administration proceed.
-- **Own products only.** Product entitlements are stored server-side and
-  reloaded on every tool attempt. The SQL compiler binds every logical
-  relation to a projection filtered by the executive's products *before*
-  aggregation, including joins, CTEs and subqueries. Orders count only
-  permitted items, and customers are reached only through permitted items.
-  An empty scope gets no data.
+- **Own brands only.** Each executive's scope is resolved server-side on
+  every tool attempt: explicit product grants plus every product of the
+  brands assigned to them ([brand-based access](../brand-access.md)). The
+  SQL compiler binds every logical relation to a projection filtered by
+  that scope *before* aggregation, including joins, CTEs and subqueries.
+  Orders count only permitted items, and customers are reached only through
+  permitted items, so another brand's purchases in a shared order stay
+  invisible. An empty scope gets no data. A question about a brand outside
+  the scope is refused before BigQuery and answered as "outside your
+  permitted scope", never as a zero.
 - **No PII in output.** Query results never give the model names, e-mail
   addresses, street-level addresses, fine location, raw customer, order or
-  item keys, or exact ages. Customers, orders and items appear as per-executive opaque
-  references (HMAC computed inside BigQuery), and ages as fixed 5-year bands.
+  item keys, or exact ages. Customers, orders and items appear as
+  per-executive opaque references (HMAC computed inside BigQuery), and ages
+  as fixed 5-year bands.
+- **Aggregate-only demographics.** Country, state and age band appear only
+  in group-level statistics. The compiler derives each result's grain from
+  verified lineage and refuses profiles, grouping by or filtering on
+  references, and rank-selected customers; the result boundary re-checks;
+  stored evidence from before this rule is re-audited on every use and
+  withheld if it is not verifiably group-level
+  ([components](../components.md#customer-privacy-references-aggregate-only-demographics-and-the-result-boundary)).
   The result boundary withholds any result whose shape or lineage does not
   match the compiled query. The output privacy gate checks every answer,
   report, memory entry and progress text before release. It masks or blocks
@@ -118,9 +130,8 @@ four release gates are met ([security verification](../security-verification.md)
   re-checks; legacy evidence and reports holding individual demographics are
   withheld. There is no minimum group size, so this is not anonymization:
   fine group combinations can still describe very few people.
-- Which products a manager may analyse (brand mapping and what happens on
-  new products or reassignment) is a separate decision; the demographic rule
-  applies on top of whatever product scope access resolution returns.
+- Brand-access lifecycle questions (administration, synchronization, new
+  products, spelling variants) are open; see [brand-based access](../brand-access.md).
 - Query results never contain person names: the catalog marks them as
   direct identifiers, the SQL compiler refuses them and the result boundary
   re-checks. The name detector is only a cue-based second line of defence
@@ -147,7 +158,8 @@ four release gates are met ([security verification](../security-verification.md)
   IDs. The proposal freezes each report at its current version and expires
   after 10 minutes. The CLI shows titles, dates and the count.
 - **Confirmation.** Only an explicit user action confirms:
-  `confirm <proposal-id>` in the CLI, or the confirm endpoint with
+  `/confirm <proposal-id>` in the chat followed by the exact typed phrase
+  (for example `delete 2 reports`), or the confirm endpoint with
   `{"confirm": true}`. The model has no confirm tool, and tool arguments
   cannot carry approval.
 - **Execution.** One transaction locks the proposal, rechecks the requester,
@@ -188,8 +200,8 @@ UI. Copies in backups are not erased (see
   not. Preferences never override authorization, privacy or source facts.
 
 **Status.** Implemented and tested. The
-[real-model evaluation](../../evaluation/real-model/README.md) did not
-includes one scoped definition-correction conversation. Preference memory
+[real-model evaluation](../../evaluation/real-model/README.md) includes one
+scoped definition-correction conversation. Preference memory
 across sessions was not measured with a real model.
 
 **Limits.** Charts are not a preference kind yet, because there is no chart
@@ -249,11 +261,11 @@ flowchart LR
 | SQL syntax or unsupported structure | The compiler returns a structured, sanitized, correctable error. The agent may reformulate up to 2 times per failed query, within the run budget. | Implemented |
 | Valid empty result | Reported as a complete, empty result, not an error. The agent checks its assumptions or asks; it never widens access. | Implemented |
 | Transient BigQuery, model or network error | At most 3 attempts, with exponential backoff and jitter, honouring provider retry hints. | Implemented |
-| BigQuery timeout or crash after submission | The job ID is recorded before submission. The job is looked up before any resubmission, and a 2-minute deadline cancels and reconciles it. No duplicate scans. | Implemented |
+| BigQuery timeout or crash after submission | The job ID is recorded before submission. The job is looked up before any resubmission, and a 2-minute query deadline (or the run's active deadline, if sooner) cancels and reconciles it. No duplicate scans. | Implemented |
 | Gemini unavailable | Fallback to GPT with the same application-built history. The primary cools down for 60 seconds. If both fail, the run stops with its verified findings. | Implemented |
-| Cost runaway | One persisted budget per run: 20 provider requests, 100k tokens, 10 queries, 1 GiB per query, 5 GiB per run, 10 active minutes. Counters survive retries, fallback and restarts. | Implemented |
+| Cost or time runaway | One persisted budget per run: 120 seconds of active work (a hard deadline, clarification waits excluded), about USD 1 of estimated model spend (soft), 20 provider requests, 100k tokens, 10 queries, 1 GiB per query, 5 GiB per run. Counters survive retries, fallback and restarts. When a limit is reached the run ends with its verified findings and says which limit stopped it. | Implemented |
 | CLI disconnect | The run continues. Reconnect replays events, with bounded reconnect attempts. | Implemented |
-| Process crash | Temporal mode resumes the workflow. Local mode marks the run interrupted at the next start, and the user resubmits. | Implemented; local limits in [production deployment](production-deployment.md#local-mode-limits-implemented-accepted-for-the-local-demo) |
+| Process crash or deploy | The default (simpler) backend marks the run interrupted, at shutdown or at the next start, and the user sends the request again; recorded job IDs and idempotent writes prevent duplicated external effects. Temporal mode resumes the workflow. | Implemented; limits in [production deployment](production-deployment.md#limits-of-the-simpler-manager-implemented) |
 | Telemetry backend down | Exports are dropped and counted; requests are unaffected. | Implemented |
 | Exchange-rate provider down | The conversion is refused with an explanation, never estimated. | Implemented |
 
@@ -332,7 +344,9 @@ runs.
   shows the message and tool correspondence, with sanitized error codes.
 - **Metrics** (Prometheus, Grafana "Agent overview"):
   - runs by outcome, and latency;
-  - budget use and budget stops;
+  - budget use and budget stops (including the active-time deadline);
+  - estimated model spend per provider, model and question, unpriced
+    requests and soft-limit overruns;
   - tool calls and retries;
   - model requests, tokens, fallbacks and the provider that gave the final
     answer;
@@ -394,17 +408,16 @@ publication, pinning, rollback and audit.
 - Screening is a heuristic, mostly for English. The policy limits are
   enforced in code regardless.
 
-## Deliverables
+## Where to find each part
 
-| Deliverable | Where |
+| Topic | Where |
 | --- | --- |
-| Architecture diagram | [HLD](README.md#architecture-diagram), [production topology](production-deployment.md#topology) |
+| Architecture diagrams | [Local deployment](README.md#local-deployment-implemented), [agent loop](agent-loop.md), [production proposal](production-deployment.md) |
 | Cloud, model and framework reasoning | [Technology choices](technology-choices.md) |
 | Data flow | [Data flow and trust boundaries](data-flow.md) |
 | Error handling and fallback | Section 5 above, [model providers](../model-providers.md), [investigation runtime](../investigation-runtime.md) |
-| Setup instructions and example run | Repository README quick start, [CLI](../cli.md) |
+| Setup instructions and example run | [Repository README](../../README.md), [CLI](../cli.md) |
 | Each requirement | This page |
-| Framework experience | [Technology choices](technology-choices.md#authors-experience-with-the-chosen-frameworks): not yet provided by the author |
 
 ## Data and analytical conventions
 

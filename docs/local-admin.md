@@ -1,7 +1,7 @@
 # Local administration (optional)
 
 Nothing on this page is needed to ask questions, save reports or delete them
-(see the README Quick start). It covers the identities bootstrap creates and
+(see the [README quick start](../README.md#quick-start)). It covers the identities bootstrap creates and
 the optional admin actions: switching to a restricted identity, publishing a
 Golden example and changing the persona. All commands run with the backend's
 own settings from the repository root, inside the virtualenv
@@ -50,6 +50,23 @@ lifecycle as implemented and the open questions.
 (umask 077; retail-analytics-dev-access token demo-b > ~/.analytics-token-b)
 CLI_TOKEN_FILE=~/.analytics-token-b analytics chat
 ```
+
+## Tokens by hand
+
+`./scripts/local_cli.sh` issues a local-admin token and opens the chat in one
+step. To do the same by hand, for example with another token file or a longer
+lifetime (`--minutes`, up to 1440):
+
+```sh
+source .venv/bin/activate
+(umask 077; retail-analytics-dev-access token local-admin > ~/.analytics-token)
+export CLI_TOKEN_FILE=~/.analytics-token
+analytics chat
+```
+
+The token is written only to that file and lasts 60 minutes by default.
+`umask` protects a new file only; an existing file keeps its permissions
+(the launcher sets mode 0600 itself).
 
 ## Publishing a Golden example
 
@@ -114,7 +131,7 @@ retail-analytics-persona history --as exec-local-admin
 To go back to an earlier published version:
 `retail-analytics-persona rollback <version-id> --as exec-local-admin` (IDs are in `history`). If
 publish says the persona changed, run `preview` again. New runs use the published version; see
-README "Persona management".
+[persona management](components.md#persona-management).
 
 ## What stays human-only
 
@@ -123,5 +140,5 @@ Deleting reports always needs your typed confirmation in the CLI
 propose a deletion, and no admin role or setting changes that.
 
 Restoring a deleted report within seven days and the cleanup job are operator
-commands (`retail-analytics-maintenance`; README "Report recovery and
-lifecycle cleanup").
+commands (`retail-analytics-maintenance`; see [report recovery and lifecycle
+cleanup](components.md#report-recovery-and-lifecycle-cleanup)).

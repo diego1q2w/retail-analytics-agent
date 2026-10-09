@@ -6,8 +6,10 @@ evaluation and the architecture probe fix). It reuses the verification
 records that already exist and adds
 only the checks listed here. It is not a new test campaign.
 
+**Dated record.** This audit describes the tree that followed commit `ee3e0a6`. Later changes (for example brand-based access, aggregate-only demographics, analytical skills, model-spend limits and the active-time deadline) are documented in their own pages and were not re-audited here; the file and commit counts below are those of the audited tree.
+
 **Passing these checks is not permission to publish.** Publishing the
-repository needs a separate, explicit decision by the author, and two items
+repository needs a separate, explicit decision by the project owner, and two items
 below (dataset terms, history) block a public release until they are
 resolved.
 
@@ -38,7 +40,7 @@ noted, every commit reachable from `HEAD` (77 commits).
 | Key patterns | `git grep` for Google API keys, OpenAI keys, private-key blocks, `"private_key"`, GitHub and Slack tokens | Only fake canaries in tests (`tests/unit/models/stubs.py`, `tests/unit/models/test_composition.py`, `tests/unit/telemetry/test_facade.py`, `tests/unit/test_config.py`), used to prove secrets are not printed |
 | Key patterns in history | `git log -p --all -G<pattern>` | Only the same test canary |
 | Private planning and source material, tracked or linked | `git ls-files` and `git grep` for the private planning and resource folders; `git log --all --name-only` | Never tracked in any commit; no links |
-| Assignment text | Every line of the private assignment longer than 60 characters, searched as a fixed string in every tracked file and in all 77 commits | 0 matches |
+| Original requirements text | Every line of the private requirements statement longer than 60 characters, searched as a fixed string in every tracked file and in all 77 commits | 0 matches |
 | Local paths and personal contact details | `git grep` for home-directory paths and personal e-mail addresses | None |
 
 ### Raw results and personal data
@@ -74,11 +76,11 @@ not a guarantee of anonymity (see
 
 The extract is derived from the public `bigquery-public-data.thelook_ecommerce`
 dataset. Public query access is not permission to redistribute. The
-applicable dataset terms have **not** been confirmed by the author, and this
+applicable dataset terms have **not** been confirmed by the project owner, and this
 audit does not draw a legal conclusion.
 
 Decision taken in this audit: the extract stays in the working tree, and
-public release is **blocked** until the author confirms the terms. Removing
+public release is **blocked** until the project owner confirms the terms. Removing
 the files now would not make the repository publishable:
 
 - The files are already in history (commit `59e79eb`). Deleting them in a
@@ -93,7 +95,7 @@ record the source URL, the date checked, the licence and the attribution
 text in `evaluation/realdata/README.md`, then publish.
 
 If redistribution is not allowed, or stays unconfirmed, the proposal for the
-author's approval (nothing has been done):
+project owner's approval (nothing has been done):
 
 1. Remove `evaluation/realdata/extract/*.csv.gz` in a commit and make the
    benchmark tests and the real-model runner skip with a clear message when
@@ -181,10 +183,10 @@ and delete examples in the README remain unrehearsed.
   review found a required fix of low severity: the probe's library
   exemption hid environment and file effects triggered through Pydantic
   callbacks (for example a `default_factory` partial) and exempted all
-  installed packages. The exemption now covers four exact Pydantic effects. Fixed in T03-F1 (commit `ee3e0a6`).
+  installed packages. The exemption now covers four exact Pydantic effects. Fixed in commit `ee3e0a6`.
   Import-layering checks were not affected.
 
-## Open items for the author
+## Open items for the project owner
 
 None of these can be closed by an automated check.
 
@@ -196,6 +198,5 @@ None of these can be closed by an automated check.
 | Human CLI walkthrough | [recovery walkthrough](../recovery-walkthrough.md) | Pending: result columns empty |
 | Dataset redistribution terms for the frozen extract | this page, above | Pending: blocks public release |
 | Published history free of the extract (if terms do not allow it) | this page, above | Proposal awaiting approval |
-| Author's framework experience statement | [technology choices](../architecture/technology-choices.md) | Not yet provided by the author |
-| Architecture probe fix | T03-F1 (`ee3e0a6`) | Fixed |
+| Architecture probe fix | commit `ee3e0a6` | Fixed |
 | Decision to publish | n/a | Not given. All checks passing is not permission to publish |

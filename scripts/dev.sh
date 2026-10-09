@@ -1,7 +1,10 @@
 #!/usr/bin/env sh
-# Run the worker and the API together for local development (not production):
-#   ./scripts/dev.sh [--env-file FILE] [--project NAME] [--no-services] [--no-telemetry]
-# Needs the environment created by ./scripts/bootstrap.sh. Ctrl-C stops both.
+# Start the local backend for development (not production): the API, which
+# runs the investigations itself with local execution (the default), plus the
+# Temporal worker when EXECUTION_BACKEND=temporal.
+#   ./scripts/dev.sh [--env-file FILE] [--project NAME] [--execution-backend local|temporal]
+#                    [--no-services] [--no-telemetry] [--ready-timeout SECONDS]
+# Needs the environment created by ./scripts/bootstrap.sh. Ctrl-C stops what it started.
 set -eu
 cd "$(dirname "$0")/.."
 

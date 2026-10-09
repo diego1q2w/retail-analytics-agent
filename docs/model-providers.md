@@ -67,12 +67,12 @@ so that a slow start can be told apart from a long answer:
 | Stall between streamed events | 30 s | `MODEL_STREAM_STALL_SECONDS` (5–600) |
 | Whole request | 180 s | `MODEL_REQUEST_MAX_SECONDS` (30–1800) |
 | Output tokens per request (reasoning included) | 8192 | `MODEL_MAX_OUTPUT_TOKENS` |
-| Primary skipped after it failed | 60 s | `MODEL_PRIMARY_COOLDOWN_SECONDS` |
+| Primary skipped after it failed | 60 s, or the provider's retry hint if longer | `MODEL_PRIMARY_COOLDOWN_SECONDS` |
 
 - **Timeouts.** A response that keeps streaming is not cut off at 60 seconds;
   only the stall and total limits apply after the first token. Any streamed
   event counts as progress: text, tool-call arguments or a reasoning
-  signature. The run's active-time budget (10 minutes) bounds the
+  signature. The run's active-time deadline (120 seconds by default) bounds the
   investigation as a whole.
 - **Retries.** Retries cover throttling (429), server errors (5xx, 408/409),
   connection failures (also a connection that breaks while the answer is
@@ -87,7 +87,10 @@ so that a slow start can be told apart from a long answer:
 - **Fallback.** When the primary has spent its attempts, or rejects the key
   or the model (401/403/404), the request goes to the backup. The primary
   then cools down: for that period, requests from every run in the process go
-  straight to the backup without probing it again.
+  straight to the backup without probing it again. The period is the longer
+  of `MODEL_PRIMARY_COOLDOWN_SECONDS` and the provider's retry hint, so a
+  quota hint of several hours keeps the primary skipped for that long (a
+  cooldown of 0 disables it).
 - **No retry.** Other rejections (for example 400) fall back once and are
   not retried.
 - **Both failed.** When both providers fail, the run stops as "model
@@ -101,7 +104,8 @@ A fallback repeats only the model request. Tool calls are separate durable
 activities, recorded once with their effects, so the backup never re-runs a
 completed query. The backup receives the same application-built history: the
 system instructions, the user request, earlier tool calls with their results
-(evidence references), and the same permission-filtered tool catalog.
+(evidence references), and the same tools exposed for that step (the
+core tools plus those of the skills loaded in the run; see [the agent loop](architecture/agent-loop.md#core-tools-and-skills)).
 Before a request is sent, any reasoning produced by the other provider is
 removed from that history, so one provider's private reasoning never reaches
 the other.
@@ -110,7 +114,7 @@ the other.
 
 Every request that actually leaves the process is counted against the run's
 persistent budget (20 provider requests and 100k tokens by default; see
-"Run budgets and recovery" in the README). This includes in-activity
+[run budgets and recovery](components.md#run-budgets-and-recovery)). This includes in-activity
 retries, fallback attempts and Temporal activity retries.
 
 - **Reserve first.** Each request reserves budget before it is sent, using a

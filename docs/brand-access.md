@@ -1,6 +1,6 @@
 # Brand-based access
 
-The client's rule: one retail company, several executives; each manager owns
+The access rule: one retail company, several executives; each manager owns
 one or more brands and may analyze only those brands and the orders and
 customers related to them. The CEO sees every brand by an explicit grant, not
 because of an admin role.
@@ -141,7 +141,7 @@ follows new products is an open lifecycle question.
 
 ## Open questions (access lifecycle, out of scope)
 
-The client confirmed brand-based access. The lifecycle questions below are
+Brand-based access is a production requirement. The lifecycle questions below are
 still open and nothing here implements them:
 
 - Who administers brand assignments in production, and through which tool.

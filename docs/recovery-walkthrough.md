@@ -1,7 +1,7 @@
 # Recovery and CLI walkthrough (human, about 25 minutes)
 
 This is a checklist for a person to run by hand and record. It has **not
-been performed by the author**: every "Result" cell below is empty until
+been performed yet**: every "Result" cell below is empty until
 someone runs it. It does not claim exhaustive resilience; it covers one
 representative path per behaviour.
 

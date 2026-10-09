@@ -1,57 +1,229 @@
 # Technology choices
 
-Why each cloud service, model and framework was chosen, and what each choice
-costs. Exact versions are pinned in `pyproject.toml`, `requirements.txt` and
-`compose.yaml`.
+Each choice below follows the same order: what the project needs, the
+options considered, the choice, what it costs, and the evidence and limits
+behind it. "Implemented" choices are in the code; "proposed" ones are part of
+the [production proposal](production-deployment.md) and are not final.
+Exact versions are pinned in `pyproject.toml`, `requirements.txt` and
+`compose.yaml`. Vendor statements link to the vendor's documentation, read on
+2026-10-09.
 
-## Cloud
+## Agent framework: Pydantic AI (implemented)
 
-| Choice | Status | Reason |
-| --- | --- | --- |
-| BigQuery | Implemented (required source) | The source data is `bigquery-public-data.thelook_ecommerce`. Dry runs validate statements and estimate bytes for free, `maximum_bytes_billed` caps every job, and client-chosen job IDs make lost submissions recoverable. |
-| Google Cloud for production | Proposed | BigQuery and Gemini already live there, so data and model traffic stay inside one provider's network and one IAM model. Details: [production deployment](production-deployment.md). |
-| Local Docker Compose | Implemented | One command runs PostgreSQL, the optional Temporal server and the telemetry stack on a laptop, with pinned image digests. |
+**Needs.** One agent that decides its next step itself (no fixed pipeline)
+with optional, versioned skills that add guidance and tools;
+tool inputs that are validated and cannot carry extra fields such as
+identity or approval; a final output that is either an answer with cited
+evidence or a clarification question; context rebuilt by the application
+before every model request; a tool set that can change between steps; two
+model vendors with fallback; and the option of running the same loop
+durably.
 
-## Models
+**Options.**
 
-| Role | Model | Status | Reason |
+- **Pydantic AI.** Typed tools and outputs from Pydantic models; an
+  [output type](https://pydantic.dev/docs/ai/core-concepts/output/) that can
+  be a choice of models; [toolsets](https://pydantic.dev/docs/ai/tools-toolsets/toolsets/)
+  that are rebuilt before each step; a
+  [`FallbackModel`](https://pydantic.dev/docs/ai/models/overview/); and a
+  [Temporal integration](https://pydantic.dev/docs/ai/integrations/durable_execution/temporal/)
+  that runs each model request and tool call as an activity while the loop
+  stays in the workflow.
+- **LangGraph.** A graph of nodes and edges. Graphs can loop and branch
+  conditionally ([graph API](https://docs.langchain.com/oss/python/langgraph/graph-api)),
+  so a single adaptive tool-calling loop is as natural there as a fixed
+  pipeline. It brings [checkpointers](https://docs.langchain.com/oss/python/langgraph/checkpointers),
+  including PostgreSQL, and [interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts)
+  for human input. Temporal publishes a
+  [LangGraph integration](https://docs.temporal.io/develop/python/integrations/langgraph),
+  currently in public preview.
+- **A custom loop.** No framework dependency and full control, at the cost
+  of owning each provider's tool-call, streaming and structured-output
+  protocol, plus output validation and the durable-execution glue.
+
+**Choice.** Pydantic AI. Its typed tool and output contracts match the
+project's validation rules directly, its toolset and model abstractions let
+the application wrap every model request without forking the loop, and its
+Temporal integration made the durable mode a configuration of the same
+agent rather than a second implementation. LangGraph would also work: the
+difference is in what has to be built around it. Its checkpointing would
+either overlap with Temporal's history or replace Temporal with a different
+recovery model, and LangGraph's own interrupt-and-resume restarts the
+interrupted node, so the same idempotency work is needed either way. A
+custom loop was rejected because it would mean owning two vendors' protocols
+for little gain.
+
+**What the application owns and what the framework provides.**
+
+| Concern | Owner |
+| --- | --- |
+| The loop: message history, tool-call dispatch, validation of tool inputs and of the final output | Pydantic AI |
+| Fallback order between providers | Pydantic AI `FallbackModel`, wrapped by the application |
+| Retries, backoff, primary cooldown, timeouts, per-attempt budget and cost charges | Application (provider SDK retries are off) |
+| Context for each request (schema, preferences, evidence, history, persona, budget) | Application (`GuardedModel` asks the runtime before each request) |
+| Which tools are exposed, and authorization at execution | Application (skills, current permissions and the capability registry) |
+| Skills: catalog, loading, version pinning | Application (bundled assets, recorded per run) |
+| Stop decisions, clarification, steering, cancellation, active deadline, model-spend limit | Application lifecycle policy and run budgets, shared by both backends |
+| Turning model requests and tool calls into Temporal activities | Pydantic AI `TemporalDurability` |
+| Release of answers | Application output privacy gate |
+
+**Costs.** The Gemini Interactions API is not supported by Pydantic AI's
+Google model ([open issue](https://github.com/pydantic/pydantic-ai/issues/6192)),
+so the project maintains its own model adapter for it. The framework moves
+quickly: its older Temporal wrapper is marked for removal in favour of the
+capability the project uses. Application and domain code do not import
+Pydantic AI; the boundary checks in `tests/architecture` enforce that.
+
+## Execution: simpler manager first, Temporal optional (implemented)
+
+**Needs.** Investigations continue when the CLI disconnects, wait for a
+clarification without calling the model, can be cancelled, and never
+repeat a BigQuery job or a deletion. At the expected workload (about 1,000
+short questions a day, few at once) losing an in-flight run to a deploy or
+crash is rare and cheap to redo.
+
+**Options.** (1) A manager inside one process over PostgreSQL, with no
+replay. (2) Temporal workflows on separate workers. (3) A home-grown job
+table with leases and replay.
+
+**Choice.** Start with option 1, locally and in production: it meets the
+needs with no extra service. An interrupted run is reported honestly and
+replaced by a new request; recorded job IDs, reconciliation and idempotent
+writes keep a replacement from duplicating external effects. Option 2 is
+implemented and tested as an optional backend, adopted when measured
+interruption costs, longer investigations or deployment burden justify its
+cost ([when to adopt Temporal](production-deployment.md#when-to-adopt-temporal)).
+Option 3 was rejected: it means writing a recovery engine.
+
+**Costs and limits.** The simpler manager does not resume a run at its
+previous step, and it is one process per database: it runs several
+investigations at once but does not scale horizontally. Temporal adds a
+service, deterministic workflow code and
+[versioning](https://docs.temporal.io/worker-versioning) discipline, and it
+does not make external effects happen exactly once: an
+[activity may run more than once](https://docs.temporal.io/activity-definition),
+so idempotency stays in the application either way. Details:
+[investigation runtime](../investigation-runtime.md).
+
+## Models (implemented)
+
+**Needs.** Reliable tool calling and structured output over many steps,
+streaming, acceptable latency and cost per question, a different-vendor
+fallback, and terms suitable for the data sent.
+
+| Role | Default | API | Why |
 | --- | --- | --- | --- |
-| Primary agent model | Gemini 3.8 Flash, through the Gemini Interactions API | Implemented | A newer Gemini model, as the brief prefers. Google [describes it](https://ai.google.dev/gemini-api/docs/models) as engineered for "autonomous agents, and complex enterprise workflows", which fits a multi-step tool-calling loop. With this project's key, it answered only on the Interactions API, so the project contains a small Pydantic AI model adapter for that API. |
-| Backup agent model | GPT-5 mini, through the OpenAI Responses API | Implemented | A different vendor, so one provider's outage does not stop analysis. It supports function calling, streaming and structured output, and is [low cost](https://developers.openai.com/api/docs/models/gpt-5-mini). It is enabled only when a key is configured. |
-| Embeddings | `gemini-embedding-2` (768 dimensions); an offline hashing embedder for fixtures | Implemented | Measured on the [retrieval benchmark](../../evaluation/retrieval/README.md). The thresholds are tuned for this model. |
+| Primary agent model | `gemini-3.8-flash` | Gemini Interactions API | Listed as stable on Google's [models page](https://ai.google.dev/gemini-api/docs/models). Measured in this project (below). |
+| Fallback agent model | `gpt-5-mini` | OpenAI Responses API | Different vendor, so one provider outage does not stop analysis; supports function calling, structured output and streaming ([model page](https://developers.openai.com/api/docs/models/gpt-5-mini)). Enabled only when a key is set. |
+| Embeddings (Golden retrieval) | `gemini-embedding-2` at 768 dimensions in live mode; an offline hashing embedder in fixture mode | Gemini embeddings | 768 is one of the recommended reduced sizes of a model with up to 3072 dimensions ([embeddings](https://ai.google.dev/gemini-api/docs/embeddings)). Retrieval thresholds were tuned for this model. |
 
-The model can be changed in configuration. The application owns routing,
-retries, cooldown and budget accounting, so the model cannot choose a
-provider or loosen a policy. See [model providers](../model-providers.md).
+Both chat models are configuration, not code. The application owns routing,
+retries and budgets, so the model cannot choose a provider or loosen a
+policy ([model providers](../model-providers.md)).
 
-## Frameworks and libraries
+**Evidence.**
 
-| Choice | Role | Why | Alternatives considered |
+- A [real-model evaluation](../../evaluation/real-model/README.md) of ten
+  conversations: all answered by Gemini with no fallback; 41/41 expected
+  figures present in the released evidence and 40/41 stated in the answers.
+  Human review of the reports is pending, and no model judge ran.
+- A [conversation-efficiency comparison](../../evaluation/real-model/efficiency/results/candidate.md)
+  of the same model before and after the context and tool-exposure changes:
+  for example an ordinary scalar question went from 9 model requests and
+  about 55k tokens to 3 requests and about 16k tokens. At that point the
+  model's first query was often rejected by the SQL compiler (an unsupported
+  join); after the join guidance was clarified, the first query was accepted
+  in 3 of 3 repetitions ([real-model evaluation](../../evaluation/real-model/README.md#restricted-join-guidance-check)).
+- Estimated model spend for two simple live questions was USD 0.011 and
+  0.013, against a soft limit of USD 1 per question.
+- Earlier "live Gemini" runs, before a schema fix, were in fact answered by
+  the GPT fallback; only the evaluations above are verified Gemini results.
+
+**Limits.** No other model was evaluated as the primary, and GPT-5 mini has
+not been measured as a primary on the same suite, so there is no
+like-for-like comparison and no claim that the chosen model is the best
+available. Fallback is tested with fault injection and one live test that is
+skipped when the free quota is spent. Rate limits depend on the project's
+[usage tier](https://ai.google.dev/gemini-api/docs/rate-limits). The local
+setup runs on a free-tier Gemini key, whose terms allow Google to use
+submitted content; production needs at least a paid tier
+([models and data handling](production-deployment.md#models-and-data-handling)).
+
+## Cloud platform (recommended; services proposed)
+
+**Needs.** The analytical data is in BigQuery, and queries run where the
+data is. Production also needs a managed PostgreSQL, object storage,
+secrets, identity integration, telemetry, an HTTP/SSE API host and
+long-running workers.
+
+**Reasoning.** Google Cloud is recommended because the data source is
+BigQuery: keeping the application, database and storage in the same project
+and region keeps data movement, IAM and networking in one place. That the
+primary model is Gemini is not, by itself, an argument: the Gemini Developer
+API used by the prototype is not covered by the project's IAM or regional
+guarantees, and the OpenAI fallback and Temporal Cloud are separate vendors
+in any case. Kubernetes is not needed at this workload; the proposed
+services are Cloud Run for the API, Cloud SQL, Cloud Storage and Secret
+Manager, with Cloud Run worker pools for Temporal workers if Temporal is
+adopted. Region, model hosting, identity and the final compute choices are
+open ([production deployment](production-deployment.md#open-decisions)).
+Nothing is provisioned.
+
+## Data and storage (implemented)
+
+| Choice | Need | Alternatives | Trade-off |
 | --- | --- | --- | --- |
-| **Pydantic AI** | Agent loop, tool calling, model abstraction | Typed tool inputs and outputs, native Gemini/OpenAI integrations and fallback, and a Temporal integration, without imposing a fixed graph. The agent is one adaptive loop over a small catalog of tools. | LangGraph (capable; its own checkpointing would overlap with Temporal), a custom loop (more model-protocol code to own), LiteLLM (not needed for two native providers) |
-| **Temporal** | Durable execution (production; opt-in locally) | Durable history, timers, signals and activity retries for runs that must survive disconnects and crashes, wait for clarification and avoid duplicate external effects. See [why Temporal](production-deployment.md#why-temporal-and-the-simpler-alternative). | PostgreSQL job workers with leases (rebuilding recovery), CLI-owned execution (dies with the client) |
-| **Local in-process manager** | Default local execution | The minimum prototype does not need durable replay. Investigations run as asyncio tasks in the API, on the same application steps and guards. | — |
-| **PostgreSQL** | All application state | Transactions and row locks for exact deletion, budgets and evidence immutability. JSONB for bounded evidence. One engine in development and production. | SQLite (different concurrency semantics) |
-| **SQLGlot** | SQL compiler | Parses BigQuery SQL into a syntax tree, so the compiler can allowlist node types, resolve scopes (CTE shadowing, subqueries) and rewrite relations into trusted projections. String or regex checks cannot do this safely. | View per executive (does not scale), regex checks (unsafe) |
-| **FastAPI + Uvicorn** | HTTP and SSE API | Pydantic-native request and response models, streaming responses, generated OpenAPI. | — |
-| **Click + httpx** | CLI | Small and typed, with a test runner. The CLI holds no backend credentials. | — |
-| **OpenTelemetry → MLflow, Prometheus, Grafana** | Traces, metrics, dashboards | Vendor-neutral export through one sanitizing facade. MLflow shows agent traces, and Prometheus with Grafana covers metrics and the "Agent overview" dashboard. All of it runs locally with no account. | Hosted tracing services (need an account and data agreements) |
-| **Alembic + SQLAlchemy Core** | Migrations, queries | Reviewable, linear migrations. Domain records stay independent of the ORM. | — |
+| **PostgreSQL** for all application state | Transactions and row locks for deletion confirmation, budgets, report versions; immutable evidence; ordered event replay | SQLite (weaker concurrency), a document store (no multi-row transactions of the kind used) | One engine locally and in production; bounded JSONB for evidence |
+| **Files behind a `BlobStore` port** for report bodies | Immutable, checksummed Markdown that can grow beyond a row | Database column | Two stores to keep consistent; a reconcile command reports drift |
+| **In-process Golden retrieval** (BM25 + exact cosine, vectors in PostgreSQL) | Tens of examples, authorization filter before scoring | pgvector, a vector database | Exact search is enough at this size; pgvector is the path when the corpus grows ([benchmark](../../evaluation/retrieval/README.md)) |
 
-## Author's experience with the chosen frameworks
+## SQL compiler: SQLGlot (implemented)
 
-**Not yet provided by the author.** The assignment asks for the author's
-level of experience with the chosen framework. That statement must come from
-the author and will be added here. It is not inferred from this repository.
+**Need.** The model writes analytical SQL, but must never choose tables,
+products or identifiers it is not allowed to see. **Options.** Regex or
+string checks (cannot resolve scopes; unsafe), a view per executive (no
+column-level control over derived identifiers, many objects), a parsed and
+rewritten syntax tree. **Choice.** SQLGlot parses the BigQuery dialect into a
+tree, so the compiler can allowlist node types, resolve CTE and subquery
+scopes, and replace each logical relation with a trusted, product-filtered
+projection. **Cost.** The grammar is deliberately restricted (no window
+functions, set operations or `UNNEST`); some analyses take several simpler
+queries, and the model's first attempt is often rejected and reformulated
+(see the evidence above). Tests: about 200 adversarial queries plus
+property tests ([components](../components.md#restricted-sql-compiler)).
 
-## Costs of these choices
+## Interfaces: HTTP + SSE API and a CLI (implemented)
 
-- Temporal adds a service, deterministic workflow code and versioning
-  discipline. Local execution avoids that cost for the prototype but does
-  not survive a process crash.
-- The custom Gemini adapter must be maintained until Pydantic AI supports the
-  Interactions API.
-- SQLGlot's grammar coverage is restricted on purpose. Window functions,
-  set operations and `UNNEST` are rejected, so some analyses need several
-  simpler queries.
-- Two model vendors double the data-processing agreements to manage.
+**Need.** A terminal client that survives disconnects and shows progress.
+**Choice.** FastAPI with Uvicorn for typed requests and streaming
+responses; server-sent events with replay from PostgreSQL; a Click CLI over
+httpx that holds no backend credentials. **Alternative.** WebSockets
+(bidirectional, but replay and proxies are more work; the client only needs
+server-to-client events). A web UI would use the same API.
+
+## Observability (implemented locally)
+
+**Need.** One trace per investigation with the sanitized conversation,
+metrics for runs, budgets, estimated model spend, fallbacks and privacy withholds, and no personal
+data in telemetry. **Choice.** OpenTelemetry through one sanitizing facade,
+exported to MLflow (agent traces with a conversation view), Prometheus and
+Grafana, all local with no account. Budget and spend enforcement read
+PostgreSQL, never telemetry. **Alternatives.** Hosted tracing services
+(accounts and data agreements). In production the company's Grafana can be
+reused if one exists, and Google Cloud accepts the same OTLP data
+([production deployment](production-deployment.md#parts-and-proposed-services)).
+**Limit.** Traces hold masked but still sensitive analytical content, so
+access must be restricted ([observability](../observability.md)).
+
+## Supporting libraries (implemented)
+
+- **Alembic with SQLAlchemy Core and psycopg 3**: reviewable, linear
+  migrations; domain records stay independent of the ORM.
+- **python-dotenv with Pydantic settings**: one explicit loader whose
+  validation errors never include secret values.
+- **PyJWT**: explicit algorithm allow-lists and required claims; the same
+  library verifies identity-provider keys (JWKS) later.
+- **google-cloud-bigquery**: dry runs, `maximum_bytes_billed` and
+  client-chosen job IDs, which make lost submissions recoverable.
+- **Ruff, mypy (strict) and pytest** for checks, with architecture tests for
+  layer boundaries.

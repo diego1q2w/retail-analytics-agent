@@ -31,16 +31,31 @@ When a spec is constructed, the registry refuses:
   `external_delivery` capability must either reconcile before retrying or
   not retry at all.
 
-The catalog shown to the model depends only on the trusted context, never
-on an investigation stage. Every call creates a durable operation record
+The tools the model may use depend only on the trusted context, never on
+an investigation stage. Within that authorized set, the runtime exposes core
+tools on every step and the tools of skills the model loads
+([the agent loop](agent-loop.md)); a new capability is either a core tool or
+is added to a skill, whose next version gets new guidance for it. Every call creates a durable operation record
 with a stable ID that serves as the idempotency key. Telemetry,
 budgets and the output privacy gate apply to all capabilities.
 
 **Implemented examples.** Discovery, guarded analysis, evidence fetch, Golden
-retrieval, preferences, reports, deletion proposals and `convert_currency`.
+retrieval, preferences, reports, deletion proposals, `convert_currency` and
+`load_skill`.
 Currency conversion was added after the core loop, as an extension: a new
 external port (exchange rates), derived evidence that keeps its source, and a
 disclosure for the declared source currency.
+
+### Skills
+
+A skill is one module in `application/skill_assets/` holding its released
+versions: an ID, a short description for the catalog, the tool names it
+offers and instruction segments. A new skill or a changed instruction is a
+new version appended to that module; a released version is never edited, so
+running investigations keep the version they loaded. Skills come only from
+bundled code and grant no permission: their tools must already be
+registered capabilities, and current authority still decides what is
+exposed and executed.
 
 ### Artifacts
 

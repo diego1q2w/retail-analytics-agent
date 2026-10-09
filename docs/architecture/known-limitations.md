@@ -54,7 +54,7 @@ verified Gemini result.
   recorded at the next start. One manager per database is guaranteed only
   by an advisory lock that is lost silently if its connection drops. A
   queued-request discard and its notice are two separate writes. See
-  [production deployment](production-deployment.md#local-mode-limits-implemented-accepted-for-the-local-demo).
+  [production deployment](production-deployment.md#limits-of-the-simpler-manager-implemented).
 - **Privacy.**
   - Customer demographics are aggregate-only, with no minimum group size:
     this is not anonymization. A naturally small group (even one customer)
@@ -90,6 +90,13 @@ verified Gemini result.
     figure check; instead, nothing generated for a run is released while any
     evidence linked to that run is withheld.
   - BigQuery job metadata holds query parameters.
+- **Brand-access lifecycle.** Managers are authorized by brand, resolved
+  by exact name match against a synced catalog snapshot. Who administers
+  assignments in production, approval, identity-provider synchronization,
+  merging brand spelling variants and automatic grants for new products are
+  open; the CEO-equivalent identity holds an explicit list of today's
+  product IDs, not an "all products" entitlement
+  ([brand-based access](../brand-access.md)).
 - **Golden retrieval.**
   - Small corpus.
   - Relevance labels were written by the implementing agent alone, before
@@ -115,5 +122,6 @@ verified Gemini result.
     Names typed without a cue are not detected in captured text.
   - Report restore is an operator command.
   - Backups and other retained copies are not covered by purge.
-- **Production.** The reference deployment is a design. Nothing is
-  provisioned, load-tested or security-tested in the cloud.
+- **Production.** The production deployment is a proposal with open service
+  decisions. Nothing is provisioned, load-tested or security-tested in the
+  cloud.

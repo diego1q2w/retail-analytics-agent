@@ -1,4 +1,4 @@
-# Real-model evaluation (T37)
+# Real-model evaluation
 
 A small, fixed set of conversations run with the real model through the
 shipped runtime, with every figure checked against independently computed
@@ -32,11 +32,11 @@ follow-ups (two- and three-turn), two saved/summary reports with next steps,
 a schema question, a scoped definition correction and a request for personal
 data:
 
-- frozen extract (T35, all 7): `rd-l1-revenue-q3-customers`,
+- frozen extract (the real-data benchmark, all 7): `rd-l1-revenue-q3-customers`,
   `rd-l1-state-top3-q4`, `rd-l1-product-top3-q4`, `rd-l1-age-band-spend-q4`,
   `rd-l2-monthly-trend-h2`, `rd-l2-customer-concentration-report`,
   `rd-l2-category-change-report`;
-- held-out fixture (T33, 3 of 25): `ho-l1-source-schema-question`,
+- held-out fixture (3 of 25): `ho-l1-source-schema-question`,
   `ho-l2-definition-correction`, `ho-l1-pii-names-emails`.
 
 ## Results
@@ -60,7 +60,7 @@ How to read this:
 
 - **Figures were checked independently of the agent's labels.** The expected
   values come from the reference SQL (frozen extract: two structurally
-  different DuckDB routes, T35; held-out fixture: SQL plus Python, T33). The
+  different DuckDB routes; held-out fixture: SQL plus Python). The
   check looks for each value in any cell of the released evidence and,
   separately, in the released text. It does not use definition stamps on the
   evidence: a stamp says which definition was in context, not that the SQL
@@ -86,7 +86,7 @@ How to read this:
   three of them as `failed` (strict name checks take precedence) and one as
   `blocked`. Report-element flags (definition disclosed, action items, ...)
   are text heuristics. Neither is a quality verdict. All 11 judge-blocked
-  scenarios of the T33/T35 suites remain judge-blocked.
+  scenarios of the held-out and real-data suites remain judge-blocked.
 - **The privacy flag is a false alarm.** In `ho-l2-definition-correction` the
   `full_basket_data_released` heuristic fired on 150.00. That is the in-scope
   returned Aster Parka item, alone in its order. It happens to equal the total
@@ -105,7 +105,7 @@ How to read this:
 
 Before this task, **every live agent request to Gemini failed with HTTP 400
 ("Request contains an invalid argument") and fell back to GPT**. So earlier
-live agent runs that were taken to be Gemini (T26's live smoke, for example)
+live agent runs that were taken to be Gemini (the agent's first live smoke test, for example)
 were in fact answered by GPT. Single-prompt live tests still passed, because
 they send no tools. The cause: the full tool catalog's `maxItems` bounds,
 with `tool_choice: any`. This task's first trial runs reproduced it (all
@@ -129,7 +129,7 @@ conversation was run against the live warehouse in this task.
 
 ## Reference sign-off
 
-The expected figures were computed by two independent SQL routes (T33, T35).
+The expected figures were computed by two independent SQL routes.
 No named person has signed off the business definitions or the expected
 values yet; that review is still pending.
 
@@ -155,7 +155,7 @@ credentials; writes `evaluation-results/realdata-drift.json`, gitignored).
 Unit tests for the attribution and figure checks:
 `pytest tests/unit/evaluation/test_real_model.py tests/unit/models/test_gemini_interactions.py`.
 
-## Discovery walkthrough (before/after, T39-F1)
+## Discovery walkthrough (before/after)
 
 `discovery_walkthrough.py` measures a first conversation: "What data do you
 have, and what questions can you help me answer?" followed by "orders", plus
@@ -181,7 +181,7 @@ all four relations for the overview). Reproduce from the repository root
 `.env` keys): `python evaluation/real-model/discovery_walkthrough.py
 [--only overview profiling followup] [--show-answers]`.
 
-## Approved schema context (before/after, T07-F1)
+## Approved schema context (before/after)
 
 Each model request now carries the executive's approved schema (relations,
 fields, joins, approved metrics) and states the effective preferences, so
@@ -203,7 +203,7 @@ conversation answered without tools (1 request each turn, about 5,500 input
 tokens). One run per variant: observations, not promises. The discovery
 tools stay available for deeper exploration.
 
-## Proportion walkthrough (before/after, T26-F4)
+## Proportion walkthrough (before/after)
 
 `proportion_walkthrough.py` checks that the work matches the request: a
 figure question ("What's the latest revenue of September?"), the follow-up
@@ -238,7 +238,7 @@ walkthrough): `python evaluation/real-model/proportion_walkthrough.py
 [--only scalar report] [--show-answers]`. It prints each query's executed SQL
 from the sanitized `query.compile` span content.
 
-## Focused tool exposure (before/after, T26-F5)
+## Focused tool exposure (before/after)
 
 `focus_walkthrough.py` records, at the provider boundary, which tool
 definitions each model request is actually sent (names, characters of their
@@ -292,7 +292,7 @@ requirements as the discovery walkthrough): `python
 evaluation/real-model/focus_walkthrough.py [--only scalar complex mixed]
 [--show-answers]`.
 
-## Conversation efficiency (T39-F3)
+## Conversation efficiency
 
 `efficiency.py` measures what ordinary analytical requests cost and whether
 their answers are right, on the same harness as above (agent runtime, local
@@ -463,7 +463,7 @@ One run per complex scenario and three per scalar scenario: these are
 observations, not guarantees. Latency fell in every matched turn, but no
 latency threshold is derived from it.
 
-### Restricted-join guidance check (T39-F5)
+### Restricted-join guidance check
 
 The refused first queries above were all one shape: a CTE that found the
 latest year (or latest date) joined to `sales_items`. The compiler only joins
@@ -501,14 +501,14 @@ extra queries to classify; the earlier run's extra queries cannot be
 classified after the fact. Nine runs on one day: observations, not a
 guarantee that the model always writes supported SQL.
 
-### Analytical skills on demand (T26-F7)
+### Analytical skills on demand
 
 The focused tool groups were replaced by four versioned analytical skills
 loaded with `load_skill` (see `docs/investigation-runtime.md`). Baseline: the
-T39-F3 candidate above (`candidate.json`, runtime of `1ea43de`). The
+conversation-efficiency candidate above (`candidate.json`, runtime of `1ea43de`). The
 differences below come from **all changes since that baseline combined**,
-mainly T39-F5 (join guidance: the first query is now accepted, which removed
-the refused-query round trip) and T26-F7 (skills); this suite does not
+mainly the restricted-join guidance (the first query is now accepted, which removed
+the refused-query round trip) and the skills change; this suite does not
 separate their effects, and it does not show that skills alone made the
 scalar turns cheaper. Code `e32be51` (this task before rebase), local
 backend, throwaway PostgreSQL, 2026-10-09 13:00-13:18 UTC, Gemini
@@ -539,7 +539,7 @@ or clarification turn loaded a skill.
 | why-category-change | 25,227 -> 23,705 | 4 -> 4 | 3 -> 2 | one load (id not recorded) |
 | report-concentration | 46,258 -> 34,606 | 6 -> 4 | 4 -> 3 | one load, then `save_report` |
 
-The scalar and reuse reductions match what the T39-F5 rerun already showed
+The scalar and reuse reductions match what the restricted-join guidance rerun already showed
 (for example ordinary 13,915 -> 9,049 input tokens before skills). On turns
 that need no skill, the skill catalog costs about 500 input tokens per
 request (+4-7% against the candidate). A load costs one tool call; in both
@@ -634,7 +634,7 @@ requests on code `419bb9e` took 4 queries / 11 calls / 69,353 tokens and
 controlled baseline). The amounts are identical. This is one bounded
 conversation, not a measurement of variance.
 
-Model spend (T30-F3): the same two turns ran once more on 2026-10-09 14:54 UTC (throwaway PostgreSQL and MLflow, local execution, real BigQuery) to check the cost accounting with real usage. Both runs completed with the reference amounts stated, each with 2 Gemini `gemini-3.8-flash` requests and no fallback. Estimated spend from genai-prices 0.1.9 (bundled snapshot, standard paid rates USD 0.75 input / 3.75 output per million tokens, thinking tokens billed as output, no cached tokens reported): September USD 0.011063 (10,238 tokens), August USD 0.013387 (11,509 tokens), against the USD 1 soft limit. The PostgreSQL charges, the attempt spans (`cost_usd`, usage categories, price basis), the run root (`model_cost_usd`) and MLflow's trace total (`mlflow.trace.cost`, read through the MLflow API; the browser UI was not opened) agreed to the micro-dollar. These are estimates from a public price list, not the provider's invoice (free-tier or discounted usage is not modelled).
+Model spend: the same two turns ran once more on 2026-10-09 14:54 UTC (throwaway PostgreSQL and MLflow, local execution, real BigQuery) to check the cost accounting with real usage. Both runs completed with the reference amounts stated, each with 2 Gemini `gemini-3.8-flash` requests and no fallback. Estimated spend from genai-prices 0.1.9 (bundled snapshot, standard paid rates USD 0.75 input / 3.75 output per million tokens, thinking tokens billed as output, no cached tokens reported): September USD 0.011063 (10,238 tokens), August USD 0.013387 (11,509 tokens), against the USD 1 soft limit. The PostgreSQL charges, the attempt spans (`cost_usd`, usage categories, price basis), the run root (`model_cost_usd`) and MLflow's trace total (`mlflow.trace.cost`, read through the MLflow API; the browser UI was not opened) agreed to the micro-dollar. These are estimates from a public price list, not the provider's invoice (free-tier or discounted usage is not modelled).
 
 The scoring was changed once after this run and before any comparison. The
 "completed" and "no unexpected question" targets were added, because the
@@ -665,7 +665,7 @@ keeps no content payloads), so a successful query without stored evidence
 shows its outcome but not its SQL; targets are evaluation targets, not
 production caps.
 
-## Aggregate-only demographics (T09-F1)
+## Aggregate-only demographics
 
 Customer demographics are now released only as group-level statistics. The
 transcripts above were recorded under the earlier rule:
@@ -691,7 +691,7 @@ described above, not from wrong figures. The model was not observed trying
 a refused query, so compiler refusal of model-written profile SQL is covered
 by the scripted held-out run and unit tests, not by this live run.
 
-## Trusted single-month periods (T08-F1)
+## Trusted single-month periods
 
 Before, a September answer computed with `EXTRACT(MONTH ...) = 9` and a year
 filter cited "period not recorded". The compiler now records the calendar
@@ -716,7 +716,7 @@ Recorded periods: 2025-09-01 to 2025-10-01 and 2025-08-01 to 2025-09-01
 (27,051.80 and 33,665.86) match the reference computed from the extract files.
 One run: an observation, not a promise.
 
-## Intended question (T26-F9)
+## Intended question
 
 Suite `efficiency/intent-suite.json` (declared before the run) scores the
 generated answers, not the prompt: tools the turn must not call (or must),
@@ -762,7 +762,7 @@ then a retry); why-category-change 3 queries, 7/7 figures stated; concentration
 report saved with actions, 3/3 figures. One run each: observations, not a
 promise.
 
-### Rescoring of the causal-label check (T26-F10)
+### Rescoring of the causal-label check
 
 What changed: `unqualified_terms` (scoring v4) no longer counts a lever the
 business pulls (marketing, campaign, promotion, advertising) as a causal claim
@@ -794,17 +794,17 @@ unchanged; the rescored result is
 | every other turn | unchanged | unchanged |
 
 The individual-demographics miss on `completed` is not changed by the
-rescoring: the run ended `partial`. T26-F10 also changes the application so a
+rescoring: the run ended `partial`. The refusal-status change also makes the application ensure a
 fully resolved refusal completes; that needs a new live run to measure, which
 has not been done.
 
-### Resolved refusals: live check (T26-F10)
+### Resolved refusals: live check
 
 The application now ends a run `completed` when every part of the request was
 answered or declined under a restriction it confirms (individual
 demographics always; outside the permitted scope only with a refusal recorded
 in the run), and `partial` while permitted work is unanswered. Live check,
-2026-10-09, code `43346e8` (this task rebased on T11-F1, before these results were added): `gemini-3.8-flash`,
+2026-10-09, code `43346e8` (after the active-time deadline change, before these results were added): `gemini-3.8-flash`,
 local backend, offline DuckDB over the frozen extract, throwaway PostgreSQL.
 Suite `efficiency/refusal-suite.json` (declared before the run). Status is the
 `runs.status` row read from the database after each run; the stop reason is
@@ -818,7 +818,7 @@ budget or deadline) and the run's last progress event.
 | Mixed: that question plus Q4 revenue by age band, top 5 products per month, orders by state; normal limits ([`t26f10-mixed`](efficiency/results/t26f10-mixed.md)) | `run_c37e4ae1...` | completed | none; `run.completed` | 6 | individual part declined, all three permitted parts answered |
 | Same mixed request with `RUN_MAX_QUERIES=1` ([`t26f10-mixed-1query`](efficiency/results/t26f10-mixed-1query.md)) | `run_83624eb2...` | partial | none (no budget stop); `run.partial` "could not complete every part" | 1 (a dataset-range probe) | individual part declined; the model marked the answer incomplete and named the three permitted parts left open after the query limit refused more |
 
-Before (T26-F9, code `12c5e1c+dirty`): the same individual question ended
+Before (the intended-question change, code `12c5e1c+dirty`): the same individual question ended
 `partial`. The 1-query partial was released by the model as incomplete, not
 forced by an application stop, so it shows permitted work keeping a declined
 request partial; the query limit is only why that work was left. Not
@@ -829,9 +829,9 @@ Transcripts: [`refusal`](efficiency/results/transcripts/t26f10-refusal.md),
 [`mixed`](efficiency/results/transcripts/t26f10-mixed.md),
 [`mixed-1query`](efficiency/results/transcripts/t26f10-mixed-1query.md).
 
-## Evidence persistence failure (T12-F1)
+## Evidence persistence failure
 
-Two T26-F9 attempts (`t26f9-regression.json`, run
+Two intended-question attempts (`t26f9-regression.json`, run
 `run_b8ce43fbfc1adff353f9cd00fdee2a68`; `t26f9-intent.json`, run
 `run_11186a9bafdecb005d79f7d6787f8c16`) record an `execute_analysis` query that
 succeeded on the warehouse but stored no evidence (`INTERNAL_ERROR`).
@@ -858,7 +858,7 @@ saved is handled by class (span `evidence.record`, see
 finished job again by its recorded ID (no resubmission, no second charge, one
 evidence record); a value the application cannot store is an application error
 (`INTERNAL_ERROR`, a message that does not blame the query); a result too
-large to store asks for a more aggregated query (`INVALID_QUERY`). Recovery stays inside the run's active deadline (T11-F1): after it, nothing is re-read or recovered, and a cancelled job is never recovered. Tests:
+large to store asks for a more aggregated query (`INVALID_QUERY`). Recovery stays inside the run's active deadline: after it, nothing is re-read or recovered, and a cancelled job is never recovered. Tests:
 `tests/unit/query_execution/test_evidence_recovery.py`,
 `tests/integration/test_investigations.py` (Docker),
 `tests/unit/evaluation/test_agent_runtime_parts.py`. No live rerun was made.
@@ -871,5 +871,5 @@ large to store asks for a more aggregated query (`INVALID_QUERY`). Recovery stay
   place or with the right meaning. That is what the pending human review is for.
 - No judge ran. The 11 judge-blocked scenarios remain unvalidated.
 - The run used the code at `e8b5794` plus this task's changes. Later commits on
-  main (T38-F1 answer withholding, T38-F2 Golden-example masking, T41
+  main (answer withholding, Golden-example masking, local-admin
   defaults) were not part of the run.
