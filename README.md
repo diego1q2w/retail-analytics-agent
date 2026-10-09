@@ -27,7 +27,13 @@ That one command is idempotent and does everything needed for a working, seeded 
 5. provisions the demo executives and seeds the Golden knowledge library;
 6. validates the configuration and, when BigQuery and Gemini are configured, checks that access.
 
-Then start the worker and the API (`retail-analytics-worker`, `retail-analytics-api`; bootstrap prints these commands) and call it with a dev token; see [HTTP and SSE API](docs/http-api.md).
+Then run the worker and the API together with one command and call the API with a dev token; see [HTTP and SSE API](docs/http-api.md):
+
+```sh
+./scripts/dev.sh        # or: python -m retail_analytics.bootstrap.dev_up
+```
+
+`dev.sh` makes sure PostgreSQL, Temporal and the migrations are in place (the same bootstrap steps; unrelated containers are never touched), starts `retail-analytics-worker` and `retail-analytics-api` with the same environment file, prefixes their logs with `[worker]` / `[api]`, waits until the worker is connected to Temporal and `/healthz` answers, then prints the API URL and the command that issues a dev token (the token and secrets are never printed). Ctrl-C or SIGTERM stops both (SIGTERM, then SIGKILL after 10 s) and exits 0. If either process exits on its own, the other is stopped and the command exits 1 naming the one that failed. It refuses to start if the API port is taken by something else. Options: `--env-file FILE` (the same isolation as bootstrap: only that file is read, parent-shell `RETAIL_ANALYTICS_*` variables are dropped), `--project NAME` (Compose project), `--no-services` (do not touch Docker; only check that PostgreSQL and Temporal are reachable), `--ready-timeout SECONDS`. It is a local-development convenience, not a supervisor: in production the API and the worker run as separate services.
 
 External credentials (BigQuery project, Gemini key, optional OpenAI key) cannot be generated: they stay empty with a pointer to [docs/google-access.md](docs/google-access.md), and fixture mode works without them. Add them to `.env` and rerun, or use `--interactive` to be asked (secrets use hidden input). Never regenerate a non-empty `RETAIL_ANALYTICS_REFERENCE_KEY`: rotating it invalidates every existing customer reference.
 

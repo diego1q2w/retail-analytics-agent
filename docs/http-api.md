@@ -11,8 +11,8 @@ stream.
 
 ```sh
 ./scripts/bootstrap.sh                       # once: services, migrations, demo executives
-retail-analytics-worker &                    # runs the investigations
-retail-analytics-api                         # http://127.0.0.1:8080 by default
+./scripts/dev.sh &                           # worker + API, http://127.0.0.1:8080 by default
+                                             # (production: run them as separate services)
 TOKEN="$(retail-analytics-dev-access token demo-a)"
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/sessions
 ```

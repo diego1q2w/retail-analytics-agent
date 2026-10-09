@@ -349,19 +349,21 @@ def run_steps(
 def next_steps(ctx: SetupContext) -> list[str]:
     lines = ["Local environment is ready (fixture mode works offline)."]
     custom = ctx.env_file.resolve() != (ctx.root / ".env").resolve()
+    dev = "./scripts/dev.sh"
+    issue_cmd = "retail-analytics-dev-access token demo-a"
     if custom:
-        lines.append(
-            f"Environment file: {ctx.env_file}. Commands below read .env in the "
-            "repository root, so export its values first (set -a; . <file>; set +a)."
-        )
+        dev += f" --env-file {ctx.env_file}"
+        issue_cmd = f"RETAIL_ANALYTICS_ENV_FILE={ctx.env_file} {issue_cmd}"
     lines += [
         "Next:",
-        "  retail-analytics-dev-access token demo-a   # a dev token (stdout only)",
-        "  retail-analytics-api                       # start the HTTP/SSE API",
+        f"  {dev}",
+        "      # worker + API together, prefixed logs, Ctrl-C stops both",
+        f"  {issue_cmd}   # a dev token (stdout only)",
         "  (see docs/http-api.md: send the token as Authorization: Bearer)",
-        "  retail-analytics-worker                    # start the Temporal worker",
         "  analytics status                           # CLI check against the API",
         "  ./scripts/bootstrap.sh                     # rerun any time (idempotent)",
+        "  (production runs retail-analytics-api and retail-analytics-worker "
+        "as separate services)",
     ]
     return lines
 
