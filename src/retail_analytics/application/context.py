@@ -2,7 +2,8 @@
 
 ``ContextBuilder.build`` assembles what the model may see for the next step
 of a run: the current request, applicable preferences, evidence the caller
-may still use and the relevant recent conversation, within a bounded budget.
+may still use, the approved schema it may query (``ApprovedSchemaContext``)
+and the relevant recent conversation, within a bounded budget.
 It re-resolves the caller's authority on every call (call it again on every
 attempt and iteration; never cache its result across an authorization
 change), so narrowed product scope, revoked permissions, invalidated evidence
@@ -41,6 +42,10 @@ from retail_analytics.application.contracts.context import (
     EvidencePage,
     TopicReset,
 )
+from retail_analytics.application.contracts.schema_context import (
+    SchemaContext,
+    SchemaContextStatus,
+)
 from retail_analytics.application.contracts.tools import ExecutionContext
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.ports.context import (
@@ -48,6 +53,7 @@ from retail_analytics.application.ports.context import (
     TopicResets,
 )
 from retail_analytics.application.preferences import PreferenceService
+from retail_analytics.application.schema_context import ApprovedSchemaContext
 from retail_analytics.domain.context import (
     CHARS_PER_TOKEN,
     ContextBudget,
@@ -170,19 +176,34 @@ class ModelContext:
     # ... and the fingerprint of every scanned message that may still enter
     # context, as it would be shown now.
     current_history: tuple[tuple[str, str], ...] = ()
+    # Approved schema for the executive now (None: discovery not configured).
+    schema: SchemaContext | None = None
 
-    def render(self, *, can_fetch_evidence: bool = True) -> str:
+    @property
+    def schema_fingerprint(self) -> str:
+        return "none" if self.schema is None else self.schema.fingerprint
+
+    def render(
+        self, *, can_fetch_evidence: bool = True, can_describe_schema: bool = False
+    ) -> str:
         """Plain-text context blocks; untrusted content is quoted as data.
 
         Notes name ``fetch_evidence`` only when the principal's catalog has it
         (``can_fetch_evidence``); otherwise they just state what was omitted.
+        The schema note names the discovery tools only when
+        ``can_describe_schema``.
         """
-        parts = [
-            "<preferences>",
-            *(_quote(p) for p in self.preferences),
-            "</preferences>",
-            "<evidence>",
-        ]
+        parts: list[str] = []
+        if self.schema is not None:
+            parts.append("<approved_schema>")
+            parts.append(_schema_note(self.schema, can_describe_schema))
+            parts.extend(_quote(line) for line in self.schema.lines)
+            parts.append("</approved_schema>")
+        parts.append("<preferences>")
+        parts.append(_preferences_note(self.preferences))
+        parts.extend(_quote(p) for p in self.preferences)
+        parts.append("</preferences>")
+        parts.append("<evidence>")
         for item in self.evidence:
             parts.append(_render_evidence(item, can_fetch_evidence))
         parts.append("</evidence>")
@@ -219,6 +240,7 @@ class ContextBuilder:
         *,
         budget: ContextBudget | None = None,
         protected_terms: Callable[[], Iterable[ProtectedTerm]] = tuple,
+        schema: ApprovedSchemaContext | None = None,
     ) -> None:
         self._resolver = resolver
         self._guard = guard
@@ -228,6 +250,7 @@ class ContextBuilder:
         self._resets = resets
         self._budget = budget or ContextBudget()
         self._protected_terms = protected_terms
+        self._schema = schema
 
     async def build(
         self,
@@ -281,6 +304,14 @@ class ContextBuilder:
             screen.text(request), budget.max_request_chars
         )
         used = len(request_text)
+        # Revalidated against current authority and metadata on every build;
+        # bounded to a quarter of the context so evidence and history keep room.
+        schema = (
+            await self._schema.for_context(ctx, max_chars=budget.max_chars // 4)
+            if self._schema is not None
+            else None
+        )
+        used += schema.chars if schema is not None else 0
         preference_lines = tuple(screen.text(p) for p in _preference_lines(preferences))
         used += sum(len(p) for p in preference_lines)
 
@@ -376,6 +407,7 @@ class ContextBuilder:
                 (s.evidence.evidence_id, s.evidence.version) for s in current
             ),
             current_history=tuple(eligible),
+            schema=schema,
         )
 
     async def list_evidence(
@@ -692,6 +724,36 @@ def _render_evidence(item: EvidenceDigest, can_fetch: bool = True) -> str:
 def _quote(text: str) -> str:
     """Neutralize anything that could close or open a context block."""
     return text.replace("<", "\u2039").replace(">", "\u203a")
+
+
+_PREFERENCES_CURRENT = (
+    "Current effective settings, already applied to analysis; no need to look "
+    "them up again unless the user asks about their preferences:"
+)
+_PREFERENCES_DEFAULT = (
+    "No saved settings apply: defaults are in force (revenue means "
+    "completed_item_sales, dates use UTC, amounts stay in the source currency)."
+)
+
+
+def _preferences_note(preferences: tuple[str, ...]) -> str:
+    return _PREFERENCES_CURRENT if preferences else _PREFERENCES_DEFAULT
+
+
+def _schema_note(schema: SchemaContext, can_describe: bool) -> str:
+    if schema.status is not SchemaContextStatus.AVAILABLE:
+        return "Schema status for this user now:"
+    text = (
+        "The relations, fields, joins and approved metrics you may query now: "
+        "exactly what the query validator accepts. Build ordinary queries "
+        "from this without rediscovering the schema."
+    )
+    if can_describe:
+        text += (
+            " Use list_relations or describe_relation only for something not "
+            "shown here or for deeper exploration."
+        )
+    return text
 
 
 def _omission_notes(omissions: ContextOmissions, can_fetch: bool = True) -> list[str]:

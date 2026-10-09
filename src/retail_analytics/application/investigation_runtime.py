@@ -73,6 +73,7 @@ from retail_analytics.application.contracts.telemetry import (
 )
 from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.investigation_policy import (
+    DESCRIBE_RELATION,
     FETCH_EVIDENCE,
     render_investigation_policy,
 )
@@ -346,6 +347,7 @@ class InvestigationRuntime:
             (ContextKeyPart.REQUEST, built.request),
             (ContextKeyPart.PREFERENCES, list(built.preferences)),
             (ContextKeyPart.TOPIC_RESET, str(built.topic_reset_at)),
+            (ContextKeyPart.SCHEMA, built.schema_fingerprint),
         )
         return ModelStep(
             instructions="\n".join(
@@ -353,7 +355,10 @@ class InvestigationRuntime:
                     render_investigation_policy(tools),
                     *([persona] if persona else []),
                     _budget_line(snapshot),
-                    built.render(can_fetch_evidence=FETCH_EVIDENCE in tools),
+                    built.render(
+                        can_fetch_evidence=FETCH_EVIDENCE in tools,
+                        can_describe_schema=DESCRIBE_RELATION in tools,
+                    ),
                 ]
             ),
             tools=tools,

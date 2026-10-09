@@ -190,3 +190,21 @@ async def test_changed_key_names_the_changed_part() -> None:
         investigator.restart_cause([*MESSAGES, earlier], step)
         is ContextRestartCause.CONTEXT_CHANGED
     )
+
+
+async def test_changed_approved_schema_restarts_with_its_own_cause() -> None:
+    parts = (("authority", "a1"), ("request", "q1"), ("schema", "s2"))
+    step = ModelStep(
+        "context", frozenset(), "scope-v2", (), (), replace(STANDING, key_parts=parts)
+    )
+    earlier = _responded({}, {})
+    assert earlier.metadata is not None
+    earlier.metadata["retail_context"]["parts"] = {
+        "authority": "a1",
+        "request": "q1",
+        "schema": "s1",
+    }
+    assert (
+        investigator.restart_cause([*MESSAGES, earlier], step)
+        is ContextRestartCause.SCHEMA_CHANGED
+    )

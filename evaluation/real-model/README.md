@@ -179,7 +179,29 @@ token promises. The model still chooses its tools (for example it described
 all four relations for the overview). Reproduce from the repository root
 (needs a migrated PostgreSQL with no local-execution API attached, and the
 `.env` keys): `python evaluation/real-model/discovery_walkthrough.py
-[--only overview profiling] [--show-answers]`.
+[--only overview profiling followup] [--show-answers]`.
+
+## Approved schema context (before/after, T07-F1)
+
+Each model request now carries the executive's approved schema (relations,
+fields, joins, approved metrics) and states the effective preferences, so
+ordinary questions need no discovery calls. The `followup` conversation asks
+"What was our total revenue in October 2025? Just the total, please." then
+"And November?". Same harness, one run each on 2026-10-09, code `32da67c`
+(before) and with this change (after); Gemini `gemini-3.8-flash` answered
+every request, no fallback.
+
+| run | before: discovery calls / requests / input tokens | after |
+| --- | --- | --- |
+| October total | 4 (list_relations, describe_relation x3) plus inspect_preferences, find_analysis_examples / 8 / 39,753 | 0 / 2 / 11,190 |
+| "And November?" | 3 (list_relations, describe_relation x2) plus inspect_preferences / 5 / 27,453 | 0 / 2 / 12,359 |
+
+Each run made one query in both. A repeat of the after run gave 0 discovery
+calls, 2 requests and 11,131 / 12,122 input tokens, with totals of 28,671.06
+(October) and 28,625.06 (November) cited from evidence, and the overview
+conversation answered without tools (1 request each turn, about 5,500 input
+tokens). One run per variant: observations, not promises. The discovery
+tools stay available for deeper exploration.
 
 ## Limitations
 

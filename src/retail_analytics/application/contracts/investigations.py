@@ -99,6 +99,8 @@ class ContextKeyPart(StrEnum):
     REQUEST = "request"
     PREFERENCES = "preferences"
     TOPIC_RESET = "topic_reset"
+    # The approved schema the context described (catalog, availability).
+    SCHEMA = "schema"
 
 
 class ContextRestartCause(StrEnum):
@@ -109,6 +111,7 @@ class ContextRestartCause(StrEnum):
     REQUEST_CHANGED = "request_changed"
     PREFERENCES_CHANGED = "preferences_changed"
     TOPIC_RESET = "topic_reset"
+    SCHEMA_CHANGED = "schema_changed"
     CONTEXT_CHANGED = "context_changed"
     HISTORY_CHANGED = "history_changed"
     EVIDENCE_INVALIDATED = "evidence_invalidated"

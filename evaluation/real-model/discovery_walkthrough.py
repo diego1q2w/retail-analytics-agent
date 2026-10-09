@@ -6,7 +6,10 @@ live provider chain), each in a fresh evaluation session:
 
 - ``overview``: "What data do you have, and what questions can you help me
   answer?" then "orders" (answers an open question, else a follow-up);
-- ``profiling``: an explicit count and date-range question, which may query.
+- ``profiling``: an explicit count and date-range question, which may query;
+- ``followup``: a scalar revenue question and its "And November?" follow-up,
+  to count schema discovery calls (``list_relations``/``describe_relation``)
+  per run and the input tokens they cost.
 
 Prints, per run: admission outcome (asked or not), tool sequence, provider,
 model requests, tokens, queries, active seconds and wall-clock latency. No
@@ -56,7 +59,12 @@ CONVERSATIONS = {
     "profiling": (
         "How many orders are there, and what date range does the data cover?",
     ),
+    "followup": (
+        "What was our total revenue in October 2025? Just the total, please.",
+        "And November?",
+    ),
 }
+DISCOVERY_TOOLS = frozenset({"list_relations", "describe_relation"})
 # Any frozen-extract scenario's executive and product scope will do.
 SCOPE_FROM = "rd-l1-product-top3-q4"
 
@@ -172,6 +180,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "status": run.status,
                             "asked_a_question": run.asked,
                             "tools": run.tools,
+                            "discovery_calls": sum(
+                                t in DISCOVERY_TOOLS for t in run.tools
+                            ),
                             "providers": tokens["providers"],
                             "model_requests": run.requests,
                             "tokens_budget": run.tokens,

@@ -24,6 +24,7 @@ from retail_analytics.application.evidence import EvidenceService
 from retail_analytics.application.output_privacy import OutputPrivacyGate
 from retail_analytics.application.preferences import PreferenceService
 from retail_analytics.application.result_privacy import ReleasedResult
+from retail_analytics.application.schema_context import ApprovedSchemaContext
 from retail_analytics.domain.access import ProductScope
 from retail_analytics.domain.context import ContextBudget
 from retail_analytics.domain.conversation import Message, MessageRole
@@ -111,6 +112,7 @@ class World:
         *,
         budget: ContextBudget | None = None,
         lexicon: tuple[ProtectedTerm, ...] = (),
+        schema: ApprovedSchemaContext | None = None,
     ) -> None:
         self.clock = Clock()
         self.store = FakeEvidenceStore(clock=self.clock)
@@ -150,6 +152,7 @@ class World:
             self.resets,
             budget=budget,
             protected_terms=lambda: lexicon,
+            schema=schema,
         )
         self.gate = OutputPrivacyGate(
             self.resolver,

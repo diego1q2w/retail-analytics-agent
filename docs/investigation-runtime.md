@@ -235,8 +235,24 @@ model messages, tool arguments and final drafts can still appear in the
 private Temporal history; its access controls and seven-day closed-history
 retention remain necessary. No public traces should copy that content.
 
+Each model context also carries the approved schema the executive may query
+now: the relations, logical fields and types, reviewed joins and approved
+metric definitions of the same authorized catalog view that the discovery
+tools return and the SQL compiler validates against, so ordinary questions and
+their follow-ups need no schema discovery calls (the discovery tools remain for
+deeper exploration). It is rebuilt from current authority and validated
+metadata on every model request and holds no source table or column names,
+product IDs, entitlements or rows. A small in-process cache keeps rendered
+descriptions per executive, permission set, product scope, catalog version,
+field availability, metadata staleness, metric catalog and format (bounded:
+256 entries, at most a quarter of the context budget and 6,000 characters).
+When validated metadata is unavailable the block says so and describes
+nothing. The effective preferences are shown as the settings currently in
+force, with an explicit defaults line when none are saved.
+
 Each model response carries application-owned context provenance: a fingerprint
-of the authorization version, request, preferences and topic reset, plus the
+of the authorization version, request, preferences, topic reset and approved
+schema, plus the
 evidence IDs and versions and the conversation messages it was shown. Before
 sending provider history, the next activity checks that provenance against
 freshly authorized context. The prompt itself is bounded (evidence count, size
@@ -244,7 +260,8 @@ and scan, history length), but validity is not judged by what the current
 prompt happens to show: every earlier-shown evidence record and message is
 checked against its authoritative current standing, including ones the bounds
 now leave out. Leaving something out of the prompt therefore never restarts
-the conversation; changed authority, request (steering), preferences or topic,
+the conversation; changed authority, request (steering), preferences, topic
+or approved schema (catalog or field availability),
 missing provenance, or shown evidence or messages that were invalidated,
 withdrawn, revised, lost scope or whose validity cannot be confirmed restart
 it without sending the old messages. New evidence can be added without a

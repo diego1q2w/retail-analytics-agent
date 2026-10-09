@@ -198,7 +198,9 @@ def build_investigations(
     budgets = build_run_budgets(settings, persistence.budgets)
     evidence = build_evidence(persistence, settings=settings)
     preferences = build_preferences(persistence, access)
-    context = build_context(persistence, access, evidence, preferences)
+    context = build_context(
+        persistence, access, evidence, preferences, discovery=discovery
+    )
     if registry is None:
         registry = build_capability_registry(
             settings,

@@ -255,6 +255,7 @@ class GuardedModel(Model):
 _KEY_CAUSES = (
     (ContextKeyPart.AUTHORITY, ContextRestartCause.AUTHORITY_CHANGED),
     (ContextKeyPart.TOPIC_RESET, ContextRestartCause.TOPIC_RESET),
+    (ContextKeyPart.SCHEMA, ContextRestartCause.SCHEMA_CHANGED),
     (ContextKeyPart.PREFERENCES, ContextRestartCause.PREFERENCES_CHANGED),
     (ContextKeyPart.REQUEST, ContextRestartCause.REQUEST_CHANGED),
 )
@@ -266,7 +267,7 @@ def restart_cause(
     """Why earlier model responses may not be reused, or None if they may.
 
     Reusable: each response carries provenance with the same key (authority,
-    request, preferences, topic reset), and everything it was shown -
+    request, preferences, topic reset, approved schema), and everything it was shown -
     evidence versions and history messages - is still valid now according
     to the step's authoritative standing. What one request shows is bounded
     (count, size, scan); something left out of the current prompt is still

@@ -23,6 +23,10 @@ from retail_analytics.application.context import (
     ModelContext,
 )
 from retail_analytics.application.contracts import Correlation
+from retail_analytics.application.contracts.schema_context import (
+    SchemaContext,
+    SchemaContextStatus,
+)
 from retail_analytics.application.contracts.tools import ExecutionContext
 from retail_analytics.application.investigation_policy import (
     catalog_fingerprint,
@@ -98,7 +102,9 @@ def _execution(permissions: frozenset[str]) -> ExecutionContext:
     )
 
 
-def _worst_case_context(can_fetch_evidence: bool = True) -> str:
+def _worst_case_context(
+    can_fetch_evidence: bool = True, can_describe_schema: bool = True
+) -> str:
     """Context text with every note and the compacted-evidence line present."""
     now = datetime(2026, 1, 1, tzinfo=UTC)
     digest = EvidenceDigest(
@@ -135,7 +141,11 @@ def _worst_case_context(can_fetch_evidence: bool = True) -> str:
             masked=tuple(DisclosureKind),
         ),
         estimated_tokens=1,
-    ).render(can_fetch_evidence=can_fetch_evidence)
+        schema=SchemaContext(SchemaContextStatus.AVAILABLE, ("catalog v1",), "f"),
+    ).render(
+        can_fetch_evidence=can_fetch_evidence,
+        can_describe_schema=can_describe_schema,
+    )
 
 
 def _mentions(text: str) -> set[str]:
@@ -167,7 +177,10 @@ def _principal_text(
     ctx = _execution(permissions)
     catalog = {d.name for d in registry.catalog(ctx)}
     policy = render_investigation_policy(catalog)
-    notes = _worst_case_context(can_fetch_evidence="fetch_evidence" in catalog)
+    notes = _worst_case_context(
+        can_fetch_evidence="fetch_evidence" in catalog,
+        can_describe_schema="describe_relation" in catalog,
+    )
     return catalog, policy, "\n".join([policy, notes, _descriptor_text(registry, ctx)])
 
 
@@ -178,6 +191,7 @@ def test_every_tool_named_in_instructions_and_context_is_callable() -> None:
     assert "fetch_evidence" in catalog
     # The scan must be live: the compacted-evidence note names the tool.
     assert "fetch_evidence" in _mentions(_worst_case_context())
+    assert "describe_relation" in _mentions(_worst_case_context())
     assert {"execute_analysis", "save_report"} <= _mentions(text)
     assert _mentions(text) <= catalog, sorted(_mentions(text) - catalog)
 
