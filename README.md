@@ -27,6 +27,8 @@ gcloud auth application-default login
 ./scripts/bootstrap.sh --interactive
 ```
 
+> **Check your settings:** Review `.env` in the project root to verify the values entered during interactive setup.
+
 **2. Start** the backend (Ctrl-C stops it):
 
 ```sh
@@ -44,6 +46,20 @@ The launcher issues a fresh local-admin token into `~/.analytics-token` (mode 06
 You are the local administrator, `exec-local-admin`: bootstrap provisions it with the executive, editor, reviewer and admin roles and an explicit grant of every product in the dataset (an admin role alone grants no data).
 
 Live mode and local execution are the defaults (`APP_MODE=live`, `EXECUTION_BACKEND=local`). Missing credentials or failed access checks stop setup with an actionable error. Existing `.env` values are preserved: if yours explicitly says `APP_MODE=fixture`, change it to `live` and rerun bootstrap. Fixture mode is an opt-in offline wiring check that returns a fixed response, not real analysis. Temporal is [opt-in](docs/development.md#temporal-execution-opt-in).
+
+## Explore the traces and dashboards
+
+Telemetry starts automatically with the default setup. Ask a question, then open:
+
+| Tool | Local link | Login |
+| --- | --- | --- |
+| **MLflow — investigation traces** | **[Open traces](http://127.0.0.1:55500/#/experiments/0/traces)** | No login required |
+| **Grafana — Agent overview** | **[Open agent dashboard](http://127.0.0.1:53000/d/ra-agent-overview)** | `admin` / `admin` |
+| **Grafana — Local telemetry overview** | **[Open telemetry dashboard](http://127.0.0.1:53000/d/ra-local-telemetry)** | `admin` / `admin` |
+
+**Grafana loads both dashboards and the Prometheus data source automatically**—no manual import is needed. Metrics appear as you use the assistant. The login above is the default unless you override `COMPOSE_GRAFANA_ADMIN_PASSWORD` or change it in Grafana.
+
+In **MLflow**, open an investigation trace to inspect sanitized model inputs and outputs, model names, tool calls, SQL, token usage and estimated costs.
 
 ### Representative conversations (live mode)
 
