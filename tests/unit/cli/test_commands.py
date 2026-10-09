@@ -194,6 +194,27 @@ def test_active_run_conflict_points_at_the_active_run() -> None:
     assert "analytics follow r7" in result.output
 
 
+def test_interrupted_local_run_is_reported_as_failed_without_resuming() -> None:
+    from retail_analytics.application.investigation_runtime import (
+        INTERRUPTED_NOTICE,
+        INTERRUPTED_SUMMARY,
+    )
+
+    backend = Backend()
+    backend.runs["r1"] = run_view("failed", answer=INTERRUPTED_NOTICE)
+    backend.streams = [
+        lambda r: httpx.Response(
+            200,
+            content=sse([event(1, "run.failed", INTERRUPTED_SUMMARY)], end="failed"),
+        )
+    ]
+    result = invoke(backend, "follow", "r1")
+    assert result.exit_code == 5
+    assert "interrupted" in result.output.lower()
+    assert "Send the request again" in result.output
+    assert not backend.calls("POST", "/runs")  # the CLI never restarts it
+
+
 def test_cancel_reports_pending_external_cancellation_truthfully() -> None:
     backend = Backend()
     backend.overrides[("POST", "/v1/runs/r1/cancel")] = lambda r: httpx.Response(
