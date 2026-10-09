@@ -63,6 +63,7 @@ from retail_analytics.application.output_privacy import (
     OutputSection,
     OutputWithheld,
 )
+from retail_analytics.application.persona import PersonaDelivery
 from retail_analytics.application.ports.investigations import (
     InvestigationInputs,
     RunPrincipals,
@@ -246,6 +247,7 @@ class InvestigationRuntime:
         operations: ToolExecutionRepository,
         queries: QueryExecutionService | None,
         launcher: InvestigationLauncher,
+        personas: PersonaDelivery | None = None,
         clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         self._runs = runs
@@ -261,6 +263,7 @@ class InvestigationRuntime:
         self._operations = operations
         self._queries = queries
         self._launcher = launcher
+        self._personas = personas
         self._clock = clock
 
     async def begin(self, run_id: str) -> BeginOutcome:
@@ -273,6 +276,7 @@ class InvestigationRuntime:
         if run is None or run.status.is_terminal:
             return BeginOutcome(None if run is None else run.status)
         await self._budgets.open(run_id)
+        await self._pinned_persona(run_id)
         await self._publish_once(run, EventKind.RUN_STARTED, "Investigation started.")
         if run.status is not RunStatus.RUNNING:
             return BeginOutcome(run.status, AdmissionDecision.PROCEED)
@@ -308,10 +312,12 @@ class InvestigationRuntime:
             context, [digest.evidence_id for digest in built.evidence]
         )
         tools = frozenset(d.name for d in self._registry.catalog(context))
+        persona = await self._pinned_persona(run_id)
         return ModelStep(
             instructions="\n".join(
                 [
                     render_investigation_policy(tools),
+                    *([persona] if persona else []),
                     _budget_line(snapshot),
                     built.render(can_fetch_evidence=FETCH_EVIDENCE in tools),
                 ]
@@ -595,6 +601,18 @@ class InvestigationRuntime:
         await self._publish_once(run, EventKind.RUN_CANCELLED, summary)
         await self._launcher.promote_next(run.session_id)
         return StepOutcome(StepResult.STOPPED, status=run.status)
+
+    async def _pinned_persona(self, run_id: str) -> str | None:
+        """The run's persona block: pinned when the run starts, then fixed.
+
+        It supplies presentation defaults only and sits between the policy and
+        the per-run context, so the policy and the user's preferences stay in
+        force. A persona cannot add tools or change authority: the catalog and
+        every check come from code.
+        """
+        if self._personas is None:
+            return None
+        return await self._personas.section_for_run(run_id)
 
     async def _running(self, run_id: str) -> tuple[Principal, Run]:
         principal = await self._principals.get(run_id)

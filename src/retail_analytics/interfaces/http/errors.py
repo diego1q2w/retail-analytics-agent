@@ -27,6 +27,7 @@ from retail_analytics.application.contracts.persistence import (
     RecordNotFound,
 )
 from retail_analytics.application.investigations import RunNotActive
+from retail_analytics.domain.persona import PersonaError, PersonaErrorCode
 from retail_analytics.domain.report_deletion import DeletionError, DeletionErrorCode
 from retail_analytics.domain.reports import ReportError, ReportErrorCode
 
@@ -123,6 +124,18 @@ def to_api_error(error: Exception) -> ApiError:
             return ApiError(
                 _DELETION_STATUS[error.code], error.code.value, error.message
             )
+        case PersonaError():
+            return ApiError(
+                _PERSONA_STATUS[error.code],
+                error.code.value,
+                error.message,
+                details={
+                    "findings": [
+                        {"kind": f.kind.value, "severity": f.severity.value}
+                        for f in error.findings
+                    ]
+                },
+            )
         case ValueError():
             # Raised by use-case input checks (empty or overlong text).
             return ApiError(422, "invalid_request", str(error))
@@ -143,6 +156,18 @@ _REPORT_STATUS: dict[ReportErrorCode, int] = {
     ReportErrorCode.STALE_BASE_VERSION: 409,
     ReportErrorCode.EVIDENCE_UNAVAILABLE: 409,
     ReportErrorCode.ACCESS_CHANGED: 409,
+}
+
+_PERSONA_STATUS: dict[PersonaErrorCode, int] = {
+    PersonaErrorCode.INVALID_REQUEST: 422,
+    PersonaErrorCode.NOT_FOUND: 404,
+    PersonaErrorCode.SENSITIVE_CONTENT: 422,
+    PersonaErrorCode.POLICY_CONFLICT: 422,
+    PersonaErrorCode.CONFLICT: 409,
+    PersonaErrorCode.NOT_PREVIEWED: 409,
+    PersonaErrorCode.IDEMPOTENCY_CONFLICT: 409,
+    PersonaErrorCode.NOT_A_DRAFT: 409,
+    PersonaErrorCode.NOT_PUBLISHED_BEFORE: 409,
 }
 
 _DELETION_STATUS: dict[DeletionErrorCode, int] = {
@@ -196,6 +221,7 @@ def install_error_handlers(app: FastAPI) -> None:
         RunNotActive,
         ReportError,
         DeletionError,
+        PersonaError,
         ValueError,
         # Anything else (reached through Starlette's server-error middleware).
         Exception,

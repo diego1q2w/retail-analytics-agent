@@ -20,6 +20,10 @@ from retail_analytics.application.contracts.conversations import (
     RunView,
     SessionOverview,
 )
+from retail_analytics.application.contracts.persona import (
+    PersonaHistory,
+    PersonaPreview,
+)
 from retail_analytics.application.contracts.report_deletion import (
     DeletionPreview,
     DeletionResult,
@@ -36,6 +40,7 @@ from retail_analytics.application.investigations import (
     SubmitMode,
 )
 from retail_analytics.domain.conversation import Session
+from retail_analytics.domain.persona import PersonaVersion, Publication
 from retail_analytics.domain.runs import Run
 
 
@@ -156,6 +161,43 @@ class Deletions(Protocol):
     ) -> DeletionPreview: ...
 
 
+class Personas(Protocol):
+    async def current(self, principal: Principal) -> PersonaVersion | None: ...
+
+    async def get(self, principal: Principal, version_id: str) -> PersonaVersion: ...
+
+    async def history(
+        self, principal: Principal, *, limit: int = ...
+    ) -> PersonaHistory: ...
+
+    async def create_draft(
+        self, principal: Principal, content: str, *, idempotency_key: str
+    ) -> PersonaVersion: ...
+
+    async def update_draft(
+        self,
+        principal: Principal,
+        draft_id: str,
+        content: str,
+        *,
+        expected_revision: int,
+    ) -> PersonaVersion: ...
+
+    async def discard_draft(
+        self, principal: Principal, draft_id: str
+    ) -> PersonaVersion: ...
+
+    async def preview(self, principal: Principal, draft_id: str) -> PersonaPreview: ...
+
+    async def publish(
+        self, principal: Principal, draft_id: str, *, expected_current: str | None
+    ) -> Publication: ...
+
+    async def rollback(
+        self, principal: Principal, version_id: str, *, expected_current: str | None
+    ) -> Publication: ...
+
+
 @dataclass(frozen=True)
 class HttpServices:
     authenticator: Authenticates
@@ -163,6 +205,9 @@ class HttpServices:
     investigations: Investigations
     reports: Reports
     deletions: Deletions
+    # Optional so a deployment (or a test) without persona management still
+    # serves everything else; its routes then answer 503.
+    persona: Personas | None = None
 
 
 @dataclass(frozen=True)

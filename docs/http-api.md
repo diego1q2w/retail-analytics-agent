@@ -62,6 +62,14 @@ records. A missing permission (for example no `reports:delete_own`) is 403
 | `GET /v1/deletion-proposals/{proposal_id}` | Preview a deletion the assistant proposed |
 | `POST /v1/deletion-proposals/{proposal_id}/confirm` | Delete exactly the proposed reports; body must be `{"confirm": true}` |
 | `POST /v1/deletion-proposals/{proposal_id}/cancel` | Withdraw the proposal |
+| `GET /v1/persona` | The active company persona (editors, `persona:edit`; `current: null` when none) |
+| `GET /v1/persona/history` | Versions and every publish/rollback, newest first (`limit`) |
+| `POST /v1/persona/drafts` | Draft from free text `{content, submission_key}`; personal data is 422 `sensitive_content`; text that conflicts with fixed policy is stored with `findings` but cannot be previewed or published (422 `policy_conflict`) |
+| `PUT /v1/persona/drafts/{id}` | Replace your own draft `{content, expected_revision}` (409 `conflict` if stale); clears its preview |
+| `DELETE /v1/persona/drafts/{id}` | Discard your own draft |
+| `POST /v1/persona/drafts/{id}/preview` | Current and proposed persona over the same sample findings; checks figures, evidence and limitations survived |
+| `POST /v1/persona/drafts/{id}/publish` | `{expected_current_version_id}` (the active version you saw, or null). 409 `conflict` if it moved or the draft is based on an older version, 409 `not_previewed` without a preview of this exact text |
+| `POST /v1/persona/rollback` | `{target_version_id, expected_current_version_id}`: make an earlier published version active again |
 
 Deletion confirmation exists only as this explicit, authenticated user
 request: the model can propose a deletion but nothing it writes can confirm

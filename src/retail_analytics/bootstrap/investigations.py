@@ -41,6 +41,7 @@ from retail_analytics.bootstrap.context import ContextServices, build_context
 from retail_analytics.bootstrap.currency import build_currency_conversion
 from retail_analytics.bootstrap.evidence import build_evidence
 from retail_analytics.bootstrap.persistence import Persistence
+from retail_analytics.bootstrap.persona import build_persona
 from retail_analytics.bootstrap.preferences import build_preferences
 from retail_analytics.bootstrap.report_deletion import build_report_deletion
 from retail_analytics.bootstrap.reports import build_reports
@@ -221,6 +222,7 @@ def build_investigations(
         operations=persistence.tool_executions,
         queries=queries,
         launcher=launcher,
+        personas=build_persona(persistence, access.resolver).delivery,
     )
     tools = ToolRunner(
         registry=registry,

@@ -44,6 +44,7 @@ from retail_analytics.bootstrap.persistence import (
     Persistence,
     persistence_from_settings,
 )
+from retail_analytics.bootstrap.persona import build_persona
 from retail_analytics.bootstrap.preferences import build_preferences
 from retail_analytics.bootstrap.report_deletion import build_report_deletion
 from retail_analytics.bootstrap.reports import build_reports
@@ -113,6 +114,7 @@ def build_http_services(
             persistence, artifacts.service, evidence, context.gate, access.resolver
         ),
         deletions=build_report_deletion(persistence, access.resolver),
+        persona=build_persona(persistence, access.resolver).service,
     )
 
 

@@ -492,3 +492,49 @@ audit_events = sa.Table(
     sa.Column("run_id", sa.Text),
     sa.Column("details", JSONB, nullable=False),
 )
+
+persona_versions = sa.Table(
+    "persona_versions",
+    metadata,
+    sa.Column("version_id", sa.Text, primary_key=True),
+    sa.Column("number", sa.BigInteger, sa.Identity(), nullable=False, unique=True),
+    sa.Column("content", sa.Text, nullable=False),
+    sa.Column("content_digest", sa.String(64), nullable=False),
+    sa.Column("base_version_id", sa.Text),
+    sa.Column("author_id", sa.Text, nullable=False),
+    sa.Column("state", sa.Text, nullable=False),
+    sa.Column("revision", sa.Integer, nullable=False),
+    sa.Column("findings", JSONB, nullable=False),
+    sa.Column("previewed_digest", sa.String(64)),
+    sa.Column("idempotency_key", sa.Text, nullable=False),
+    _ts("created_at"),
+    _ts("updated_at"),
+    _ts("first_published_at", nullable=True),
+)
+
+persona_state = sa.Table(
+    "persona_state",
+    metadata,
+    sa.Column("persona_id", sa.Text, primary_key=True),
+    sa.Column("current_version_id", sa.Text),
+    sa.Column("publication_seq", sa.BigInteger, nullable=False),
+)
+
+persona_publications = sa.Table(
+    "persona_publications",
+    metadata,
+    sa.Column("sequence", sa.BigInteger, sa.Identity(), primary_key=True),
+    sa.Column("version_id", sa.Text, nullable=False),
+    sa.Column("previous_version_id", sa.Text),
+    sa.Column("action", sa.Text, nullable=False),
+    sa.Column("actor_id", sa.Text, nullable=False),
+    _ts("published_at"),
+)
+
+run_personas = sa.Table(
+    "run_personas",
+    metadata,
+    sa.Column("run_id", sa.Text, primary_key=True),
+    sa.Column("version_id", sa.Text),
+    _ts("pinned_at"),
+)

@@ -13,6 +13,7 @@ from pydantic import TypeAdapter, ValidationError
 from retail_analytics.application.contracts import Identifier
 from retail_analytics.interfaces.http.dependencies import CurrentPrincipal, Services
 from retail_analytics.interfaces.http.errors import ApiError
+from retail_analytics.interfaces.http.persona_routes import build_persona_router
 from retail_analytics.interfaces.http.schemas import (
     AnswerRequest,
     CancelOut,
@@ -305,4 +306,5 @@ def build_router(stream: StreamSettings) -> APIRouter:
     ) -> DeletionPreviewOut:
         return DeletionPreviewOut.of(await s.deletions.cancel(principal, proposal_id))
 
+    router.include_router(build_persona_router())
     return router
