@@ -57,13 +57,61 @@ class StopReason(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ContextStanding:
+    """What is valid now, judged under current authority, beyond the bounded
+    selection one request shows. An earlier model response stays reusable
+    only while everything it was shown is still listed here unchanged;
+    anything missing (invalidated, scope lost, withdrawn, unknown) is not.
+    """
+
+    # Every usable session record (after the latest reset) and its version.
+    evidence: tuple[tuple[str, int], ...]
+    # Every history message that may still enter context, by fingerprint.
+    messages: tuple[tuple[str, str], ...]
+    # Digest per part of ``ModelStep.history_key`` (names a restart cause).
+    key_parts: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ModelStep:
-    """What one model request may see and use, built under current authority."""
+    """What one model request may see and use, built under current authority.
+
+    Built inside the model request (activity), never part of durable history.
+    """
 
     instructions: str
     tools: frozenset[str]
+    # Authority, request, preferences and topic reset; never prompt capacity.
     history_key: str
+    # Evidence shown to this request.
     evidence_versions: tuple[tuple[str, int], ...]
+    # History messages shown to this request, by fingerprint.
+    history_messages: tuple[tuple[str, str], ...] = ()
+    # None: nothing beyond this request's selection is known to be valid.
+    standing: ContextStanding | None = None
+
+
+class ContextKeyPart(StrEnum):
+    """The parts of ``ModelStep.history_key``: a change to any of them
+    invalidates the whole conversation."""
+
+    AUTHORITY = "authority"
+    REQUEST = "request"
+    PREFERENCES = "preferences"
+    TOPIC_RESET = "topic_reset"
+
+
+class ContextRestartCause(StrEnum):
+    """Why a model conversation was restarted (telemetry code, never content)."""
+
+    PROVENANCE_MISSING = "provenance_missing"
+    AUTHORITY_CHANGED = "authority_changed"
+    REQUEST_CHANGED = "request_changed"
+    PREFERENCES_CHANGED = "preferences_changed"
+    TOPIC_RESET = "topic_reset"
+    CONTEXT_CHANGED = "context_changed"
+    HISTORY_CHANGED = "history_changed"
+    EVIDENCE_INVALIDATED = "evidence_invalidated"
 
 
 @dataclass(frozen=True, slots=True)

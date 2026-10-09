@@ -50,6 +50,9 @@ from retail_analytics.application.contracts.investigations import (
     AssistantOutput,
     BeginOutcome,
     CancelProgress,
+    ContextKeyPart,
+    ContextRestartCause,
+    ContextStanding,
     FinishRequest,
     ModelStep,
     QuestionDraft,
@@ -164,8 +167,15 @@ class InvestigationContextChanged(Exception):
     budgets and tool effects survive, derived claims do not).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self, cause: ContextRestartCause = ContextRestartCause.CONTEXT_CHANGED
+    ) -> None:
+        self.cause = cause
         super().__init__("investigation context changed")
+
+
+def _digest_of(value: object) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
 def _withheld(withheld: OutputWithheld) -> StepOutcome:
@@ -310,6 +320,15 @@ class InvestigationRuntime:
         )
         tools = frozenset(d.name for d in self._registry.catalog(context))
         persona = await self._pinned_persona(run_id)
+        # Which history is shown is a prompt-capacity choice, so it is not
+        # part of the key: shown messages and evidence are validated one by
+        # one against the authoritative standing instead.
+        key_parts: tuple[tuple[str, object], ...] = (
+            (ContextKeyPart.AUTHORITY, [run_id, built.authorization_version]),
+            (ContextKeyPart.REQUEST, built.request),
+            (ContextKeyPart.PREFERENCES, list(built.preferences)),
+            (ContextKeyPart.TOPIC_RESET, str(built.topic_reset_at)),
+        )
         return ModelStep(
             instructions="\n".join(
                 [
@@ -320,21 +339,17 @@ class InvestigationRuntime:
                 ]
             ),
             tools=tools,
-            history_key=hashlib.sha256(
-                json.dumps(
-                    [
-                        run_id,
-                        built.authorization_version,
-                        built.request,
-                        built.preferences,
-                        str(built.topic_reset_at),
-                        [(m.role.value, m.text) for m in built.history],
-                    ],
-                    sort_keys=True,
-                ).encode()
-            ).hexdigest(),
+            history_key=_digest_of(key_parts),
             evidence_versions=tuple(
                 (digest.evidence_id, digest.version) for digest in built.evidence
+            ),
+            history_messages=tuple(
+                (m.message_id, m.fingerprint) for m in built.history
+            ),
+            standing=ContextStanding(
+                evidence=built.current_evidence,
+                messages=built.current_history,
+                key_parts=tuple((str(k), _digest_of(v)[:16]) for k, v in key_parts),
             ),
         )
 

@@ -54,15 +54,19 @@ from pydantic_core import SchemaValidator, core_schema
 
 from retail_analytics.application.contracts.investigations import (
     AnswerDraft,
+    ContextKeyPart,
+    ContextRestartCause,
     ModelStep,
     QuestionDraft,
 )
+from retail_analytics.application.contracts.telemetry import Label, Metric, Span
 from retail_analytics.application.investigation_runtime import (
     InvestigationContextChanged,
 )
 from retail_analytics.application.telemetry import (
     ATTRIBUTION_METADATA_KEY,
     attribution_from_metadata,
+    telemetry,
 )
 from retail_analytics.application.tools import ToolDescriptor, ToolResult
 
@@ -202,10 +206,12 @@ class GuardedModel(Model):
         services = self._binding.require()
         deps = current_deps()
         step = await services.steps.prepare_model_step(deps.run_id)
-        if not history_is_current(messages, step):
+        cause = restart_cause(messages, step)
+        if cause is not None:
             # Restart the agent loop; never replay derived claims or tool
             # arguments from a context that is no longer valid.
-            raise InvestigationContextChanged
+            _record_restart(deps.run_id, cause)
+            raise InvestigationContextChanged(cause)
         parameters = replace(
             model_request_parameters,
             function_tools=[
@@ -219,7 +225,12 @@ class GuardedModel(Model):
             *messages,
         ]
         response = await services.model.request(framed, model_settings, parameters)
-        provenance = {"key": step.history_key, "evidence": dict(step.evidence_versions)}
+        provenance = {
+            "key": step.history_key,
+            "evidence": dict(step.evidence_versions),
+            "messages": dict(step.history_messages),
+            "parts": dict(step.standing.key_parts) if step.standing else {},
+        }
         return replace(
             response,
             metadata={**(response.metadata or {}), _HISTORY_PROVENANCE: provenance},
@@ -240,28 +251,75 @@ class GuardedModel(Model):
         return DEFAULT_PROFILE if services is None else services.model.profile
 
 
-def history_is_current(messages: list[ModelMessage], step: ModelStep) -> bool:
-    """Every earlier model response came from context that is still valid.
+# Most specific first: what a changed key most likely means for the user.
+_KEY_CAUSES = (
+    (ContextKeyPart.AUTHORITY, ContextRestartCause.AUTHORITY_CHANGED),
+    (ContextKeyPart.TOPIC_RESET, ContextRestartCause.TOPIC_RESET),
+    (ContextKeyPart.PREFERENCES, ContextRestartCause.PREFERENCES_CHANGED),
+    (ContextKeyPart.REQUEST, ContextRestartCause.REQUEST_CHANGED),
+)
 
-    Valid: the same authority/scope key, and every evidence version it saw is
-    still the current one (new evidence alone keeps the conversation).
+
+def restart_cause(
+    messages: list[ModelMessage], step: ModelStep
+) -> ContextRestartCause | None:
+    """Why earlier model responses may not be reused, or None if they may.
+
+    Reusable: each response carries provenance with the same key (authority,
+    request, preferences, topic reset), and everything it was shown -
+    evidence versions and history messages - is still valid now according
+    to the step's authoritative standing. What one request shows is bounded
+    (count, size, scan); something left out of the current prompt is still
+    judged by that standing, so leaving it out alone never restarts, while
+    invalidation, lost scope, withdrawal or unknown validity always does.
+    Without a standing only the current selection is trusted (strict).
     """
-    current = dict(step.evidence_versions)
+    standing = step.standing
+    evidence = dict(standing.evidence if standing else step.evidence_versions)
+    shown = dict(standing.messages if standing else step.history_messages)
+    parts = dict(standing.key_parts) if standing else {}
     for message in messages:
         if not isinstance(message, ModelResponse):
             continue
         previous = (message.metadata or {}).get(_HISTORY_PROVENANCE)
         if (
             not isinstance(previous, dict)
-            or previous.get("key") != step.history_key
             or not isinstance(previous.get("evidence"), dict)
-            or any(
-                current.get(key) != version
-                for key, version in previous["evidence"].items()
-            )
+            or not isinstance(previous.get("messages"), dict)
         ):
-            return False
-    return True
+            return ContextRestartCause.PROVENANCE_MISSING
+        if previous.get("key") != step.history_key:
+            return _key_cause(previous.get("parts"), parts)
+        if any(
+            evidence.get(key) != version
+            for key, version in previous["evidence"].items()
+        ):
+            return ContextRestartCause.EVIDENCE_INVALIDATED
+        if any(
+            shown.get(key) != fingerprint
+            for key, fingerprint in previous["messages"].items()
+        ):
+            return ContextRestartCause.HISTORY_CHANGED
+    return None
+
+
+def _key_cause(previous: object, current: dict[str, str]) -> ContextRestartCause:
+    if isinstance(previous, dict) and previous and current:
+        for part, cause in _KEY_CAUSES:
+            if previous.get(part) != current.get(part):
+                return cause
+    return ContextRestartCause.CONTEXT_CHANGED
+
+
+def _record_restart(run_id: str, cause: ContextRestartCause) -> None:
+    """Sanitized cause code only (no context, evidence or message content)."""
+    telemetry().count(Metric.CONTEXT_RESTARTS, {Label.REASON: cause.value})
+    with telemetry().span(
+        Span.CONTEXT_RESTART,
+        run_id=run_id,
+        attributes={"restart.cause": cause.value},
+    ):
+        pass
 
 
 # Tools

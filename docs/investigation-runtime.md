@@ -236,13 +236,22 @@ private Temporal history; its access controls and seven-day closed-history
 retention remain necessary. No public traces should copy that content.
 
 Each model response carries application-owned context provenance: a fingerprint
-of the authorization version, request, preferences and selected conversation,
-plus the evidence IDs and versions it saw. Before sending provider history,
-the next activity checks that provenance against freshly authorized context.
-Changed context, missing provenance or removed/revised evidence restarts the
-agent conversation without sending the old messages. New evidence can be added
-without a restart. The investigation keeps its durable budgets and operation
-records; a conversation restart does not grant extra budget or undo tool effects.
+of the authorization version, request, preferences and topic reset, plus the
+evidence IDs and versions and the conversation messages it was shown. Before
+sending provider history, the next activity checks that provenance against
+freshly authorized context. The prompt itself is bounded (evidence count, size
+and scan, history length), but validity is not judged by what the current
+prompt happens to show: every earlier-shown evidence record and message is
+checked against its authoritative current standing, including ones the bounds
+now leave out. Leaving something out of the prompt therefore never restarts
+the conversation; changed authority, request (steering), preferences or topic,
+missing provenance, or shown evidence or messages that were invalidated,
+withdrawn, revised, lost scope or whose validity cannot be confirmed restart
+it without sending the old messages. New evidence can be added without a
+restart. Each restart is counted with a sanitized cause code
+(`ra_context_restarts_total{reason}` and an `investigation.context_restart`
+span). The investigation keeps its durable budgets and operation records; a
+conversation restart does not grant extra budget or undo tool effects.
 
 Answer and clarification release use a fresh output privacy gate and evidence
 provenance. A stopped or revoked investigation cannot start new tool work.

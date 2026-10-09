@@ -40,6 +40,8 @@ class Metric(StrEnum):
     RETRIEVAL_SECONDS = "ra_retrieval_seconds"
     RETRIEVAL_SAMPLES = "ra_retrieval_review_samples_total"
     BUDGET_STOPS = "ra_budget_stops_total"
+    # Model conversations restarted because their source context changed.
+    CONTEXT_RESTARTS = "ra_context_restarts_total"
     RUN_BUDGET_USE = "ra_run_budget_use_ratio"
     TELEMETRY_DROPPED = "ra_telemetry_dropped_total"
 
@@ -108,6 +110,7 @@ class Span(StrEnum):
     RETRIEVAL = "retrieval.search"
     ANSWER = "answer.release"
     LIFECYCLE = "run.step"
+    CONTEXT_RESTART = "investigation.context_restart"
 
 
 @dataclass(frozen=True, slots=True)

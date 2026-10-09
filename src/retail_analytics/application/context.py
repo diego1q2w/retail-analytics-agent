@@ -26,6 +26,7 @@ Request admission (off-topic decline) lives in ``domain.request_scope``.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -93,6 +94,18 @@ class ContextMessage:
     treatment: HistoryTreatment
     created_at: datetime
 
+    @property
+    def fingerprint(self) -> str:
+        """Identity of the text as shown (role, treatment and screened words)."""
+        return message_fingerprint(self.role, self.treatment, self.text)
+
+
+def message_fingerprint(
+    role: MessageRole, treatment: HistoryTreatment, text: str
+) -> str:
+    document = "\x1f".join((role.value, treatment.value, text))
+    return hashlib.sha256(document.encode()).hexdigest()[:32]
+
 
 @dataclass(frozen=True, slots=True)
 class EvidenceDigest:
@@ -148,6 +161,15 @@ class ModelContext:
     topic_reset_at: datetime | None = None
     # Opaque references the model may legitimately use (from usable evidence).
     permitted_references: frozenset[str] = field(default_factory=frozenset)
+    # Authoritative standing of everything that may have been shown in an
+    # earlier step of the run, not only what this context selected (prompt
+    # bounds are not validity): every record usable now (after the latest
+    # reset, including those over the count/size bounds and the run's linked
+    # records beyond the scan) with its current version ...
+    current_evidence: tuple[tuple[str, int], ...] = ()
+    # ... and the fingerprint of every scanned message that may still enter
+    # context, as it would be shown now.
+    current_history: tuple[tuple[str, str], ...] = ()
 
     def render(self, *, can_fetch_evidence: bool = True) -> str:
         """Plain-text context blocks; untrusted content is quoted as data.
@@ -233,9 +255,11 @@ class ContextBuilder:
             )
             if m.message_id != request_message_id
         ]
+        # The run's own links load every record it has already used, even
+        # beyond the scan, so their validity is judged rather than unknown.
         session = await self._evidence.session_standing(
             ctx,
-            run_ids=[m.run_id for m in messages if m.run_id is not None],
+            run_ids=[*(m.run_id for m in messages if m.run_id is not None), run_id],
             limit=budget.evidence_scan,
         )
         preferences = await self._preferences.effective(
@@ -284,6 +308,7 @@ class ContextBuilder:
 
         counts = {t: 0 for t in HistoryTreatment}
         selected: list[ContextMessage] = []
+        eligible: list[tuple[str, str]] = []
         over_budget_history = 0
         for message in reversed(messages):
             treatment = rules.treatment(message)
@@ -294,25 +319,25 @@ class ContextBuilder:
                 HistoryTreatment.WITHHELD_ACCESS_CHANGED,
             ):
                 continue
-            if len(selected) >= budget.max_history_messages:
-                over_budget_history += 1
-                continue
             text = screen.text(message.content)
             if treatment is HistoryTreatment.STRIP_FIGURES:
                 text = _strip_figures(text)
             text, _ = _clip(text, budget.max_message_chars)
+            candidate = ContextMessage(
+                message.message_id,
+                message.role,
+                text,
+                treatment,
+                message.created_at,
+            )
+            eligible.append((message.message_id, candidate.fingerprint))
+            if len(selected) >= budget.max_history_messages:
+                over_budget_history += 1
+                continue
             if used + len(text) > budget.max_chars:
                 over_budget_history += 1
                 continue
-            selected.append(
-                ContextMessage(
-                    message.message_id,
-                    message.role,
-                    text,
-                    treatment,
-                    message.created_at,
-                )
-            )
+            selected.append(candidate)
             used += len(text)
         history = tuple(reversed(selected))
 
@@ -347,6 +372,10 @@ class ContextBuilder:
             estimated_tokens=-(-used // CHARS_PER_TOKEN),
             topic_reset_at=reset_at,
             permitted_references=permitted,
+            current_evidence=tuple(
+                (s.evidence.evidence_id, s.evidence.version) for s in current
+            ),
+            current_history=tuple(eligible),
         )
 
     async def list_evidence(
