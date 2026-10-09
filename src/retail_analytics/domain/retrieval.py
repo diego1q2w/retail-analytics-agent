@@ -31,17 +31,36 @@ _STOPWORDS = frozenset(
 )
 
 
+# T36-F1 measured defaults (gemini-embedding-2, 768 dimensions; tuning split).
+SEMANTIC_MIN_SIMILARITY = 0.70
+LEXICAL_MIN_COVERAGE = 0.75
+SEMANTIC_WEIGHT = 2.0
+# Original T24 placeholders. Kept for the offline hashing embedder, whose cosine
+# scale is lexical-hash based and was never measured against the benchmark, and
+# as the "before" row of the T36 comparison.
+PLACEHOLDER_MIN_SIMILARITY = 0.55
+PLACEHOLDER_MIN_LEXICAL_COVERAGE = 0.5
+
+
 @dataclass(frozen=True, slots=True)
 class RetrievalConfig:
-    """Tunable retrieval settings; defaults are placeholders until T36 measures."""
+    """Tunable retrieval settings.
+
+    Defaults are the values measured for ``gemini-embedding-2`` (768 dimensions)
+    on the T36 tuning split (T36-F1). Cosine scales differ by embedding model, so
+    the offline hashing embedder gets its own thresholds (``HASHING_*``).
+    """
 
     max_results: int = MAX_RESULTS_CEILING
     # Candidates kept per channel before fusion.
     channel_candidates: int = 10
     rrf_k: int = 60
     # A candidate must clear at least one channel's absolute threshold.
-    min_similarity: float = 0.55
-    min_lexical_coverage: float = 0.5
+    min_similarity: float = SEMANTIC_MIN_SIMILARITY
+    min_lexical_coverage: float = LEXICAL_MIN_COVERAGE
+    # Weighted RRF: the semantic channel counts this many times the keyword
+    # channel (keyword weight is 1). 1.0 is plain equal-weight RRF.
+    semantic_weight: float = SEMANTIC_WEIGHT
     # Both channels in production. A single channel exists so evaluation can
     # compare keyword-only, semantic-only and fused ranking on one corpus.
     channels: frozenset[str] = CHANNELS
@@ -55,6 +74,8 @@ class RetrievalConfig:
             raise ValueError("min_similarity must be within [-1, 1]")
         if not 0.0 <= self.min_lexical_coverage <= 1.0:
             raise ValueError("min_lexical_coverage must be within [0, 1]")
+        if not 0.0 < self.semantic_weight <= 100.0:
+            raise ValueError("semantic_weight must be within (0, 100]")
         if not self.channels or not self.channels <= CHANNELS:
             raise ValueError("channels must be a non-empty subset of lexical, semantic")
 
@@ -63,6 +84,7 @@ class RetrievalConfig:
         base = (
             f"rrf{self.rrf_k}-n{self.channel_candidates}-k{self.max_results}"
             f"-sim{self.min_similarity}-lex{self.min_lexical_coverage}"
+            f"-ws{self.semantic_weight}"
         )
         if self.channels == CHANNELS:
             return base
@@ -139,11 +161,17 @@ def rank(scores: Mapping[str, float], limit: int) -> list[str]:
 
 
 def reciprocal_rank_fusion(
-    rankings: Mapping[str, Sequence[str]], k: int
+    rankings: Mapping[str, Sequence[str]],
+    k: int,
+    weights: Mapping[str, float] | None = None,
 ) -> dict[str, float]:
-    """Fuse ranked lists by rank only; raw channel scores are incomparable."""
+    """Fuse ranked lists by rank only; raw channel scores are incomparable.
+
+    ``weights`` scales each channel's contribution (default 1 per channel).
+    """
     fused: dict[str, float] = {}
-    for ranked in rankings.values():
+    for channel, ranked in rankings.items():
+        weight = 1.0 if weights is None else weights.get(channel, 1.0)
         for position, key in enumerate(ranked, start=1):
-            fused[key] = fused.get(key, 0.0) + 1.0 / (k + position)
+            fused[key] = fused.get(key, 0.0) + weight / (k + position)
     return fused

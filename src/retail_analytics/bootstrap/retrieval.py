@@ -11,7 +11,13 @@ from retail_analytics.application.retrieval import (
 )
 from retail_analytics.bootstrap.config import BackendSettings, ConfigError
 from retail_analytics.bootstrap.knowledge import KnowledgeServices
-from retail_analytics.domain.retrieval import RetrievalConfig
+from retail_analytics.domain.retrieval import (
+    LEXICAL_MIN_COVERAGE,
+    PLACEHOLDER_MIN_LEXICAL_COVERAGE,
+    PLACEHOLDER_MIN_SIMILARITY,
+    SEMANTIC_MIN_SIMILARITY,
+    RetrievalConfig,
+)
 
 
 def build_embedder(settings: BackendSettings) -> TextEmbedder:
@@ -27,12 +33,24 @@ def build_embedder(settings: BackendSettings) -> TextEmbedder:
 
 
 def retrieval_config(settings: BackendSettings) -> RetrievalConfig:
+    # Cosine scales differ by model: the measured defaults are for Gemini
+    # embeddings; the hashing embedder keeps the unmeasured T24 values.
+    measured = settings.embedding_provider == "gemini"
+    similarity = settings.retrieval_min_similarity
+    if similarity is None:
+        similarity = SEMANTIC_MIN_SIMILARITY if measured else PLACEHOLDER_MIN_SIMILARITY
+    coverage = settings.retrieval_min_lexical_coverage
+    if coverage is None:
+        coverage = (
+            LEXICAL_MIN_COVERAGE if measured else PLACEHOLDER_MIN_LEXICAL_COVERAGE
+        )
     try:
         return RetrievalConfig(
             max_results=settings.retrieval_max_results,
             channel_candidates=settings.retrieval_channel_candidates,
-            min_similarity=settings.retrieval_min_similarity,
-            min_lexical_coverage=settings.retrieval_min_lexical_coverage,
+            min_similarity=similarity,
+            min_lexical_coverage=coverage,
+            semantic_weight=settings.retrieval_semantic_weight,
         )
     except ValueError as error:
         raise ConfigError([f"retrieval settings: {error}"]) from None

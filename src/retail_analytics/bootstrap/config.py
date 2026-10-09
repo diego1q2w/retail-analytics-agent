@@ -110,8 +110,12 @@ class BackendSettings(BaseModel):
     source_currency_declared: str | None = None
     retrieval_max_results: int = Field(default=3, ge=1, le=3)
     retrieval_channel_candidates: int = Field(default=10, ge=3, le=100)
-    retrieval_min_similarity: float = Field(default=0.55, ge=-1.0, le=1.0)
-    retrieval_min_lexical_coverage: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Unset thresholds resolve per embedding provider (see bootstrap.retrieval):
+    # measured gemini values, or the offline hashing values.
+    retrieval_min_similarity: float | None = Field(default=None, ge=-1.0, le=1.0)
+    retrieval_min_lexical_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Weighted RRF: semantic channel weight (keyword = 1); 2.0 measured in T36-F1.
+    retrieval_semantic_weight: float = Field(default=2.0, gt=0.0, le=100.0)
     # Run budgets (design section 39). Pinned per run when its accounting
     # opens; later changes only apply to new runs.
     run_active_seconds: int = Field(default=600, ge=30, le=86400)

@@ -285,7 +285,9 @@ class GoldenRetriever:
             else []
         )
         fused = reciprocal_rank_fusion(
-            {LEXICAL: lexical_rank, SEMANTIC: semantic_rank}, cfg.rrf_k
+            {LEXICAL: lexical_rank, SEMANTIC: semantic_rank},
+            cfg.rrf_k,
+            {SEMANTIC: cfg.semantic_weight},
         )
         hits: list[RetrievalHit] = []
         for key in rank(fused, len(fused)):

@@ -296,6 +296,49 @@ def test_fusion_ranks_by_rank_and_is_deterministic() -> None:
     assert fused == reciprocal_rank_fusion({"b": ["y", "z"], "a": ["x", "y"]}, 60)
 
 
+def test_weighted_fusion_makes_semantic_primary_and_keyword_a_booster() -> None:
+    rankings = {"lexical": ["k1", "s1"], "semantic": ["s1", "s2", "k1"]}
+    equal = reciprocal_rank_fusion(rankings, 60)
+    weighted = reciprocal_rank_fusion(rankings, 60, {"semantic": 2.0})
+    assert equal["k1"] > equal["s2"]  # both channels agree on k1
+    assert weighted["s1"] > weighted["k1"] and weighted["s1"] > weighted["s2"]
+    assert weighted["s1"] == pytest.approx(1 / 62 + 2 / 61)
+    assert reciprocal_rank_fusion(rankings, 60, {}) == equal
+
+
+def test_config_version_records_weight_and_validates_it() -> None:
+    assert "-ws2.0" in RetrievalConfig().version
+    assert RetrievalConfig(semantic_weight=1.0).version != RetrievalConfig().version
+    with pytest.raises(ValueError):
+        RetrievalConfig(semantic_weight=0.0)
+
+
+def test_unset_thresholds_resolve_per_embedding_provider() -> None:
+    from retail_analytics.bootstrap.config import load_backend_settings
+    from retail_analytics.bootstrap.retrieval import retrieval_config
+
+    fixture = retrieval_config(load_backend_settings(environ={}, env_file=None))
+    assert (fixture.min_similarity, fixture.min_lexical_coverage) == (0.55, 0.5)
+    environ = {
+        "RETAIL_ANALYTICS_EMBEDDING_PROVIDER": "gemini",
+        "RETAIL_ANALYTICS_GEMINI_API_KEY": "x",
+    }
+    gemini = retrieval_config(load_backend_settings(environ=environ, env_file=None))
+    assert (gemini.min_similarity, gemini.min_lexical_coverage) == (0.70, 0.75)
+    assert gemini.semantic_weight == 2.0
+    explicit = retrieval_config(
+        load_backend_settings(
+            environ={
+                **environ,
+                "RETAIL_ANALYTICS_RETRIEVAL_MIN_SIMILARITY": "0.6",
+                "RETAIL_ANALYTICS_RETRIEVAL_SEMANTIC_WEIGHT": "4",
+            },
+            env_file=None,
+        )
+    )
+    assert explicit.min_similarity == 0.6 and explicit.semantic_weight == 4.0
+
+
 def test_bm25_uses_only_the_given_documents() -> None:
     docs = {"d1": tokenize("monthly revenue trend"), "d2": tokenize("return rates")}
     scores = bm25(tokenize("revenue trends"), docs)

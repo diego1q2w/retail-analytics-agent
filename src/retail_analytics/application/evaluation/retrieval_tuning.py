@@ -30,6 +30,7 @@ class SweepRow:
     recall_at_3: float
     precision_at_3: float  # undefined precision counts as 0 for positives
     no_match_rate: float
+    mrr: float
     objective: float
     false_declines: int
     exposures: int
@@ -53,6 +54,7 @@ async def sweep(
     for config in configs:
         retrieve = make_retrieve(config)
         recalls: list[float] = []
+        reciprocals: list[float] = []
         precisions: list[float] = []
         declines = exposures = 0
         none_ok = none_total = 0
@@ -76,6 +78,7 @@ async def sweep(
             elif q.expect == "match":
                 if "recall_at_3" in m:
                     recalls.append(m["recall_at_3"])
+                    reciprocals.append(m.get("reciprocal_rank", 0.0))
                     precisions.append(m.get("precision_at_3", 0.0))
                 declines += not ranked
         recall = mean(recalls) or 0.0
@@ -87,6 +90,7 @@ async def sweep(
                 recall,
                 precision,
                 no_match,
+                mean(reciprocals) or 0.0,
                 objective(recall, precision, no_match),
                 declines,
                 exposures,
@@ -96,14 +100,16 @@ async def sweep(
 
 
 def best(rows: Sequence[SweepRow]) -> SweepRow:
-    """Highest objective; ties go to the stricter (higher) thresholds."""
+    """Highest objective; ties go to higher MRR, then the stricter thresholds."""
     return max(
         rows,
         key=lambda r: (
             -r.exposures,
             r.objective,
+            r.mrr,
             r.config.min_similarity,
             r.config.min_lexical_coverage,
+            -r.config.semantic_weight,
         ),
     )
 

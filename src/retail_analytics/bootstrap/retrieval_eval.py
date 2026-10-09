@@ -88,6 +88,8 @@ from retail_analytics.domain.metrics import default_catalog
 from retail_analytics.domain.retrieval import (
     CHANNELS,
     LEXICAL,
+    PLACEHOLDER_MIN_LEXICAL_COVERAGE,
+    PLACEHOLDER_MIN_SIMILARITY,
     SEMANTIC,
     RetrievalConfig,
 )
@@ -114,6 +116,7 @@ class Variant:
     channels: frozenset[str]
     similarity: float
     coverage: float
+    weight: float = 1.0
 
     @property
     def config(self) -> RetrievalConfig:
@@ -121,11 +124,13 @@ class Variant:
             channels=self.channels,
             min_similarity=self.similarity,
             min_lexical_coverage=self.coverage,
+            semantic_weight=self.weight,
         )
 
 
 def variants() -> dict[str, Variant]:
     defaults = RetrievalConfig()
+    placeholder = (PLACEHOLDER_MIN_SIMILARITY, PLACEHOLDER_MIN_LEXICAL_COVERAGE)
     table = [
         Variant("keyword-open", frozenset({LEXICAL}), -1.0, 0.0),
         Variant("semantic-open", frozenset({SEMANTIC}), -1.0, 0.0),
@@ -133,20 +138,17 @@ def variants() -> dict[str, Variant]:
         Variant(
             "keyword-placeholder",
             frozenset({LEXICAL}),
-            defaults.min_similarity,
-            defaults.min_lexical_coverage,
+            *placeholder,
         ),
         Variant(
             "semantic-placeholder",
             frozenset({SEMANTIC}),
-            defaults.min_similarity,
-            defaults.min_lexical_coverage,
+            *placeholder,
         ),
         Variant(
             "fused-placeholder",
             CHANNELS,
-            defaults.min_similarity,
-            defaults.min_lexical_coverage,
+            *placeholder,
         ),
         Variant(
             "semantic-tuned",
@@ -155,6 +157,15 @@ def variants() -> dict[str, Variant]:
             0.0,
         ),
         Variant("fused-tuned", CHANNELS, TUNED_SIMILARITY, TUNED_LEXICAL_COVERAGE),
+        # T36-F1: weighted fusion (semantic primary); "default" is the shipped config.
+        Variant("fused-weighted-open", CHANNELS, -1.0, 0.0, defaults.semantic_weight),
+        Variant(
+            "fused-default",
+            CHANNELS,
+            defaults.min_similarity,
+            defaults.min_lexical_coverage,
+            defaults.semantic_weight,
+        ),
     ]
     return {v.name: v for v in table}
 
@@ -278,6 +289,7 @@ def manifest(out: Path) -> None:
 
 GRID_SIMILARITY = (-1.0, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75)
 GRID_COVERAGE = (0.0, 0.25, 0.34, 0.5, 0.67, 0.75, 1.0)
+GRID_WEIGHT = (1.0, 2.0, 3.0, 5.0, 10.0)
 
 
 @main.command(name="sweep")
@@ -298,10 +310,17 @@ def sweep_command(channels: str) -> None:
             raise click.ClickException(str(exc)) from None
         similarities = GRID_SIMILARITY if SEMANTIC in selected else (-1.0,)
         coverages = GRID_COVERAGE if LEXICAL in selected else (0.0,)
+        weights = GRID_WEIGHT if selected == CHANNELS else (1.0,)
         configs = [
-            RetrievalConfig(channels=selected, min_similarity=s, min_lexical_coverage=c)
+            RetrievalConfig(
+                channels=selected,
+                min_similarity=s,
+                min_lexical_coverage=c,
+                semantic_weight=w,
+            )
             for s in similarities
             for c in coverages
+            for w in weights
         ]
         entries = corpus_entries(session.corpus)
         by_example = {e.example_id: k for k, e in entries.items()}
@@ -332,19 +351,24 @@ def sweep_command(channels: str) -> None:
             ) from None
     finally:
         session.close()
-    click.echo("min_sim min_cov recall@3 precision@3 no_match declines exposures obj")
+    click.echo(
+        "min_sim min_cov weight recall@3 precision@3 mrr no_match "
+        "declines exposures obj"
+    )
     for row in sorted(rows, key=lambda r: -r.objective):
         c = row.config
         click.echo(
             f"{c.min_similarity:7.2f} {c.min_lexical_coverage:7.2f} "
-            f"{row.recall_at_3:8.3f} {row.precision_at_3:11.3f} "
+            f"{c.semantic_weight:6.1f} "
+            f"{row.recall_at_3:8.3f} {row.precision_at_3:11.3f} {row.mrr:5.3f} "
             f"{row.no_match_rate:8.3f} {row.false_declines:8d} "
             f"{row.exposures:9d} {row.objective:5.3f}"
         )
     top = best(rows).config
     click.echo(
         f"best on tuning ({channels}): min_similarity={top.min_similarity} "
-        f"min_lexical_coverage={top.min_lexical_coverage}"
+        f"min_lexical_coverage={top.min_lexical_coverage} "
+        f"semantic_weight={top.semantic_weight}"
     )
 
 
