@@ -37,7 +37,13 @@ from retail_analytics.bootstrap.config import (
     BARE_GENERIC_NAMES,
     ENV_FILE_VARIABLE,
     KNOWN_ENV_NAMES,
+    BackendSettings,
+    RuntimeMode,
     is_legacy_name,
+)
+from retail_analytics.domain.retrieval import (
+    LEXICAL_MIN_COVERAGE,
+    SEMANTIC_MIN_SIMILARITY,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -191,6 +197,55 @@ def _postgres_volume_exists(ctx: SetupContext) -> bool:
         timeout=60,
     )
     return probe.returncode == 0
+
+
+SOURCE_DEFAULT = "default"
+SOURCE_FILE = "env file"
+SOURCE_ENVIRONMENT = "environment"
+
+
+def _resolve(ctx: SetupContext, key: str, default: str) -> tuple[str, str]:
+    """Effective value of ``key`` and where it came from (process env wins)."""
+    if os.environ.get(key):
+        return os.environ[key], SOURCE_ENVIRONMENT
+    if ctx.values.get(key):
+        return ctx.values[key], SOURCE_FILE
+    return default, SOURCE_DEFAULT
+
+
+def _current_defaults(mode: str) -> dict[str, str]:
+    fields = BackendSettings.model_fields
+    return {
+        "APP_MODE": RuntimeMode.LIVE.value,
+        "RUN_ACTIVE_SECONDS": str(fields["run_active_seconds"].default),
+        "EMBEDDING_PROVIDER": "hashing" if mode == "fixture" else "gemini",
+        "RETRIEVAL_MIN_SIMILARITY": str(SEMANTIC_MIN_SIMILARITY),
+        "RETRIEVAL_MIN_LEXICAL_COVERAGE": str(LEXICAL_MIN_COVERAGE),
+    }
+
+
+def configuration_summary(ctx: SetupContext) -> list[str]:
+    """Effective mode, embedding provider and run deadline with their source,
+    then possible stale overrides. Plain settings only, never secrets."""
+    mode, mode_source = _resolve(ctx, "APP_MODE", RuntimeMode.LIVE.value)
+    defaults = _current_defaults(mode)
+    provider, provider_source = _resolve(
+        ctx, "EMBEDDING_PROVIDER", defaults["EMBEDDING_PROVIDER"]
+    )
+    deadline, deadline_source = _resolve(
+        ctx, "RUN_ACTIVE_SECONDS", defaults["RUN_ACTIVE_SECONDS"]
+    )
+    lines = [
+        "Effective configuration (source in brackets):",
+        f"  execution mode      APP_MODE            {mode} [{mode_source}]",
+        f"  embedding provider  EMBEDDING_PROVIDER  {provider} [{provider_source}]",
+        f"  run deadline        RUN_ACTIVE_SECONDS  {deadline} s [{deadline_source}]",
+    ]
+    stale = local_env.find_stale_overrides(ctx.values, defaults, provider)
+    if stale:
+        lines.append(f"Possible stale overrides in {ctx.env_file}:")
+        lines += [f"  warning: {item.render()}" for item in stale]
+    return lines
 
 
 def step_environment(ctx: SetupContext) -> StepResult:
@@ -607,6 +662,8 @@ def main(
     warnings = [name for name, result in outcomes if result.status == "warning"]
     if warnings:
         click.echo("Completed with warnings in: " + ", ".join(warnings))
+    for line in configuration_summary(ctx):
+        click.echo(line)
     for line in next_steps(ctx) if not env_only else []:
         click.echo(line)
 

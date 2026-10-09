@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from retail_analytics.bootstrap import local_env
 from retail_analytics.bootstrap.config import (
     BACKEND_ENV_NAMES,
     CLI_ENV_NAMES,
@@ -293,7 +294,7 @@ def test_env_example_matches_settings() -> None:
         line.split("=", 1)[0]
         for line in example.read_text().splitlines()
         if line and not line.startswith("#")
-    }
+    } | set(local_env.documented_defaults(example.read_text()))
     assert set(backend.redacted_summary()) <= documented
     assert set(CLI_ENV_NAMES.values()) <= documented
 

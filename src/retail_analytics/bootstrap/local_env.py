@@ -11,6 +11,12 @@ Guarantees:
   identical), existing non-empty values are never changed, and lines are never
   reordered. Missing keys are appended; empty values are filled in place.
 - Reports and messages carry key names and statuses only, never values.
+- Ordinary defaults are not persisted. The template documents them as
+  ``# NAME=value`` comments; only setup values (credentials, generated
+  secrets, local stack addresses) are uncommented and so written. A default
+  that later changes in code therefore reaches every environment on its own.
+  A key the user already has is never touched, even when its value equals an
+  old default: ``find_stale_overrides`` flags such values, it never edits them.
 
 ``migrate_legacy`` renames the older prefixed keys (``RETAIL_ANALYTICS_*``,
 ``ANALYTICS_CLI_*``) of an existing file in place before it is reconciled.
@@ -62,16 +68,6 @@ GEMINI_API_KEY_KEY = backend_env_name("gemini_api_key")
 OPENAI_API_KEY_KEY = backend_env_name("openai_api_key")
 EXECUTION_BACKENDS = ("local", "temporal")
 DEFAULT_EXECUTION_BACKEND = "local"
-# Shown once, when an existing environment file (from before the selector
-# existed) gets the key: it adopts the new local default.
-LOCAL_ADOPTED_NOTE = (
-    f"{EXECUTION_BACKEND_KEY} was added as local, the new default: "
-    "investigations now run inside the API process with PostgreSQL only, and "
-    "Temporal and the worker are no longer started. Existing Temporal settings, "
-    "containers and data are kept, unused. To keep Temporal execution, set it "
-    "to temporal (finish or cancel active investigations before switching; "
-    "see README, 'Temporal execution')."
-)
 # External credentials: never generated; the action says what the user does.
 EXTERNAL_CREDENTIALS: dict[str, tuple[str, bool]] = {
     # key -> (action, secret input)
@@ -175,6 +171,96 @@ def temporal_address(values: Mapping[str, str]) -> str:
     return "127.0.0.1:" + (values.get(TEMPORAL_PORT_KEY) or DEFAULT_TEMPORAL_PORT)
 
 
+_DOCUMENTED = re.compile(r"^#\s?([A-Z][A-Z0-9_]*)=(.*)$")
+
+
+def documented_defaults(template: str) -> dict[str, str]:
+    """Settings the template documents as ``# NAME=value`` (not written)."""
+    found: dict[str, str] = {}
+    for raw in template.splitlines():
+        match = _DOCUMENTED.match(raw)
+        if match is not None:
+            found[match.group(1)] = _unquote(match.group(2).strip())
+    return found
+
+
+@dataclass(frozen=True)
+class HistoricalDefault:
+    """A value that used to be the default and was written into ``.env`` files."""
+
+    key: str
+    old_value: str
+    changed_in: str
+    # Only a possible stale override while the effective embedding provider is
+    # this one (``None`` = always).
+    only_for_provider: str | None = None
+
+
+# Small explicit registry; add a row whenever a default changes. Plain
+# settings only, never secrets.
+HISTORICAL_DEFAULTS: tuple[HistoricalDefault, ...] = (
+    HistoricalDefault(
+        "RUN_ACTIVE_SECONDS", "600", "the active deadline default changed to 2 minutes"
+    ),
+    HistoricalDefault(
+        "EMBEDDING_PROVIDER", "hashing", "gemini became the default in live mode"
+    ),
+    HistoricalDefault("APP_MODE", "fixture", "live became the default mode"),
+    HistoricalDefault(
+        "RETRIEVAL_MIN_SIMILARITY",
+        "0.55",
+        "retrieval thresholds now default per embedding provider",
+        only_for_provider="gemini",
+    ),
+    HistoricalDefault(
+        "RETRIEVAL_MIN_LEXICAL_COVERAGE",
+        "0.5",
+        "retrieval thresholds now default per embedding provider",
+        only_for_provider="gemini",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class StaleOverride:
+    key: str
+    old_value: str
+    current_default: str
+    changed_in: str
+
+    def render(self) -> str:
+        return (
+            f"{self.key}={self.old_value} matches an earlier default "
+            f"({self.changed_in}); the current default is {self.current_default}. "
+            "Keep it if you set it on purpose; otherwise delete the line to "
+            "follow the default. Nothing was changed."
+        )
+
+
+def find_stale_overrides(
+    file_values: Mapping[str, str],
+    current_defaults: Mapping[str, str],
+    effective_provider: str,
+) -> list[StaleOverride]:
+    """Values in the file equal to a registered old default that is no longer one.
+
+    ``current_defaults`` maps a key to today's default for this environment; a
+    value equal to it is not stale (removing it changes nothing).
+    """
+    found: list[StaleOverride] = []
+    for entry in HISTORICAL_DEFAULTS:
+        if file_values.get(entry.key, "") != entry.old_value:
+            continue
+        if entry.only_for_provider not in (None, effective_provider):
+            continue
+        now = current_defaults.get(entry.key, "")
+        if now != entry.old_value:
+            found.append(
+                StaleOverride(entry.key, entry.old_value, now, entry.changed_in)
+            )
+    return found
+
+
 def reconcile(
     template: str,
     existing: str | None,
@@ -209,6 +295,29 @@ def reconcile(
         if key in new_keys and value:
             index = max(i for i, raw in enumerate(lines) if _key_of(raw) == key)
             lines[index] = _assignment(lines[index], key, value)
+    # Options for settings the template only documents (execution backend,
+    # telemetry): written when the key is absent or empty and the value is not
+    # the documented default, so an explicit choice is kept and a default is
+    # never pinned.
+    documented = documented_defaults(template)
+    current = parse_values("\n".join(lines))
+    extras = {
+        key: value
+        for key, value in (overrides or {}).items()
+        if key not in template_values
+        and value
+        and value != documented.get(key)
+        and current.get(key, "") == ""
+    }
+    new_lines = []
+    for key, value in extras.items():
+        if key in present:
+            index = max(i for i, raw in enumerate(lines) if _key_of(raw) == key)
+            lines[index] = _assignment(lines[index], key, value)
+        else:
+            new_lines.append(_assignment("", key, value))
+    if new_lines:
+        lines.extend(["", "# Set by scripts/bootstrap.sh options", *new_lines])
     values = parse_values("\n".join(lines))
     warnings: list[str] = []
     reports: dict[str, KeyReport] = {}
@@ -269,12 +378,6 @@ def reconcile(
     )
     for key in ordered:
         settle(key)
-    if (
-        existing is not None
-        and EXECUTION_BACKEND_KEY in new_keys
-        and values.get(EXECUTION_BACKEND_KEY) == DEFAULT_EXECUTION_BACKEND
-    ):
-        warnings.append(LOCAL_ADOPTED_NOTE)
     if not new_postgres_volume and not any(
         values.get(k) for k in COMPOSE_VOLUME_PASSWORDS
     ):
@@ -282,9 +385,11 @@ def reconcile(
             "an existing postgres volume was found: the local default database "
             "passwords stay in use (remove the volume to get generated ones)"
         )
-    changed = existing is None or bool(filled) or bool(appended)
+    changed = existing is None or bool(filled) or bool(appended) or bool(extras)
     text = "\n".join(lines) + "\n" if changed or existing is None else existing
-    ordered_reports = tuple(reports[key] for key in template_values)
+    ordered_reports = tuple(reports[key] for key in template_values) + tuple(
+        KeyReport(key, Status.DEFAULT, "from option") for key in extras
+    )
     return Reconciled(text, changed, ordered_reports, tuple(warnings))
 
 

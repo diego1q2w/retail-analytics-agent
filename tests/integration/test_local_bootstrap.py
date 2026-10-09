@@ -162,14 +162,18 @@ def test_one_command_builds_a_seeded_stack_and_rerun_is_a_noop(run: Run) -> None
     assert "retail-analytics-dev-access token local-admin" in output
     assert "analytics chat" in output
     # Local execution is the default: PostgreSQL, no Temporal.
-    assert values[local_env.EXECUTION_BACKEND_KEY] == "local"
+    # Ordinary defaults are not pinned; the summary shows what is in effect.
+    assert local_env.EXECUTION_BACKEND_KEY not in values
+    assert "RUN_ACTIVE_SECONDS" not in values
+    assert "APP_MODE            fixture [" in output
+    assert "RUN_ACTIVE_SECONDS  120 s [default]" in output
     assert "Execution: local (default)" in output
     running = _running_services(run.project)
     assert "postgres" in running
     assert not running & {"temporal", "temporal-schema", "temporal-namespace"}
 
     # Telemetry is on by default: the key is true, the stack is up, URLs printed.
-    assert values["TELEMETRY_ENABLED"] == "true"
+    assert "TELEMETRY_ENABLED" not in values  # default on, not pinned
     assert f"Grafana http://127.0.0.1:{run.env['COMPOSE_GRAFANA_PORT']}" in output
     assert f"MLflow http://127.0.0.1:{run.env['COMPOSE_MLFLOW_PORT']}" in output
     assert _running_services(run.project) >= {"mlflow", "prometheus", "grafana"}
@@ -226,14 +230,13 @@ def test_temporal_opt_in_then_an_old_env_file_adopts_local_keeping_data(
     adopted = run.bootstrap("--no-telemetry")
     assert adopted.returncode == 0, adopted.stdout + adopted.stderr
     values = local_env.parse_values(run.env_file.read_text())
-    assert values[local_env.EXECUTION_BACKEND_KEY] == "local"
+    # Local is the default: it is not written, and Temporal values are kept.
+    assert local_env.EXECUTION_BACKEND_KEY not in values
     assert values[local_env.TEMPORAL_ADDRESS_KEY]  # kept, unused
     assert run.env_file.read_text().startswith(old)
-    assert "was added as local, the new default" in adopted.stdout
     assert "Execution: local (default)" in adopted.stdout
     # Nothing was stopped or removed: data and the Temporal container remain.
     assert _counts(run.env_file) == counts
     assert "temporal" in _running_services(run.project)
     rerun = run.bootstrap("--no-telemetry")
     assert rerun.returncode == 0
-    assert "was added as local" not in rerun.stdout

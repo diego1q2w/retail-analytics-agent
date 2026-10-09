@@ -42,7 +42,7 @@ def test_fresh_file_has_every_template_key_and_generated_secrets() -> None:
     assert rendered["GEMINI_API_KEY"].startswith("<missing: ")
     assert "docs/google-access.md" in rendered["GEMINI_API_KEY"]
     assert rendered["OPENAI_API_KEY"] == "<empty: optional>"
-    assert rendered["APP_MODE"] == "<kept>"
+    assert "APP_MODE" not in values  # an ordinary default is not written
 
 
 def test_reports_never_contain_secret_values() -> None:
@@ -346,14 +346,15 @@ def test_telemetry_defaults_to_on_in_settings_and_template() -> None:
     assert config.load_backend_settings(
         environ={"APP_MODE": "fixture"}, env_file=None
     ).telemetry_enabled
-    assert local_env.parse_values(TEMPLATE)[TELEMETRY_KEY] == "true"
+    assert local_env.documented_defaults(TEMPLATE)[TELEMETRY_KEY] == "true"
+    assert TELEMETRY_KEY not in local_env.parse_values(TEMPLATE)
 
 
-def test_env_only_adds_the_key_as_true_to_an_existing_file(tmp_path: Path) -> None:
+def test_env_only_does_not_pin_the_telemetry_default(tmp_path: Path) -> None:
     env_file = tmp_path / "old.env"
     env_file.write_text("APP_MODE=fixture\n", encoding="utf-8")
     _env_only(env_file)
-    assert local_env.parse_values(env_file.read_text())[TELEMETRY_KEY] == "true"
+    assert TELEMETRY_KEY not in local_env.parse_values(env_file.read_text())
 
 
 def test_env_only_never_overwrites_an_explicit_false(tmp_path: Path) -> None:
@@ -378,8 +379,11 @@ def test_telemetry_flag_is_an_accepted_no_op(tmp_path: Path) -> None:
     plain, flagged = tmp_path / "a.env", tmp_path / "b.env"
     _env_only(plain)
     _env_only(flagged, "--telemetry")
-    assert local_env.parse_values(plain.read_text())[TELEMETRY_KEY] == "true"
-    assert local_env.parse_values(flagged.read_text())[TELEMETRY_KEY] == "true"
+    assert TELEMETRY_KEY not in local_env.parse_values(plain.read_text())
+    assert (
+        local_env.parse_values(plain.read_text()).keys()
+        == local_env.parse_values(flagged.read_text()).keys()
+    )
 
 
 def _tele_ctx(tmp_path: Path, env_text: str, telemetry: bool = True) -> SetupContext:
@@ -433,31 +437,29 @@ OLD_ENV = (
 
 
 def test_template_and_settings_default_to_local_execution() -> None:
-    assert local_env.parse_values(TEMPLATE)[BACKEND_KEY] == "local"
+    assert local_env.documented_defaults(TEMPLATE)[BACKEND_KEY] == "local"
+    assert BACKEND_KEY not in local_env.parse_values(TEMPLATE)
     assert (
         config.BackendSettings(mode=RuntimeMode.FIXTURE).execution_backend.value
         == "local"
     )
 
 
-def test_existing_file_without_selector_adopts_local_and_explains() -> None:
+def test_existing_file_without_selector_is_left_without_one() -> None:
     result = local_env.reconcile(TEMPLATE, OLD_ENV)
     values = local_env.parse_values(result.text)
-    assert values[BACKEND_KEY] == "local"
+    assert BACKEND_KEY not in values
     # Old Temporal values stay as they were: nothing is removed.
     assert values[local_env.TEMPORAL_ADDRESS_KEY] == "127.0.0.1:57233"
     assert result.text.startswith(OLD_ENV)
-    assert local_env.LOCAL_ADOPTED_NOTE in result.warnings
     again = local_env.reconcile(TEMPLATE, result.text)
     assert not again.changed and again.text == result.text
-    assert local_env.LOCAL_ADOPTED_NOTE not in again.warnings
 
 
 def test_explicit_temporal_is_preserved() -> None:
     existing = OLD_ENV + f"{BACKEND_KEY}=temporal\n"
     result = local_env.reconcile(TEMPLATE, existing, overrides={BACKEND_KEY: "local"})
     assert local_env.parse_values(result.text)[BACKEND_KEY] == "temporal"
-    assert local_env.LOCAL_ADOPTED_NOTE not in result.warnings
 
 
 def test_option_selects_temporal_only_for_a_new_key(tmp_path: Path) -> None:
@@ -465,23 +467,11 @@ def test_option_selects_temporal_only_for_a_new_key(tmp_path: Path) -> None:
     old.write_text(OLD_ENV, encoding="utf-8")
     output = _env_only(old, "--execution-backend", "temporal")
     assert local_env.parse_values(old.read_text())[BACKEND_KEY] == "temporal"
-    assert "was added as local" not in output
     snapshot = old.read_bytes()
     output = _env_only(old, "--execution-backend", "local")
     # An explicit choice is never rewritten; the run says so.
     assert old.read_bytes() == snapshot
     assert "this run uses local execution" in output
-
-
-def test_rerun_on_an_old_file_explains_the_transition(tmp_path: Path) -> None:
-    old = tmp_path / "old.env"
-    old.write_text(OLD_ENV, encoding="utf-8")
-    first = _env_only(old)
-    assert "was added as local, the new default" in first
-    snapshot = old.read_bytes()
-    second = _env_only(old)
-    assert old.read_bytes() == snapshot
-    assert "was added as local" not in second
 
 
 def _backend_ctx(
@@ -643,7 +633,7 @@ def test_env_only_warns_about_legacy_names_exported_by_the_shell(
 
 
 def test_live_defaults_require_external_credentials(tmp_path: Path) -> None:
-    assert local_env.parse_values(TEMPLATE)["APP_MODE"] == "live"
+    assert local_env.documented_defaults(TEMPLATE)["APP_MODE"] == "live"
     ctx = _isolation_ctx(tmp_path, "")
     ctx.values.pop("APP_MODE", None)
     with pytest.raises(StepFailed, match="BIGQUERY_PROJECT and GEMINI_API_KEY"):
