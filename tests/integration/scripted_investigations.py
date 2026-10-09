@@ -23,7 +23,12 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import AgentInfo
 
+from retail_analytics.adapters.postgres.database import Database
+from retail_analytics.adapters.postgres.investigations import (
+    PostgresInvestigationInputs,
+)
 from retail_analytics.application.contracts.persistence import OperationRequest
+from retail_analytics.application.contracts.progress import EventKind
 from retail_analytics.application.tools import (
     AuthorizationSpec,
     CapabilityRegistry,
@@ -38,6 +43,7 @@ from retail_analytics.bootstrap.config import BackendSettings
 from retail_analytics.bootstrap.models import provider_chain
 from retail_analytics.bootstrap.persistence import Persistence
 from retail_analytics.domain.executions import ToolExecutionStatus
+from retail_analytics.domain.investigations import InputKind, InputStatus
 from retail_analytics.domain.operations import RecoveryMode, SideEffect
 
 
@@ -213,3 +219,49 @@ def fallback_chain(settings: BackendSettings) -> Any:
             stubs.openai(stubs.Recorder([], script=gpt)),
         ],
     )
+
+
+STEERING_TEXT = "Instead use annual sales."
+_TERMINAL = {
+    EventKind.RUN_COMPLETED,
+    EventKind.RUN_PARTIAL,
+    EventKind.RUN_FAILED,
+    EventKind.RUN_CANCELLED,
+}
+
+
+async def await_terminal_event(db: Persistence, run_id: str) -> None:
+    """Until the run's terminal event is published (it follows the close)."""
+    async with asyncio.timeout(60):
+        while True:
+            events = await db.run_events.replay(run_id, limit=10_000)
+            if any(e.kind in _TERMINAL for e in events):
+                return
+            await asyncio.sleep(0.05)
+
+
+async def steering_outcome(db: Persistence, run_id: str) -> dict[str, Any]:
+    """What became of a finished run's steering, from its durable records:
+    input statuses, event kinds (in order) and the run's closing message."""
+    inputs = await PostgresInvestigationInputs(Database(db.engine)).for_run(run_id)
+    events = [e.kind for e in await db.run_events.replay(run_id, limit=10_000)]
+    with db.engine.connect() as connection:
+        closing = connection.execute(
+            sa.text(
+                "SELECT content FROM messages WHERE run_id = :run "
+                "AND role = 'assistant' ORDER BY position DESC LIMIT 1"
+            ),
+            {"run": run_id},
+        ).scalar_one_or_none()
+    steering = [i.status for i in inputs if i.kind is InputKind.STEERING]
+    # Never left undecided once the run ended: applied or not applied.
+    assert InputStatus.PENDING not in steering
+    terminal = [i for i, kind in enumerate(events) if kind in _TERMINAL]
+    if EventKind.INPUT_NOT_APPLIED in events:
+        assert events.index(EventKind.INPUT_NOT_APPLIED) < terminal[0]
+    return {
+        "steering": steering,
+        "events": events,
+        "closing": closing or "",
+        "applied_events": events.count(EventKind.INPUT_APPLIED),
+    }

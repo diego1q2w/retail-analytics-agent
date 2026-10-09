@@ -162,7 +162,8 @@ data: {"schema_version":1,"correlation":{...},"kind":"input.required","source":"
 `data` is a `ProgressEvent` (`application/contracts/progress.py`): `kind` is
 one of `run.started`, `analysis.progress`, `tool.started`, `tool.retrying`,
 `tool.pending`, `tool.outcome_unknown`, `tool.succeeded`, `tool.failed`,
-`input.required`, `deletion.proposed`, `run.completed`, `run.partial`,
+`input.required`, `input.applied`, `input.not_applied`, `deletion.proposed`,
+`run.completed`, `run.partial`,
 `run.failed`, `run.cancelled`; `sequence` starts at 1 and increases by one per event.
 
 - **Deletion proposals.** When the assistant proposes deleting reports, the
@@ -187,6 +188,11 @@ one of `run.started`, `analysis.progress`, `tool.started`, `tool.retrying`,
   `event: end` with `{"run_id", "status"}` (no ID) and closes. Then
   `GET /v1/runs/{run_id}` returns the released answer. A connection is also
   closed after 15 minutes; reconnect with the last ID.
+- **Steering outcome.** An accepted steering message (`202`, `kind:
+  "steering"`) is pending until the run's next model step. `input.applied`
+  confirms it reached the investigation; if the run ends first,
+  `input.not_applied` precedes the terminal event and the released answer
+  ends with a notice quoting it. It is never silently dropped.
 - **Questions.** On `input.required`, answer with
   `POST /v1/runs/{run_id}/answers` using `input_request.question_id`; the
   stream (still open, or resumed) then continues.

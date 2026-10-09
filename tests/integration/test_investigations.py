@@ -35,6 +35,7 @@ from retail_analytics.application.contracts.investigations import (
     StopReason,
 )
 from retail_analytics.application.contracts.persistence import OperationRequest
+from retail_analytics.application.contracts.progress import EventKind
 from retail_analytics.application.investigation_recovery import InvestigationRecovery
 from retail_analytics.application.investigation_runtime import RunStopped
 from retail_analytics.application.investigations import RunNotActive
@@ -51,6 +52,11 @@ from retail_analytics.domain.operations import SideEffect
 from retail_analytics.domain.runs import RunStatus
 from tests.integration.compose_stack import Stack, running_stack
 from tests.integration.investigation_worker import effect_registry, scripted_model
+from tests.integration.scripted_investigations import (
+    STEERING_TEXT,
+    await_terminal_event,
+    steering_outcome,
+)
 from tests.integration.test_context import Env
 
 pytestmark = [pytest.mark.docker, pytest.mark.asyncio]
@@ -114,7 +120,12 @@ class TestEnv(Env):
         return env
 
     def worker(
-        self, stack: Stack, *, hold: bool = False, providers: str = "scripted"
+        self,
+        stack: Stack,
+        *,
+        hold: bool = False,
+        providers: str = "scripted",
+        max_provider_requests: int = 20,
     ) -> subprocess.Popen[str]:
         return subprocess.Popen(
             [sys.executable, "-m", "tests.integration.investigation_worker"],
@@ -127,6 +138,7 @@ class TestEnv(Env):
                 "T13_TASK_QUEUE": self.queue,
                 "T13_CRASH_HOLD": "1" if hold else "0",
                 "T14_PROVIDERS": providers,
+                "T39_MAX_PROVIDER_REQUESTS": str(max_provider_requests),
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -316,6 +328,50 @@ async def test_steering_supersedes_inflight_answer(stack: Stack) -> None:
         assert not any(
             message.content == "The requested sales investigation is complete."
             for message in messages
+        )
+        await await_terminal_event(env.db, run_id)
+        outcome = await steering_outcome(env.db, run_id)
+        assert outcome["steering"] == [InputStatus.APPLIED]
+        assert outcome["applied_events"] == 1
+        assert EventKind.INPUT_NOT_APPLIED not in outcome["events"]
+    finally:
+        env.stop(process)
+        env.db.close()
+
+
+async def test_steering_after_the_final_model_step_is_reported_not_applied(
+    stack: Stack,
+) -> None:
+    """Same shared runtime decision as the local backend: the last allowed
+    model step's draft is superseded, no further step is possible, and the
+    run ends saying the steering was not applied."""
+    env = await TestEnv.create(stack)
+    process = env.worker(stack, max_provider_requests=1)
+    try:
+        run_id = await env.start("Analyze sales: slow case.")
+        async with asyncio.timeout(45):
+            while True:
+                budget = await env.db.budgets.get(run_id)
+                if budget is not None and budget.usage.provider_requests >= 1:
+                    break
+                await asyncio.sleep(0.05)
+        await asyncio.sleep(0.5)
+        await env.services.control.steer(
+            env.principal,
+            run_id=run_id,
+            text=STEERING_TEXT,
+            submission_key="late-steer",
+        )
+        await await_terminal_event(env.db, run_id)
+        outcome = await steering_outcome(env.db, run_id)
+        assert outcome["steering"] == [InputStatus.DISCARDED]
+        assert outcome["applied_events"] == 0
+        assert EventKind.INPUT_NOT_APPLIED in outcome["events"]
+        assert STEERING_TEXT in outcome["closing"]
+        assert "was not applied to this answer" in outcome["closing"]
+        messages = await env.db.sessions.recent_messages(env.session_id, 100)
+        assert not any(
+            "investigation is complete" in message.content for message in messages
         )
     finally:
         env.stop(process)

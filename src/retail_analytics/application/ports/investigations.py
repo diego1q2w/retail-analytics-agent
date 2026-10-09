@@ -80,14 +80,20 @@ class InvestigationInputs(Protocol):
     ) -> RunClosure:
         """Move the run to the terminal status ``to`` and write ``output`` as
         its assistant message, in one transaction - unless steering/answer
-        input is pending and ``force`` is False (then nothing changes). An
-        open question is closed. A run already in ``to`` is reported closed."""
+        input is pending and ``force`` is False (then nothing changes). With
+        ``force``, pending input is marked discarded in that transaction and
+        ``domain.investigations.unapplied_notice`` is appended to ``output``
+        (or written as the run's message when there is none); the closure
+        names it (``unapplied``). An open question is closed. A run already
+        in ``to`` is reported closed."""
         ...
 
     async def open_question(self, run_id: str) -> ClarificationQuestion | None: ...
 
     async def discard_pending(self, run_id: str) -> int:
-        """Discard input that can no longer be applied (the run ended)."""
+        """Discard input that can no longer be applied (the run ended).
+
+        A safety net only: closing already settles pending input."""
         ...
 
     async def next_queued(self, session_id: str) -> RunInput | None:

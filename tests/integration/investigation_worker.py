@@ -42,6 +42,9 @@ async def main() -> None:
         temporal_address=os.environ["T13_TEMPORAL_ADDRESS"],
         temporal_task_queue=os.environ["T13_TASK_QUEUE"],
         auth_signing_key=SecretStr("test-key-" + "x" * 32),
+        run_max_provider_requests=int(
+            os.environ.get("T39_MAX_PROVIDER_REQUESTS", "20")
+        ),
     )
     assert settings.database_url is not None
     if os.environ.get("T30_TRACES_ENDPOINT"):

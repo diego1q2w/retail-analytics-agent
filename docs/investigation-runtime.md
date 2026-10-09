@@ -282,6 +282,23 @@ persisted status, ordered progress and open question. A pending user message
 prevents release of an obsolete answer; the next agent run rebuilds context
 using the later request.
 
+Accepted steering (or an answer) ends in exactly one recorded outcome, decided
+under the run-row lock that also ends the run, identically for the local and
+Temporal backends:
+
+- **Applied**: the next model step includes it (input `applied`, one
+  `input.applied` event per steering message). An answer drafted before it
+  arrived is superseded and never released.
+- **Not applied**: the run ends without another model step (budget or model
+  stop, admission decline, cancellation, interruption). The closing
+  transaction marks it `discarded` and appends an explicit notice quoting it
+  to the run's closing message; an `input.not_applied` event precedes the
+  terminal event. A finished answer never stands in for it.
+
+Input arriving after that transaction is refused (`run_not_active`); a client
+then sends it as a new request. There is no third path: nothing is converted
+into a follow-up run automatically.
+
 Explicit cancellation first makes the investigation refuse new work. The
 workflow cancels its running agent task, requests cancellation of recorded
 warehouse jobs and reconciles their outcomes for up to two minutes. An

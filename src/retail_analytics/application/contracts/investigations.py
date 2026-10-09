@@ -6,6 +6,7 @@ from enum import StrEnum
 from retail_analytics.application.contracts.authorization import Principal
 from retail_analytics.application.contracts.telemetry import ProviderAttribution
 from retail_analytics.domain.budgets import BudgetResource
+from retail_analytics.domain.investigations import RunInput
 from retail_analytics.domain.request_scope import AdmissionDecision
 from retail_analytics.domain.runs import (
     Run,
@@ -39,6 +40,9 @@ class RunClosure:
     run: Run
     # False when pending input kept the run open (nothing changed).
     closed: bool
+    # Steering/answers a forced close ended unapplied (with a notice), in
+    # arrival order; empty otherwise.
+    unapplied: tuple[RunInput, ...] = ()
 
 
 class StopReason(StrEnum):

@@ -36,6 +36,11 @@ class EventKind(StrEnum):
     TOOL_SUCCEEDED = "tool.succeeded"
     TOOL_FAILED = "tool.failed"
     INPUT_REQUIRED = "input.required"
+    # Accepted steering reached the investigation (one per message, in order).
+    INPUT_APPLIED = "input.applied"
+    # The run ended before applying accepted steering/answers (once, before
+    # the terminal event; the closing message names them).
+    INPUT_NOT_APPLIED = "input.not_applied"
     DELETION_PROPOSED = "deletion.proposed"
     RUN_COMPLETED = "run.completed"
     RUN_PARTIAL = "run.partial"

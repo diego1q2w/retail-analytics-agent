@@ -60,7 +60,10 @@ progress arrives: `Working on it.` (a new request has started),
 `Queued: it will run after the current investigation.`, `Sent as steering
 for the active run.`, or `Answer sent; the investigation continues.`. The
 start is shown once. A queued question is shown when its run starts, or
-replayed with its answer if it already finished.
+replayed with its answer if it already finished. Steering is applied at the
+run's next step (`> Your message was applied; ...`); if the run ends first,
+the chat says it was not applied (`! ...`) and the answer ends with a notice
+quoting it, so a finished answer never pretends to include it.
 
 On a terminal the chat keeps one input line at the bottom: progress is
 printed above it, and the prompt (`you>` idle, `steer>` while a run works,

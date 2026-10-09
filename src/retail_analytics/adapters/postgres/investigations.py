@@ -39,6 +39,8 @@ from retail_analytics.domain.investigations import (
     InputStatus,
     QuestionStatus,
     RunInput,
+    unapplied_message_id,
+    unapplied_notice,
 )
 from retail_analytics.domain.runs import Run, RunStatus
 
@@ -274,14 +276,26 @@ class PostgresInvestigationInputs:
         run = lock_run(connection, run_id)
         if run.status.is_terminal:
             return RunClosure(run, closed=run.status is to)
-        if not force and self._pending(connection, run_id):
+        pending = self._pending(connection, run_id)
+        if pending and not force:
             return RunClosure(run, closed=False)
+        if pending:
+            # Ending without another model step: the accepted input is not
+            # applied. Recorded with the end and said in the closing message,
+            # so it is never silently lost nor implied in the answer.
+            notice = unapplied_notice(pending)
+            output = (
+                AssistantOutput(unapplied_message_id(run_id), notice)
+                if output is None
+                else AssistantOutput(output.message_id, f"{output.content}\n\n{notice}")
+            )
+            self._discard_pending(connection, run_id)
         if output is not None:
             self._write_output(connection, run, output)
         self._close_question(connection, run_id, QuestionStatus.CLOSED)
         updated = transition_locked(connection, run_id, to, at=self._db.clock())
         set_clarification_clock(connection, run_id, paused=True, at=self._db.clock())
-        return RunClosure(updated, closed=True)
+        return RunClosure(updated, closed=True, unapplied=tuple(pending))
 
     def _write_output(
         self, connection: sa.Connection, run: Run, output: AssistantOutput
@@ -333,6 +347,7 @@ class PostgresInvestigationInputs:
             .where(
                 run_inputs.c.run_id == run_id,
                 run_inputs.c.status == InputStatus.PENDING.value,
+                run_inputs.c.kind.in_(_RUN_INPUT_KINDS),
             )
             .values(status=InputStatus.DISCARDED.value)
         )

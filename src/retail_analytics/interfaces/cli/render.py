@@ -49,6 +49,7 @@ WORKING = "Working on it."
 QUEUED = "Queued: it will run after the current investigation."
 STEERED = "Sent as steering for the active run."
 ANSWERED = "Answer sent; the investigation continues."
+STEERING_APPLIED = "Your message was applied; the investigation continues with it."
 
 
 def _needs_adjustment(kind: str, tool: JsonObject) -> bool:
@@ -121,6 +122,11 @@ def format_event(event: JsonObject) -> str | None:
             f"  {summary} Review it with: analytics deletion show {proposal}",
             fg="yellow",
         )
+    if kind == "input.applied":
+        return click.style(f"  > {STEERING_APPLIED}", fg="cyan")
+    if kind == "input.not_applied":
+        # Said before the answer, which does not include the message.
+        return click.style(f"  ! {summary}", fg="yellow")
     if kind in ("input.required", "run.completed", "run.partial"):
         return None
     if kind == "run.failed":

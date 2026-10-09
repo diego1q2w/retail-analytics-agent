@@ -15,6 +15,7 @@ tool-call IDs) so that retries and resumption address the same records.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -43,7 +44,8 @@ class InputStatus(StrEnum):
     APPLIED = "applied"
     # A queued request that became its own run.
     PROMOTED = "promoted"
-    # Not used (e.g. the run ended first); kept for the record.
+    # Not used (e.g. the run ended first); kept for the record. Steering or an
+    # answer gets here only together with its run's end and notice.
     DISCARDED = "discarded"
 
 
@@ -129,6 +131,56 @@ class ClarificationQuestion:
         return replace(self, status=to, closed_at=at)
 
 
+# What becomes of steering or an answer the run accepted (recorded first, so
+# it is never silently lost; see ``unapplied_notice``):
+# - applied: a later model step of the run includes it (``APPLIED``); an
+#   answer the model drafted before it arrived is superseded, not released;
+# - not applied: the run ends without another model step (budget or model
+#   stop, decline, cancellation, interruption). Then, in the same transaction
+#   that ends the run, it is marked ``DISCARDED`` and the run's closing
+#   message says so. A finished answer never stands in for it.
+_EXCERPT_CHARS = 80
+
+
+def unapplied_notice(inputs: Sequence[RunInput]) -> str:
+    """The explicit notice for accepted input the run ended without applying."""
+    excerpts = "; ".join(f'"{_excerpt(item.content)}"' for item in inputs)
+    if len(inputs) == 1:
+        return (
+            f"Note: your message {excerpts} arrived after this investigation's "
+            "last step and was not applied to this answer. Send it again as a "
+            "new request if you still need it."
+        )
+    return (
+        f"Note: your {len(inputs)} messages {excerpts} arrived after this "
+        "investigation's last step and were not applied to this answer. Send "
+        "them again as a new request if you still need them."
+    )
+
+
+def unapplied_summary(count: int) -> str:
+    """The progress-event summary of the same outcome (no user text)."""
+    if count == 1:
+        return (
+            "Your last message was not applied: the investigation ended before "
+            "its next step. Send it again if you still need it."
+        )
+    return (
+        f"{count} of your messages were not applied: the investigation ended "
+        "before its next step. Send them again if you still need them."
+    )
+
+
+APPLIED_SUMMARY = "Your message was applied; the investigation continues with it."
+
+
+def _excerpt(text: str) -> str:
+    flat = " ".join(text.split())
+    if len(flat) <= _EXCERPT_CHARS:
+        return flat
+    return flat[: _EXCERPT_CHARS - 1] + "…"
+
+
 def _digest(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()[:32]
 
@@ -160,6 +212,11 @@ def operation_id_for(run_id: str, tool_call_id: str) -> str:
 def answer_message_id(run_id: str, sequence: int) -> str:
     """The assistant message holding the run's ``sequence``-th released output."""
     return "msg_" + _digest("assistant", run_id, str(sequence))
+
+
+def unapplied_message_id(run_id: str) -> str:
+    """The notice message of a run that ended without output of its own."""
+    return message_id_for(input_id_for(run_id, "unapplied"))
 
 
 def question_id_for(run_id: str, sequence: int) -> str:

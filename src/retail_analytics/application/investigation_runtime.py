@@ -124,6 +124,7 @@ from retail_analytics.domain.context import EvidenceStanding
 from retail_analytics.domain.currency import SourceCurrency
 from retail_analytics.domain.executions import ToolExecutionStatus
 from retail_analytics.domain.investigations import (
+    APPLIED_SUMMARY,
     MAX_QUESTION_CHARS,
     ClarificationQuestion,
     InputKind,
@@ -134,6 +135,7 @@ from retail_analytics.domain.investigations import (
     input_id_for,
     message_id_for,
     question_id_for,
+    unapplied_summary,
 )
 from retail_analytics.domain.metrics import MetricCatalog, default_catalog
 from retail_analytics.domain.request_scope import Admission, AdmissionDecision
@@ -337,7 +339,7 @@ class InvestigationRuntime:
         snapshot = await self._budgets.snapshot(run_id)
         _check_budget(snapshot)
         context = await self._context_for(principal, run_id)
-        await self._inputs.apply_pending(run_id)
+        await self._announce_applied(run, await self._inputs.apply_pending(run_id))
         try:
             built = await self._build_context(principal, run)
         except AccessDenied:
@@ -669,6 +671,7 @@ class InvestigationRuntime:
             # It ended meanwhile (its own outcome stands).
             return StepOutcome(StepResult.STOPPED, status=closure.run.status)
         await self._record_run_end(closure.run, None)
+        await self._announce_unapplied(closure.run)
         kind = (
             EventKind.RUN_CANCELLED
             if status is RunStatus.CANCELLED
@@ -745,6 +748,7 @@ class InvestigationRuntime:
             "it ends at its time limit."
         )
         await self._inputs.discard_pending(run_id)
+        await self._announce_unapplied(run)
         await self._publish_once(run, EventKind.RUN_CANCELLED, summary)
         await self._launcher.promote_next(run.session_id)
         return StepOutcome(StepResult.STOPPED, status=run.status)
@@ -816,6 +820,7 @@ class InvestigationRuntime:
         if not retried:
             await self._record_run_end(run, served_by, answer, stop)
         await self._inputs.discard_pending(run.run_id)
+        await self._announce_unapplied(run)
         kind, default = _TERMINAL_EVENTS[run.status]
         if run.status is not status:
             summary = None  # it ended otherwise meanwhile
@@ -943,6 +948,44 @@ class InvestigationRuntime:
                 continue
         return _Partial(f"{reason}\n\nNo verified findings can be shown.", ())
 
+    async def _announce_applied(
+        self, run: Run, inputs: Sequence[RunInput] | None
+    ) -> None:
+        """One ``input.applied`` event per steering message the run applied,
+        in order. Counted against the events already published, so a retried
+        step announces nothing twice."""
+        applied = sum(
+            1
+            for item in inputs or ()
+            if item.kind is InputKind.STEERING and item.status is InputStatus.APPLIED
+        )
+        if not applied:
+            return
+        announced = sum(
+            1
+            for event in await self._events.replay(run.run_id, limit=10_000)
+            if event.kind is EventKind.INPUT_APPLIED
+        )
+        for _ in range(applied - announced):
+            await self._publish(run, EventKind.INPUT_APPLIED, APPLIED_SUMMARY)
+
+    async def _announce_unapplied(self, run: Run) -> None:
+        """Say, before the terminal event, that accepted input was not applied.
+
+        Read from the persisted record (the close marked it together with the
+        run's end), so a retried or recovered close announces it too.
+        """
+        unapplied = [
+            item
+            for item in await self._inputs.for_run(run.run_id)
+            if item.kind in (InputKind.STEERING, InputKind.ANSWER)
+            and item.status is InputStatus.DISCARDED
+        ]
+        if unapplied:
+            await self._publish_once(
+                run, EventKind.INPUT_NOT_APPLIED, unapplied_summary(len(unapplied))
+            )
+
     async def _publish_once(
         self,
         run: Run,
@@ -956,6 +999,16 @@ class InvestigationRuntime:
                 input_request is None or event.input_request == input_request
             ):
                 return
+        await self._publish(run, kind, summary, input_request=input_request)
+
+    async def _publish(
+        self,
+        run: Run,
+        kind: EventKind,
+        summary: str,
+        *,
+        input_request: InputRequest | None = None,
+    ) -> None:
         await self._events.publish(
             ProgressUpdate(
                 correlation=Correlation(

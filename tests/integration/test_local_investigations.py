@@ -31,7 +31,9 @@ from retail_analytics.adapters.postgres.investigations import (
     PostgresRunPrincipals,
 )
 from retail_analytics.adapters.postgres.local_execution import ManagerLockHeld
+from retail_analytics.adapters.postgres.runs import lock_run
 from retail_analytics.application.contracts.authorization import Principal
+from retail_analytics.application.contracts.investigations import AssistantOutput
 from retail_analytics.application.contracts.persistence import (
     IdempotencyConflict,
     RunRequest,
@@ -49,13 +51,17 @@ from retail_analytics.domain.investigations import (
     InputStatus,
     RunInput,
     input_id_for,
+    unapplied_notice,
 )
 from retail_analytics.domain.runs import ExecutionBackend, RunStatus, WorkflowRef
 from tests.integration.compose_stack import Stack, running_stack
 from tests.integration.scripted_investigations import (
+    STEERING_TEXT,
+    await_terminal_event,
     effect_registry,
     fallback_chain,
     scripted_model,
+    steering_outcome,
 )
 from tests.integration.test_context import Env
 
@@ -248,6 +254,172 @@ async def test_steering_supersedes_inflight_answer(
     texts = await env.assistant_texts()
     assert any("updated annual" in t for t in texts)
     assert "The requested sales investigation is complete." not in texts
+    await await_terminal_event(env.db, run_id)
+    outcome = await steering_outcome(env.db, run_id)
+    assert outcome["steering"] == [InputStatus.APPLIED]
+    assert outcome["applied_events"] == 1
+    assert EventKind.INPUT_NOT_APPLIED not in outcome["events"]
+    assert "not applied" not in outcome["closing"]
+
+
+async def test_steering_after_the_final_model_step_is_reported_not_applied(
+    env: LocalEnv,
+) -> None:
+    """The run's last allowed model step is drafting its answer when the
+    steering arrives: the draft is superseded, no further step is possible,
+    and the run ends saying the message was not applied (never silently)."""
+    limited = env.build(
+        settings=BackendSettings(mode=RuntimeMode.FIXTURE, run_max_provider_requests=1)
+    )
+    async with limited.manager:
+        run_id = await env.start(limited, "Analyze sales: slow case.")
+        await _await_model_request(env, run_id)
+        receipt = await limited.services.control.steer(
+            env.principal,
+            run_id=run_id,
+            text=STEERING_TEXT,
+            submission_key="late-steer",
+        )
+        assert receipt.kind is InputKind.STEERING and receipt.run_id == run_id
+        await await_terminal_event(env.db, run_id)
+    _assert_not_applied(await steering_outcome(env.db, run_id))
+    texts = await env.assistant_texts()
+    # The superseded draft was never released, nor an answer claiming it.
+    assert "The requested sales investigation is complete." not in texts
+    assert not any("updated annual" in t for t in texts)
+
+
+async def _await_model_request(env: LocalEnv, run_id: str) -> None:
+    """Until the run's (slow, 3 s) model request is in flight."""
+    async with asyncio.timeout(30):
+        while True:
+            budget = await env.db.budgets.get(run_id)
+            if budget is not None and budget.usage.provider_requests >= 1:
+                break
+            await asyncio.sleep(0.05)
+    await asyncio.sleep(0.5)
+
+
+def _assert_not_applied(outcome: dict[str, Any]) -> None:
+    assert outcome["steering"] == [InputStatus.DISCARDED]
+    assert outcome["applied_events"] == 0
+    assert EventKind.INPUT_NOT_APPLIED in outcome["events"]
+    assert STEERING_TEXT in outcome["closing"]
+    assert "was not applied to this answer" in outcome["closing"]
+
+
+async def _bare_run(env: LocalEnv) -> tuple[str, str, PostgresInvestigationInputs]:
+    principal, session_id = await env.executive({"1"})
+    run_id = "run-race-" + uuid.uuid4().hex
+    started = await env.db.runs.start_run(
+        RunRequest(
+            run_id=run_id,
+            session_id=session_id,
+            requested_by=principal.executive_id,
+            submission_key="race",
+            message_id="msg-" + run_id,
+            request_text="Analyze sales.",
+            execution_backend=ExecutionBackend.LOCAL,
+        )
+    )
+    assert started.run.status is RunStatus.RUNNING
+    return run_id, session_id, PostgresInvestigationInputs(Database(env.db.engine))
+
+
+def _steering(run_id: str, session_id: str, key: str) -> RunInput:
+    input_id = input_id_for(run_id, key)
+    return RunInput(
+        input_id=input_id,
+        session_id=session_id,
+        kind=InputKind.STEERING,
+        content=STEERING_TEXT,
+        status=InputStatus.PENDING,
+        created_at=datetime.now(UTC),
+        run_id=run_id,
+        message_id="msg-" + input_id,
+    )
+
+
+def _answer(run_id: str) -> AssistantOutput:
+    return AssistantOutput("msg-answer-" + run_id, "Sales were 10.")
+
+
+async def test_input_and_completion_race_is_decided_atomically(env: LocalEnv) -> None:
+    """Both interleavings of accepting steering and ending the run, forced
+    deterministically with the run-row lock: whichever commits first wins
+    and the other sees it; nothing is accepted and then silently dropped."""
+    # Completion first: steering arriving during it waits, then is refused.
+    run_id, session_id, inputs = await _bare_run(env)
+    with env.db.engine.connect() as closing:
+        transaction = closing.begin()
+        lock_run(closing, run_id)
+        adding = asyncio.create_task(inputs.add(_steering(run_id, session_id, "a")))
+        await asyncio.sleep(0.5)
+        assert not adding.done()  # blocked by the completing transaction
+        closure = inputs._close_run(
+            closing, run_id, RunStatus.COMPLETED, _answer(run_id), False
+        )
+        assert closure.closed
+        transaction.commit()
+    with pytest.raises(RunNotActive):
+        await adding
+    assert await inputs.for_run(run_id) == ()
+
+    # Steering first: completion waits for it, then does not release the
+    # answer (the investigation continues and applies it) ...
+    run_id, session_id, inputs = await _bare_run(env)
+    with env.db.engine.connect() as accepting:
+        transaction = accepting.begin()
+        inputs._add(accepting, _steering(run_id, session_id, "b"))
+        closing_task = asyncio.create_task(
+            inputs.close_run(run_id, RunStatus.COMPLETED, output=_answer(run_id))
+        )
+        await asyncio.sleep(0.5)
+        assert not closing_task.done()  # blocked by the accepting transaction
+        transaction.commit()
+    closure = await closing_task
+    assert not closure.closed and closure.run.status is RunStatus.RUNNING
+    # ... or, when the run must end without another model step, the same
+    # transaction records it as not applied and says so in the answer.
+    closure = await inputs.close_run(
+        run_id, RunStatus.PARTIAL, output=_answer(run_id), force=True
+    )
+    assert closure.closed
+    assert [i.content for i in closure.unapplied] == [STEERING_TEXT]
+    assert [i.status for i in await inputs.for_run(run_id)] == [InputStatus.DISCARDED]
+    with env.db.engine.connect() as connection:
+        answer = connection.execute(
+            sa.text("SELECT content FROM messages WHERE message_id = :m"),
+            {"m": _answer(run_id).message_id},
+        ).scalar_one()
+    assert answer.startswith("Sales were 10.")
+    assert unapplied_notice(closure.unapplied) in answer
+
+
+async def test_cancel_and_decline_never_drop_accepted_steering_silently(
+    env: LocalEnv,
+) -> None:
+    """Forced ends without output of their own (cancellation) write the
+    notice as the run's message; through the shared runtime the event
+    precedes the terminal event."""
+    built = env.build()
+    run_id, session_id, inputs = await _bare_run(env)
+    await PostgresRunPrincipals(Database(env.db.engine)).record(run_id, env.principal)
+    await inputs.add(_steering(run_id, session_id, "c"))
+    await env.db.runs.transition_run(run_id, RunStatus.CANCELLING)
+    outcome = await built.services.runtime.finish_cancelled(run_id, settled=True)
+    assert outcome.status is RunStatus.CANCELLED
+    result = await steering_outcome(env.db, run_id)
+    _assert_not_applied(result)
+    assert result["events"][-1] is EventKind.RUN_CANCELLED
+
+    # An admission decline ends the run with an application message.
+    run_id, session_id, inputs = await _bare_run(env)
+    await inputs.add(_steering(run_id, session_id, "d"))
+    await built.services.runtime.finish_message(run_id, "Start a new topic.")
+    result = await steering_outcome(env.db, run_id)
+    _assert_not_applied(result)
+    assert result["closing"].startswith("Start a new topic.")
 
 
 async def test_stale_context_restarts_without_repeating_the_effect(
