@@ -166,7 +166,7 @@ services:
         condition: service_healthy
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: ${COMPOSE_GRAFANA_ADMIN_PASSWORD:-local-only-grafana}
+      GF_SECURITY_ADMIN_PASSWORD: ${COMPOSE_GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"

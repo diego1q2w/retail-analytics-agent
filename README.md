@@ -571,7 +571,7 @@ docker compose down                                                       # keep
 | --- | --- |
 | MLflow UI/API | `http://127.0.0.1:55500` (`COMPOSE_MLFLOW_PORT`); OTLP traces at `/v1/traces` |
 | Prometheus | `http://127.0.0.1:59090` (`COMPOSE_PROMETHEUS_PORT`); OTLP metrics at `/api/v1/otlp/v1/metrics` |
-| Grafana | `http://127.0.0.1:53000` (`COMPOSE_GRAFANA_PORT`); user `admin`, password `COMPOSE_GRAFANA_ADMIN_PASSWORD` (default `local-only-grafana`) |
+| Grafana | `http://127.0.0.1:53000` (`COMPOSE_GRAFANA_PORT`); user `admin`, password `COMPOSE_GRAFANA_ADMIN_PASSWORD` (default `admin`, local only) |
 | MLflow backend | database and role `mlflow` on the shared PostgreSQL (`COMPOSE_MLFLOW_DB_PASSWORD`, default `local-only-mlflow`); created idempotently by the one-shot `mlflow-db-init` service, so it also works on an existing `postgres-data` volume |
 | Volumes | `mlflow-artifacts`, `prometheus-data`, `grafana-data` |
 
