@@ -2,6 +2,10 @@
 
 A conversational analytics assistant for retail executives. You ask a business question in a terminal chat; one adaptive agent investigates it with guarded BigQuery queries limited to the brands and products you are entitled to, asks when the question is ambiguous, answers with the definitions and evidence it used, and can save the result as a report with recommended actions. Deleting a report always needs your explicit confirmation.
 
+![Demo: a figure question, a follow-up, a saved report with recommended actions, the reports list, and a deletion the assistant can only propose](docs/assets/demo.gif)
+
+*Recorded with [VHS](https://github.com/charmbracelet/vhs) from [`docs/assets/demo.tape`](docs/assets/demo.tape) against live BigQuery and Gemini; long model waits are cut.*
+
 A short exchange: the questions and released answers of a recorded live run against the public `thelook_ecommerce` dataset, as stored, with the progress lines left out and the answers abbreviated (figures depend on the data when you ask):
 
 ```text
@@ -27,7 +31,7 @@ gcloud auth application-default login
 ./scripts/bootstrap.sh --interactive
 ```
 
-> **Check your settings:** Review `.env` in the project root to verify the values entered during interactive setup.
+> **Check your settings:** Review `.env` in the project root to verify the values entered during interactive setup. Only `GOOGLE_CLOUD_PROJECT` and `GEMINI_API_KEY` are needed to run the demo; `OPENAI_API_KEY` is optional (model backup). Every other setting has a working default for the local environment.
 
 **2. Start** the backend (Ctrl-C stops it):
 
