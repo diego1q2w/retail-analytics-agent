@@ -43,6 +43,12 @@ from tests import heldout_fixture as fx
 
 ROOT = Path(__file__).resolve().parents[3] / "evaluation" / "realdata"
 SPEC = files.load_spec(ROOT)
+# The frozen extract rows are not shipped in the tree (see .gitignore); the
+# checks that read them run only after `realdata_benchmark extract`.
+requires_extract = pytest.mark.skipif(
+    not all((ROOT / f.path).exists() for f in files.load_extract_manifest(ROOT).files),
+    reason="frozen extract rows are absent; regenerate with realdata_benchmark extract",
+)
 
 
 def words(text: str) -> set[str]:
@@ -210,10 +216,12 @@ def test_reference_sql_uses_order_dates_not_item_dates() -> None:
 # ------------------------------------------------------- committed artifacts
 
 
+@requires_extract
 def test_committed_artifacts_are_intact_and_reproduce() -> None:
     assert cli.verify(ROOT) == []
 
 
+@requires_extract
 def test_extract_is_pseudonymous_and_sanitized() -> None:
     manifest = files.load_extract_manifest(ROOT)
     assert manifest.extract_digest == compute_extract_digest(manifest)

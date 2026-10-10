@@ -88,12 +88,18 @@ def test_catalog_contract_refuses_invalid_rows() -> None:
 
 
 @pytest.mark.asyncio
-async def test_heldout_fixture_has_brands_and_frozen_extract_has_none() -> None:
+async def test_heldout_fixture_has_brands() -> None:
     heldout = heldout_fixture_warehouse(ROOT / "evaluation/heldout/fixture")
     catalog = await heldout.read_product_brands()
     assert set(catalog.brands.values()) == {"Aster", "Birch", "Cedar", "Dune", "Ember"}
     assert catalog.source_ref == "heldout-fixture-1"
 
+
+@pytest.mark.skipif(
+    not (ROOT / "evaluation/realdata/extract/products.csv.gz").exists(),
+    reason="frozen extract rows are absent; regenerate with realdata_benchmark extract",
+)
+async def test_frozen_extract_has_no_brands() -> None:
     extract = frozen_extract_warehouse(
         ROOT / "evaluation/realdata/extract", "thelook-realdata-extract-1"
     )

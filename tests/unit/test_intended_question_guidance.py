@@ -70,9 +70,10 @@ def test_explanations_stay_measured_and_hypotheses_are_labelled() -> None:
 
 
 def test_new_skill_versions_carry_the_uncertainty_rules() -> None:
-    assert tool_focus.CURRENT["investigation"] is investigation.V2
+    # V3 only adds the Golden consultation segment on top of V2's rules.
+    assert tool_focus.CURRENT["investigation"] is investigation.V3
     assert tool_focus.CURRENT["saved_reports"] is saved_reports.V2
-    analysis = investigation.V2.render(frozenset({policy.EXECUTE_ANALYSIS}))
+    analysis = investigation.V3.render(frozenset({policy.EXECUTE_ANALYSIS}))
     assert "labelled hypotheses, including in headings" in analysis
     assert "Buyer counts are not traffic or acquisition" in analysis
     reports = saved_reports.V2.render(frozenset({policy.SAVE_REPORT}))
