@@ -54,7 +54,7 @@ run, or answers its open question; `/queue <text>` queues a separate question
 that starts when the run ends; `/cancel` cancels; `/status` and `/follow`
 show or re-attach to progress. Other commands: `/sessions`, `/new`,
 `/reports`, `/search <words>`, `/report <id> [version]`,
-`/export <id> [file]`, `/confirm <proposal>`, `/decline <proposal>`,
+`/export <id> [file]`, `/confirm [proposal]`, `/decline <proposal>`,
 `/help`, `/quit`. Malformed or unknown commands and any backend error print
 one error line and the chat continues.
 
@@ -172,7 +172,10 @@ Type "delete 2 reports" to delete exactly these reports, or press Enter to keep 
 ```
 
 Only the exact phrase for that count deletes; anything else (including `y`
-or `yes`) changes nothing. There is no `--yes` flag. Scripts must pass the
+or `yes`) changes nothing. There is no `--yes` flag. A bare `/confirm` picks
+the proposal only when exactly one is pending (it says which); with none or
+several it asks for the ID. The preview, the typed phrase and the server's
+rechecks are the same. Scripts must pass the
 phrase explicitly: `analytics deletion confirm ID --confirm-text "delete 2 reports"`
 (and so must have read the preview). Restoring within seven days is an
 operator action (`retail-analytics-maintenance restore`), not a CLI command.

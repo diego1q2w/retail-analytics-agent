@@ -66,7 +66,8 @@ HELP = """Type a question to start an investigation. While one is running:
 Other commands:
   /sessions  /new  /reports  /search <words>  /report <id> [version]
   /export <id> [file]   save a report as Markdown
-  /confirm <proposal>   review and confirm a deletion the assistant proposed
+  /confirm [proposal]   review and confirm a deletion the assistant proposed
+                        (the only pending one when the id is left out)
   /decline <proposal>   withdraw a deletion proposal
   /help  /quit
 Ctrl-C while a run works only detaches (the run keeps going); /cancel cancels."""
@@ -701,8 +702,8 @@ class Chat:
             self.out(format_definition_notices(notices))
 
     def _confirm(self, arg: str) -> None:
-        if not arg:
-            self.out("Usage: /confirm <proposal id>")
+        proposal_id = arg or self._only_pending_proposal()
+        if not proposal_id:
             return
 
         def read(prompt: str) -> str | None:
@@ -711,7 +712,34 @@ class Chat:
             except KeyboardInterrupt:
                 return None
 
-        confirm_deletion(self.api, arg, read_line=read, out=self.out)
+        confirm_deletion(self.api, proposal_id, read_line=read, out=self.out)
+
+    def _only_pending_proposal(self) -> str | None:
+        """A bare /confirm names the proposal only when exactly one is pending.
+        It selects nothing else: the preview and the typed phrase still follow,
+        and the server rechecks the proposal."""
+        try:
+            pending = self.api.list_pending_deletions().get("proposals") or []
+        except (ApiError, Unreachable) as error:
+            self.out(format_error(error))
+            self.out("Usage: /confirm <proposal id>")
+            return None
+        ids = [
+            str(p.get("proposal_id") or "")
+            for p in pending
+            if p.get("status") == "pending" and p.get("proposal_id")
+        ]
+        if len(ids) == 1:
+            self.out(f"One deletion proposal is pending: {ids[0]}")
+            return ids[0]
+        if not ids:
+            self.out("No deletion proposal is pending. Usage: /confirm <proposal id>")
+        else:
+            self.out(
+                "Several deletion proposals are pending; name one: "
+                + ", ".join(f"/confirm {i}" for i in ids)
+            )
+        return None
 
 
 def _echo_prompt(prompt: str) -> None:

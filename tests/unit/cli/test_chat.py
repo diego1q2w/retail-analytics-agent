@@ -289,6 +289,62 @@ def test_cancel_in_chat_reports_cancelling_honestly() -> None:
     assert "The run was cancelled" in result.output
 
 
+def test_bare_confirm_picks_the_only_pending_proposal_and_still_needs_the_phrase() -> (
+    None
+):
+    for typed, deleted in (("delete 2 reports", True), ("yes", False)):
+        backend = deletion_backend()
+        backend.overrides[("POST", "/v1/sessions")] = base().overrides[
+            ("POST", "/v1/sessions")
+        ]
+        backend.overrides[("GET", f"/v1/deletion-proposals/{PROPOSAL}")] = lambda r: (
+            httpx.Response(200, json={**PREVIEW, "proposal_id": PROPOSAL})
+        )
+        backend.overrides[("POST", f"/v1/deletion-proposals/{PROPOSAL}/confirm")] = (
+            lambda r: httpx.Response(
+                200,
+                json={
+                    "proposal_id": PROPOSAL,
+                    "report_ids": ["rep1", "rep2"],
+                    "deleted_at": "2026-10-09T10:05:00Z",
+                    "recoverable_until": "2026-10-16T10:05:00Z",
+                },
+            )
+        )
+        backend.overrides[("GET", "/v1/deletion-proposals")] = lambda r: httpx.Response(
+            200, json={"proposals": [{**PREVIEW, "proposal_id": PROPOSAL}]}
+        )
+        result = chat(backend, f"/confirm\n{typed}\n/quit\n")
+        assert result.exit_code == 0, result.output
+        assert f"One deletion proposal is pending: {PROPOSAL}" in result.output
+        assert "(title hidden)" in result.output
+        assert bool(backend.calls("POST", "/confirm")) is deleted, result.output
+
+
+def test_bare_confirm_with_none_or_several_pending_asks_for_an_id() -> None:
+    several = [
+        {**PREVIEW, "proposal_id": "a" * 32},
+        {**PREVIEW, "proposal_id": "b" * 32},
+    ]
+    for proposals, expected in (
+        ([], "/confirm <proposal id>"),
+        (several, "/confirm aaaa"),
+    ):
+        backend = base()
+
+        def listing(
+            request: httpx.Request, proposals: list[dict[str, Any]] = proposals
+        ) -> httpx.Response:
+            return httpx.Response(200, json={"proposals": proposals})
+
+        backend.overrides[("GET", "/v1/deletion-proposals")] = listing
+        result = chat(backend, "/confirm\n/quit\n")
+        assert result.exit_code == 0, result.output
+        assert expected in result.output
+        assert backend.calls("GET", "/deletion-proposals/") == []
+        assert backend.calls("POST", "/confirm") == []
+
+
 def test_answer_text_is_never_scanned_for_proposal_ids() -> None:
     backend = base()
     backend.overrides[("GET", "/v1/deletion-proposals")] = lambda r: httpx.Response(
