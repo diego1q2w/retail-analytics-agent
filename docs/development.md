@@ -228,6 +228,7 @@ retail-analytics-eval summary evaluation-results/run.json
 - Statuses: `passed`, `failed`, `errored`, `skipped` (not implemented or other mode), `blocked` (missing capability such as `--capability bigquery`, unavailable target or judge) and `scored` (judge/operational only). Exit codes: 0 passed, 1 failed, 3 incomplete; blocked and skipped cases never count as passing.
 - Results (`schema_version` 1, `application/evaluation/results.py`) keep deterministic checks, judge scores and operational measurements in separate sections, state every denominator (null ratio when zero), record manifest digest and model/config/prompt/persona/metric/policy/dataset/retrieval/corpus versions, and store no raw text: strings appear as digests and the writer refuses output that looks like PII or a credential. Identical inputs give byte-identical files and the same `verdict_digest`; `recorded_at` appears only with `--timestamp`.
 - Result files are local artifacts (`evaluation-results/` is ignored).
+- Judges: scenarios whose `verification` includes `judge` carry a `JudgeSpec` (rubric id and dimensions; currently `report-quality-v1`). `run_manifest(..., judges=[...])` accepts `JudgeScorer` implementations and records their `judge_ids`; the command wires none yet, so those scenarios are `blocked (judge_unavailable)`. The rubric anchors, the proposed judges and how to wire a scorer are in [evaluation/judges](../evaluation/judges/README.md).
 
 ### Agent runtime target
 

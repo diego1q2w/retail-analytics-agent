@@ -56,7 +56,9 @@ A target returns an observation per scenario (`TargetObservation`):
 
 Judge dimensions (`report-quality-v1`) score the parts a literal check cannot:
 definition disclosure, contributors versus causes, action items, evidence
-support, limitations and schema accuracy.
+support, limitations and schema accuracy. The scoring anchors, the judge
+protocol and the status (no scorer is wired yet) are in
+[evaluation/judges](../judges/README.md).
 
 ## Running
 

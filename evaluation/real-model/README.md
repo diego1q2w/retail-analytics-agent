@@ -24,7 +24,7 @@ quality threshold, and it does not support a production-quality claim.
 | Model | provider chain: `gemini-3.8-flash` (Interactions API) primary, `gpt-5-mini` fallback configured |
 | Who answered | **Gemini answered all 10 conversations** (115 successful requests; 2 failed Gemini attempts were retried on Gemini; no request fell back to GPT). Attribution comes from the runtime's own telemetry spans, recorded per run |
 | Code | `e8b5794` plus this task's changes (including the Gemini schema fix below) |
-| Judges | none. Judge-scored dimensions stay unscored |
+| Judges | none. Judge-scored dimensions stay unscored (the harness and rubric exist, no scorer is wired: [judges](../judges/README.md)) |
 
 The selection was fixed before any run and was not changed or tuned after
 seeing outcomes. It covers customer, product, time and demographic analysis,

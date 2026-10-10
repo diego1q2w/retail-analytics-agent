@@ -478,81 +478,143 @@ current smoke tests.
 ## Quality evaluation and model judges (proposed)
 
 **Status: designed, not run.** No model judge has scored anything in this
-project; the judge-required scenarios of the evaluation suites stay blocked
-([real-model evaluation](../../evaluation/real-model/README.md)). This
-section is the production design for requirement 6 ("how do you verify that
-the generated reports answer the user's intent?"), on top of the three
-evaluation layers in [requirements](requirements.md#6-quality-assurance).
+project. The judge harness exists (port, rubric spec per scenario, separate
+non-gating score section, `judge_unavailable` status), the rubric
+`report-quality-v1` names six dimensions on eleven scenarios, and no scorer
+is wired, so those scenarios stay blocked. The rubric anchors, the proposed
+`report-quality-v2`, the further judges and the calibration protocol are
+kept in one place: [judges and rubrics](../../evaluation/judges/README.md).
+This section is how they fit the production system, for requirement 6
+("how do you verify that the generated reports answer the user's intent?").
 
-**What judges score, and what they never score.**
+Judges run in two places that share the rubric, the judge models and the
+evidence-packet builder, and differ in what they gate:
 
-| Scored by deterministic checks only (release gates) | Scored by model judges |
-| --- | --- |
-| Product scope and privacy (no out-of-scope data, no personal data, aggregate-only demographics) | Intent: does the answer or report address the question that was asked, at the detail that was asked |
-| Numbers: every expected figure present in the released evidence and stated in the text | Grounding: every claim traceable to a cited evidence ID, no figure or label beyond the evidence |
-| Destructive actions: deletion only after an explicit typed confirmation | Report structure: findings separated from recommended actions, definitions and limitations disclosed, hypotheses labelled as such |
-| Budgets, recovery, idempotency | Clarity for an executive reader: concise, no unrequested breakdowns |
+| | Offline evaluation stack | Continuous production stack |
+| --- | --- | --- |
+| Input | Held-out and real-data suites on the frozen extract and the synthetic fixture | A sample of completed runs from live traffic |
+| When | Before a release, after any change to the model, prompts, skills, persona defaults or Golden corpus; and in CI on the deterministic layer | A scheduled job (hourly or daily), outside the request path |
+| Gates | Deterministic checks are release gates; judge thresholds are release criteria once calibrated | Nothing is gated automatically: drift against the baseline opens human review and, if confirmed, a rollback of the changed version |
+| Output | Versioned result files with `judge_ids`, compared with `retail-analytics-eval compare` | Judge scores in PostgreSQL, metrics in Prometheus and Grafana, a review queue for disagreements |
 
-Judges never decide a security or numeric result. A judge that says a report
-is excellent does not pass a report whose figures failed the deterministic
-check.
+```mermaid
+flowchart TB
+    subgraph offline["Offline evaluation stack (before a release)"]
+        direction LR
+        suites["Held-out + real-data suites<br/>frozen extract, synthetic fixture"] --> runner["Evaluation runner<br/>agent_runtime target"]
+        runner --> det["Deterministic checks<br/>scope, privacy, numbers, deletion<br/>(release gates)"]
+        runner --> pktO["Evidence packet<br/>question, released text,<br/>cited evidence rows, definitions, persona"]
+        pktO --> jA["Judge A<br/>(vendor 1)"]
+        pktO --> jB["Judge B<br/>(vendor 2)"]
+        jA --> res["Result file<br/>judge scores (non-gating),<br/>judge_ids, versions"]
+        jB --> res
+        det --> res
+        res --> cmp{"Compare with baseline<br/>thresholds from calibration"}
+        cmp -- "pass" --> release(["Release"])
+        cmp -- "regression or disagreement" --> fix(["Human review, fix, rerun"])
+    end
 
-**Which judges.** Two judge models from different vendors, at least one of
-them not the vendor of the agent's primary model, so that a shared blind
-spot between the agent and its judge is less likely. Candidates are the
-project's existing provider adapters (a Gemini model and a GPT model);
-a Claude model is a candidate for the second seat if a third adapter is
-added. The exact models and versions are chosen when the calibration below
-is run and are recorded with every result, like the agent's model today.
+    subgraph prod["Continuous production stack (sampled live runs)"]
+        direction LR
+        runs[("Completed runs<br/>PostgreSQL: runs, evidence,<br/>reports, released answers")] --> sampler["Sampler<br/>random share + every flagged run<br/>(budget stop, partial, correction,<br/>retrieval review mark)"]
+        traces["Sanitized traces<br/>(MLflow)"] -. "tool calls, SQL,<br/>clarifications" .-> sampler
+        sampler --> pktP["Evidence packet builder<br/>(released data only)"]
+        pktP --> jA2["Judge A"]
+        pktP --> jB2["Judge B"]
+        jA2 --> scores[("judge_scores<br/>PostgreSQL: run, rubric version,<br/>dimension, score, refs, judge model")]
+        jB2 --> scores
+        scores --> metrics["Metrics<br/>score distributions per dimension,<br/>disagreement rate, judge spend"]
+        metrics --> graf["Grafana<br/>drift vs baseline"]
+        scores -- "disagreement,<br/>low score, flagged run" --> queue["Human review queue"]
+        graf -- "drift" --> queue
+        queue --> loop["Learning loop monitor<br/>candidates, rollback of the<br/>changed version"]
+    end
 
-**Protocol.**
+    calib["Calibration set<br/>human-reviewed controls +<br/>deliberately flawed variants"] -- "thresholds, judge validity" --> cmp
+    calib -- "baseline" --> graf
+    queue -- "reviewed cases become controls" --> calib
+```
 
-1. One versioned rubric with per-dimension scores (intent, grounding,
-   report structure, clarity) and one evidence packet per case: the
-   question, the released answer or report, the cited evidence rows and
-   the definitions in force. Both judges receive the same packet.
-2. Judges score independently; neither sees the other's output. Each score
-   must cite the evidence ID or passage it is based on, so a reviewer can
-   check it.
-3. **Calibration before any threshold.** The rubric is run first on
-   human-reviewed controls: the human report review packet
-   ([rubric and verdicts](../../evaluation/real-model/human-review/README.md))
-   plus deliberately flawed variants (a wrong figure, a missing definition,
-   an action without a finding, a hypothesis stated as a cause). A judge
-   that passes a flawed control is not used until the rubric is fixed.
-4. Repeated cases measure within-model consistency; the same cases across
-   both judges measure agreement. Agreement is consistency, not truth:
-   disagreements and consistent-but-wrong results are flagged for a human,
-   never averaged into a pass.
-5. Pass thresholds for the analytical dimensions are set from the calibrated
-   baseline, recorded with the code, model, prompt, persona, catalog, policy
-   and retrieval versions, and only then used as release criteria.
+**The continuous stack as a small system.** It is one scheduled job
+(`retail-analytics-judge`, a Cloud Run job or the same worker image on a
+timer) and one table; no new service.
 
-**Where judges run.**
+1. *Sampler.* Picks completed runs since the last pass: a random share
+   (for example 5%) plus every run with a signal worth reading: budget
+   stop, partial answer, a user correction in the next turn, the retrieval
+   review mark, a saved report, a model fallback. The sample rate and the
+   signal list are configuration; the sampled share is reported, so a score
+   is never read without its denominator.
+2. *Evidence packet builder.* Builds the packet from PostgreSQL, not from
+   traces: the question and clarifications, the released answer or report
+   exactly as released, the released rows of each cited evidence record,
+   the definitions and preferences in force and the persona version pinned
+   by the run. Traces (MLflow) add the tool-call sequence, the executed SQL
+   and the clarification asked, when a judge dimension needs them
+   (clarification necessity, persona adherence). Everything in the packet
+   is data the user was allowed to see at the time; traces are already
+   sanitized and size-bounded.
+3. *Judges.* Two judge models from different vendors score the rubric
+   independently, each score with its `evidence_refs`. The job charges the
+   calls to a separate judge budget and stops for the pass when it is
+   spent; judge spend never comes out of a user's question budget.
+4. *Store.* `judge_scores`: run ID, rubric version, dimension, score,
+   evidence refs, judge model and version, packet digest, scored at. Scores
+   are immutable; re-scoring with a new rubric or model adds rows. The table
+   is the source for metrics and for the review queue; telemetry is not.
+5. *Metrics and drift.* Prometheus gauges and histograms per dimension and
+   judge: score distribution, share below threshold, judge disagreement
+   rate, judge spend, sampled share. The Grafana agent overview gets a
+   quality row next to runs, budgets and fallbacks. Drift is a sustained
+   shift against the calibrated baseline for the same rubric version, not
+   a single low score.
+6. *Review queue.* Disagreements (two points apart), scores of 0 on any
+   dimension, every flagged run in the sample, and drift alerts go to a
+   person, who records a verdict. Reviewed cases join the calibration set,
+   so the judges are re-checked against them at the next calibration.
+7. *Learning loop.* The monitor stage of the
+   [system-level loop](requirements.md#4b-system-level-planned-implementation-deferred)
+   reads the same table: a confirmed regression after a published change
+   (persona, prompt, skill, Golden example, model) rolls that version back;
+   a reviewed good answer can become a Golden candidate through the
+   existing submission path, never automatically.
 
-- *Before a release:* offline, on the held-out and real-data suites, after
-  every change to the model, prompts, skills, persona defaults or Golden
-  corpus. Held-out cases stay separate from anything used for tuning.
-- *In production:* on a sample of completed runs taken from the sanitized
-  traces (not in the request path; they add no latency or spend to a user's
-  question). Sampled scores, the retrieval review mark and user corrections
-  feed the monitor stage of the [learning loop](requirements.md#4b-system-level-planned-implementation-deferred);
-  a drop against the baseline is a signal for human review and, if
-  confirmed, a rollback of the changed version.
-- *Never* as an automatic promotion gate on their own: a candidate Golden
-  example, persona or prompt change still needs the deterministic gates and
-  an independent human reviewer.
+**What judges never decide.** Security, scope, privacy, numbers and deletion
+stay deterministic in both stacks (fixture canaries, compiler and gate tests,
+figure checks against independently computed references). A judge that
+rates a report excellent does not pass a report whose figures failed the
+deterministic check, and a judge score never promotes a change on its own.
+
+**Which judges.** Two judges from different vendors, at least one not the
+vendor of the agent's primary model: with the current adapters a Gemini and
+a GPT model; a Claude model is a candidate for the second seat if an adapter
+is added. Exact models are chosen at calibration and recorded with every
+score. Beyond the report-quality rubric, the production design adds a
+persona-adherence judge (requirement 8: the offline preview does not apply
+the style with a model), a clarification-necessity judge and a pairwise
+comparison judge for rollouts; each with its calibration controls, in
+[judges and rubrics](../../evaluation/judges/README.md#further-judges-proposed-for-production).
+
+**Calibration before thresholds.** Judges are run first on the human-reviewed
+controls ([human review packet](../../evaluation/real-model/human-review/README.md))
+and on deliberately flawed variants of real transcripts. A judge that passes
+a flawed control or disagrees with a human verdict by two points is not used.
+Repeated cases measure consistency, the same cases across both judges
+measure agreement, and agreement is treated as consistency, not truth.
+Thresholds come from that baseline and are versioned with the rubric.
 
 **UX.** Judges do not assess UX. UX stays with the human CLI walkthrough and
 the operational metrics (time to first progress, time to answer, completed,
 partial and failed runs, clarification rate).
 
-**Costs and limits.** Judge calls are model spend outside the per-question
-budget and are metered separately. Judges inherit the models' biases
-(verbosity, self-preference); calibration against controls limits but does
-not remove them. This design is a proposal: the rubric scale, repeat count,
-sample rate and thresholds are set during calibration, and nothing here has
-been run.
+**Costs and limits.** Judge calls are metered separately from user
+questions (two judges on a 5% sample of 1,000 questions a day is about 100
+judge calls a day, plus flagged runs). Judges inherit model biases
+(verbosity, self-preference, position); calibration, position swapping and
+the different-vendor rule limit but do not remove them. Judge scores hold no
+user text, only references; the packets are built on demand and not stored.
+Nothing here has been run: the rubric scale, sample rate, repeat count and
+thresholds are set during calibration.
 
 ## Security and network (proposed)
 

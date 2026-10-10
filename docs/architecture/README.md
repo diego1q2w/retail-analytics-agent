@@ -169,6 +169,7 @@ and nothing is provisioned.
 | The agent loop, tool exposure and limits | [The agent loop](agent-loop.md) |
 | Why these services, models and frameworks, with alternatives | [Technology choices](technology-choices.md) |
 | How each of the eight requirements is met, with evidence and limits | [Requirements coverage](requirements.md) |
+| Model judges: rubric, calibration, offline and continuous stacks | [Judges and rubrics](../../evaluation/judges/README.md), [production design](production-deployment.md#quality-evaluation-and-model-judges-proposed) |
 | Adding charts, e-mail delivery, web search and other capabilities | [Extension contracts](extensions.md) |
 | What is deferred or limited | [Known limitations](known-limitations.md) |
 | Runtime internals | [Investigation runtime](../investigation-runtime.md) |

@@ -312,12 +312,18 @@ are kept apart.
 recommended actions. Trusted code adds the data basis for each finding:
 definitions, period, date field and truncation. Whether a report answers the
 user's intent is judged by human review of generated reports. That review is
-pending ([human review packet](../../evaluation/real-model/human-review/README.md)). For production, two model
-judges from different vendors score intent, grounding and report structure
-on sampled runs, after calibration against human-reviewed and deliberately
-flawed controls; they never score security or numbers. The design is in
-[quality evaluation and model judges](production-deployment.md#quality-evaluation-and-model-judges-proposed);
-running it is deferred.
+pending ([human review packet](../../evaluation/real-model/human-review/README.md)). The evaluation runner
+already carries a judge harness and the `report-quality-v1` rubric
+(definition disclosure, limitations, evidence support, contributors versus
+causes, action items, schema accuracy); no scorer is wired, so the eleven
+judge-required scenarios stay blocked. For production, two judge models from
+different vendors apply that rubric (extended with intent match and
+proportionality) offline before a release and continuously on sampled live
+runs, after calibration against human-reviewed and deliberately flawed
+controls; they never score security or numbers. Rubric and protocol:
+[judges and rubrics](../../evaluation/judges/README.md); the two stacks and
+their diagram: [quality evaluation and model judges](production-deployment.md#quality-evaluation-and-model-judges-proposed).
+Running it is deferred.
 
 **UX.** UX is assessed in a human CLI walkthrough (written, not yet run by a
 person; [recovery walkthrough](../recovery-walkthrough.md)), plus metrics:
