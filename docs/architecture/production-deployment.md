@@ -447,11 +447,14 @@ than assuming a reranker is required for a larger deployment.
 ### Production evaluation of skill selection
 
 The retrieval benchmark measures which examples are returned after retrieval
-is called. It does not establish that the agent calls Golden Knowledge when
-appropriate. Skill selection remains model-driven; the investigation guidance
-encourages consultation for driver investigations and new analytical reports,
-but is not a deterministic guarantee. Reliable unprompted use needs further
-evaluation before production.
+is called. It does not by itself establish that the agent calls Golden
+Knowledge whenever an investigation needs it. Skill selection is model-driven:
+the investigation skill instructs the model to consult reviewed examples for
+driver investigations and reports that need new analysis, and the skill's
+versioned guidance and its tests are where that behaviour is strengthened
+without adding a router or a second agent. How reliably it happens in
+repeated, unprompted trials has not been measured yet and needs the
+evaluation below before production.
 
 Build a reviewed, held-out set of natural questions and multi-turn conversations
 labelled for when each skill or tool is appropriate, unnecessary or unavailable.
@@ -471,6 +474,85 @@ acceptance thresholds from these results, then monitor reviewed traffic samples
 and rerun evaluations after model, prompt, skill or corpus changes. These
 selection precision/recall measurements are planned, not established by the
 current smoke tests.
+
+## Quality evaluation and model judges (proposed)
+
+**Status: designed, not run.** No model judge has scored anything in this
+project; the judge-required scenarios of the evaluation suites stay blocked
+([real-model evaluation](../../evaluation/real-model/README.md)). This
+section is the production design for requirement 6 ("how do you verify that
+the generated reports answer the user's intent?"), on top of the three
+evaluation layers in [requirements](requirements.md#6-quality-assurance).
+
+**What judges score, and what they never score.**
+
+| Scored by deterministic checks only (release gates) | Scored by model judges |
+| --- | --- |
+| Product scope and privacy (no out-of-scope data, no personal data, aggregate-only demographics) | Intent: does the answer or report address the question that was asked, at the detail that was asked |
+| Numbers: every expected figure present in the released evidence and stated in the text | Grounding: every claim traceable to a cited evidence ID, no figure or label beyond the evidence |
+| Destructive actions: deletion only after an explicit typed confirmation | Report structure: findings separated from recommended actions, definitions and limitations disclosed, hypotheses labelled as such |
+| Budgets, recovery, idempotency | Clarity for an executive reader: concise, no unrequested breakdowns |
+
+Judges never decide a security or numeric result. A judge that says a report
+is excellent does not pass a report whose figures failed the deterministic
+check.
+
+**Which judges.** Two judge models from different vendors, at least one of
+them not the vendor of the agent's primary model, so that a shared blind
+spot between the agent and its judge is less likely. Candidates are the
+project's existing provider adapters (a Gemini model and a GPT model);
+a Claude model is a candidate for the second seat if a third adapter is
+added. The exact models and versions are chosen when the calibration below
+is run and are recorded with every result, like the agent's model today.
+
+**Protocol.**
+
+1. One versioned rubric with per-dimension scores (intent, grounding,
+   report structure, clarity) and one evidence packet per case: the
+   question, the released answer or report, the cited evidence rows and
+   the definitions in force. Both judges receive the same packet.
+2. Judges score independently; neither sees the other's output. Each score
+   must cite the evidence ID or passage it is based on, so a reviewer can
+   check it.
+3. **Calibration before any threshold.** The rubric is run first on
+   human-reviewed controls: the human report review packet
+   ([rubric and verdicts](../../evaluation/real-model/human-review/README.md))
+   plus deliberately flawed variants (a wrong figure, a missing definition,
+   an action without a finding, a hypothesis stated as a cause). A judge
+   that passes a flawed control is not used until the rubric is fixed.
+4. Repeated cases measure within-model consistency; the same cases across
+   both judges measure agreement. Agreement is consistency, not truth:
+   disagreements and consistent-but-wrong results are flagged for a human,
+   never averaged into a pass.
+5. Pass thresholds for the analytical dimensions are set from the calibrated
+   baseline, recorded with the code, model, prompt, persona, catalog, policy
+   and retrieval versions, and only then used as release criteria.
+
+**Where judges run.**
+
+- *Before a release:* offline, on the held-out and real-data suites, after
+  every change to the model, prompts, skills, persona defaults or Golden
+  corpus. Held-out cases stay separate from anything used for tuning.
+- *In production:* on a sample of completed runs taken from the sanitized
+  traces (not in the request path; they add no latency or spend to a user's
+  question). Sampled scores, the retrieval review mark and user corrections
+  feed the monitor stage of the [learning loop](requirements.md#4b-system-level-planned-implementation-deferred);
+  a drop against the baseline is a signal for human review and, if
+  confirmed, a rollback of the changed version.
+- *Never* as an automatic promotion gate on their own: a candidate Golden
+  example, persona or prompt change still needs the deterministic gates and
+  an independent human reviewer.
+
+**UX.** Judges do not assess UX. UX stays with the human CLI walkthrough and
+the operational metrics (time to first progress, time to answer, completed,
+partial and failed runs, clarification rate).
+
+**Costs and limits.** Judge calls are model spend outside the per-question
+budget and are metered separately. Judges inherit the models' biases
+(verbosity, self-preference); calibration against controls limits but does
+not remove them. This design is a proposal: the rubric scale, repeat count,
+sample rate and thresholds are set during calibration, and nothing here has
+been run.
 
 ## Security and network (proposed)
 

@@ -8,6 +8,17 @@ query; an open "why" question can take several queries; a request to save a
 report loads the saved-reports skill. The loop is the same for the local manager and
 for Temporal (see [investigation runtime](../investigation-runtime.md)).
 
+**Why one loop, and not a pipeline or a team of agents.** Every security
+rule (product scope, privacy, budgets, deletion confirmation) is enforced by
+the application around this one loop, so there is one trust boundary and no
+agent-to-agent handoff to sanitize. The model does only the work the
+question needs, follow-ups reuse the evidence already in context, and one
+run is one budget, one trace and, optionally, one Temporal workflow. Skills
+give the specialization a dedicated agent would, without a second context
+or a coordination protocol. The trade-offs (model-driven skill selection,
+one growing context) and the conditions that would justify a different
+topology are in [technology choices](technology-choices.md#agent-topology-one-adaptive-loop-with-skills-implemented).
+
 ## One iteration
 
 ```mermaid

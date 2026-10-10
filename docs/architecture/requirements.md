@@ -312,8 +312,12 @@ are kept apart.
 recommended actions. Trusted code adds the data basis for each finding:
 definitions, period, date field and truncation. Whether a report answers the
 user's intent is judged by human review of generated reports. That review is
-pending ([human review packet](../../evaluation/real-model/human-review/README.md)). Calibrating model judges against human
-controls is optional and deferred.
+pending ([human review packet](../../evaluation/real-model/human-review/README.md)). For production, two model
+judges from different vendors score intent, grounding and report structure
+on sampled runs, after calibration against human-reviewed and deliberately
+flawed controls; they never score security or numbers. The design is in
+[quality evaluation and model judges](production-deployment.md#quality-evaluation-and-model-judges-proposed);
+running it is deferred.
 
 **UX.** UX is assessed in a human CLI walkthrough (written, not yet run by a
 person; [recovery walkthrough](../recovery-walkthrough.md)), plus metrics:

@@ -100,6 +100,8 @@ flowchart LR
 
 The [architecture overview](docs/architecture/README.md) has the local and production deployment diagrams, the agent loop and its skills, data flow and trust boundaries, the technology choices with their trade-offs, and how each requirement is met. The production design is not provisioned; its cloud services are proposals.
 
+One adaptive agent loop with loadable skills, rather than a fixed pipeline or a team of specialized agents: every guard (scope, privacy, budgets, deletion confirmation) wraps one loop, the model does only the work the question needs, and skills give the specialization a dedicated agent would without a second context to secure. The reasoning, the trade-offs and when a different topology would be justified are in [agent topology](docs/architecture/technology-choices.md#agent-topology-one-adaptive-loop-with-skills-implemented).
+
 Framework rationale and my experience with the tools are in [framework choice and author experience](docs/architecture/technology-choices.md#framework-choice-and-author-experience).
 
 ## Project status

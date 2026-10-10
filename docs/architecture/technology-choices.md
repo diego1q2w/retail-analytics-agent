@@ -8,6 +8,88 @@ Exact versions are pinned in `pyproject.toml`, `requirements.txt` and
 `compose.yaml`. Vendor statements link to the vendor's documentation, read on
 2026-10-09.
 
+## Agent topology: one adaptive loop with skills (implemented)
+
+**Needs.** Answer a business question with work proportional to the
+question: a figure in one query, a "why" question in several, a report when
+asked. Keep every security guarantee (product scope, privacy, budgets,
+destructive-action confirmation) enforced by application code, not by
+prompts. Carry a conversation across turns so that follow-ups reuse
+evidence. Run under one persisted budget and one trace per question, on the
+local manager or on Temporal, at about 1,000 short questions a day with few
+at once ([workload](production-deployment.md#requirements-and-measurements)).
+
+**Options.**
+
+- **One adaptive loop with skills (chosen).** One model decides the next
+  step each iteration. Versioned skills add focused guidance and a few
+  specialized tools to the same loop when the model loads them
+  ([the agent loop](agent-loop.md)).
+- **A fixed stage pipeline.** Plan, write SQL, execute, verify, write the
+  report, in that order for every request, each stage a separate prompt.
+- **A planner with specialized sub-agents.** A router or planner model
+  hands sub-tasks to dedicated agents (SQL writer, verifier, report writer),
+  each with its own context, and merges their results.
+
+**Choice.** One adaptive loop with skills.
+
+- *One trust boundary.* Every guard wraps one loop: context is rebuilt under
+  the executive's current authority before each model request, the tool set
+  is a pure function of permissions and recorded skill activations, and the
+  output gate checks the whole answer. With several agents, every handoff
+  message is a new untrusted input to sanitize, every agent needs its own
+  entitlement-filtered context and the evidence lineage has to survive
+  serialization between agents. The security story only has to be told once.
+- *Work proportional to the question.* A pipeline runs every stage whether
+  or not it is needed. In the [proportion walkthrough](../../evaluation/real-model/README.md#proportion-walkthrough-beforeafter)
+  "And August?" cost one query and two model requests, and a repeated
+  question cost no query and one request; the measured reduction from 9 to
+  3 requests for a scalar question came from context and tool-exposure
+  changes inside the one loop, not from adding stages.
+- *Specialization without coordination cost.* A skill gives what a
+  specialized agent would (focused instructions, fewer tools per request:
+  17 down to 9 for an ordinary request) without a second context, a handoff
+  protocol or a second budget ledger.
+- *Conversation continuity.* Follow-ups reuse evidence in the same context;
+  "save that as a report" needs no re-briefing of a writer agent.
+- *One run is one budget, one trace and, optionally, one Temporal workflow.*
+  Sub-agents would mean child workflows, a spend ledger shared across
+  agents and traces stitched together.
+- *Verification is code, not a critic model.* The usual argument for a
+  verifier agent is a second opinion on the SQL and the figures. Here the
+  SQL compiler, the result privacy boundary and the output gate are
+  deterministic, which is a stronger guarantee than another model's opinion.
+
+For this product (short executive questions, strict scope and privacy
+rules, a per-question spend limit, few concurrent investigations) the single
+loop is the right fit. It is not a claim that one agent is always better.
+
+**Costs and limits.**
+
+- *Skill and Golden selection is model-driven.* A fixed pipeline would
+  guarantee that example retrieval runs before every report. Here the
+  investigation skill instructs the model to consult `find_analysis_examples`
+  for driver investigations and new reports, and deterministic admission
+  runs before the model, but the selection precision and recall of this
+  behaviour have not been measured in repeated trials yet. The skill's
+  guidance and tests are where that guarantee is strengthened; a
+  deterministic "retrieve before any new report" step is possible without
+  adding an agent ([evaluation plan](production-deployment.md#production-evaluation-of-skill-selection)).
+- *One growing context.* Every iteration carries the history of the run.
+  Long investigations approach the 100k token budget (an early report run
+  stopped on it before the context changes). Bounding context growth
+  (compacting older tool results, summarizing settled sub-questions) is
+  planned work. A fresh-context report-writing step would be a tool of the
+  same loop, not a separate agent.
+- *No parallel sub-investigations.* Not needed at the current latency
+  targets.
+- *When to revisit.* Measured context overflow on real traffic,
+  investigations that run for minutes with independent sub-questions, or
+  selection measurements that show the model routing badly would justify
+  parallel sub-runs or a deterministic planning step. The application
+  boundaries (context assembly, tool authorization, budgets, output gate)
+  would stay where they are.
+
 ## Agent framework: Pydantic AI (implemented)
 
 **Needs.** One agent that decides its next step itself (no fixed pipeline)

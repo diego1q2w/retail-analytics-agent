@@ -10,7 +10,7 @@ a passing check.
 | System-level learning loop | Versioned, reviewed Golden examples; persona rollback; versioned retrieval configuration; evaluation runner | Automatic candidate generation from interactions, evaluation-gated promotion and monitored rollback (design in [requirements](requirements.md#4b-system-level-planned-implementation-deferred)) |
 | Report-title disclosure after access narrows | Report reads, exports, listings, search and deletion previews withhold the title once the owner's current products no longer cover the report | Not every surface that recorded a title applies that rule. For example, provenance stored when a report's evidence was linked into another conversation keeps the title it had then. After access narrows, a title can still be shown there. **Complete post-revocation protection is not claimed.** Deferred for the local demo. |
 | Multi-period evidence metadata | Evidence records one compiler-derived period, and only when every dated read uses the same window | A query that compares several periods has no single recorded period and no explicit multi-period marker. Reports and answers must name the compared periods themselves. |
-| Two-model judge calibration | Deterministic checks; a human report review packet (review pending) | Calibrating two model judges against human-reviewed controls, and repeat-consistency checks. Judge-scored results stay blocked unless a judge actually runs. |
+| Two-model judge calibration | Deterministic checks; a human report review packet (review pending); the judge design in [production deployment](production-deployment.md#quality-evaluation-and-model-judges-proposed) | Running two model judges, calibrating them against human-reviewed controls, and repeat-consistency checks. Judge-scored results stay blocked unless a judge actually runs. |
 | Exhaustive fault matrix | Representative fault-injection tests for queries, providers, workers and the local process | Every combination of faults |
 
 ## Evaluation and verification results
@@ -102,14 +102,22 @@ verified Gemini result.
   - Relevance labels were written by the implementing agent alone, before
     any run. There is no second annotator.
   - No relevance measurement on live traffic.
-- **Skill selection and Golden invocation.** Retrieval works when called, but
-  the agent may skip relevant Golden examples on an unprompted question.
-  The investigation skill adds guidance, not an execution guarantee. Existing
-  retrieval scores do not measure this selection decision. Production needs
-  labelled, repeated evaluations of selection precision and recall for Golden
-  retrieval and the other skills, plus answer quality, latency and cost;
-  those measurements are not yet established. See
+- **Skill selection and Golden invocation need more testing.** Retrieval
+  works when called, and the investigation skill instructs the model to
+  consult reviewed examples for driver investigations and reports that need
+  new analysis. How reliably that happens on unprompted questions has not
+  been measured in repeated trials; the existing retrieval scores measure
+  what is returned, not the decision to call. The skill's guidance and its
+  tests are where this is strengthened. Production needs labelled, repeated
+  evaluations of selection precision and recall for Golden retrieval and the
+  other skills, plus answer quality, latency and cost. See
   [production evaluation](production-deployment.md#production-evaluation-of-skill-selection).
+- **One growing context.** Each model request carries the run's history
+  (compact tool results and evidence IDs, not rows). Long investigations
+  approach the 100k token budget, and the run then ends with its verified
+  findings. Bounding context growth (compacting older tool results,
+  summarizing settled sub-questions) is planned work; see
+  [agent topology](technology-choices.md#agent-topology-one-adaptive-loop-with-skills-implemented).
 - **Benchmarks.**
   - Expected values are reproduced by two SQL routes, but no named human
     reviewer has signed them off.
